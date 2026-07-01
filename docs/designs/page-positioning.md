@@ -48,8 +48,8 @@
 
 形式：左侧设置分类 + 右侧当前分类详情与具体配置控件。
 
-目的：设置账号、目标系统、日志系统、Today、Agent、提醒、集成、数据与隐私。
+目的：设置账号、目标系统、日志系统、Today、Agent、模型、提醒、集成、数据与隐私。
 
 页面边界：Settings 不是只管理 Agent 权限，也不能只是一堆开关。需要能配置路径、模板、数量、时间、模型、渠道、导出格式等实际参数。
 
-充分必要条件：General、Goals、Logs、Today、Agent、Notifications、Integrations、Data & Privacy。
+充分必要条件：General、Goals、Logs、Today、Agent、Models、Notifications、Integrations、Data & Privacy。

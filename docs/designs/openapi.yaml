@@ -1,8 +1,296 @@
 openapi: 3.0.3
 info:
   title: Goal Mate API
-  version: 0.0.0
-  description: API contract placeholder. Update this file when backend APIs are introduced.
-paths: {}
+  version: 0.1.0
+  description: First-version Web Console API contract draft.
+paths:
+  /today:
+    get:
+      summary: Get Today page state
+      responses:
+        '200':
+          description: Today state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodayState'
+  /goals:
+    get:
+      summary: List goal summaries
+      responses:
+        '200':
+          description: Goal list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GoalSummary'
+  /logs:
+    get:
+      summary: List Markdown log records
+      parameters:
+        - name: cycle_type
+          in: query
+          schema:
+            type: string
+            enum: [year, quarter, month, week, day]
+      responses:
+        '200':
+          description: Log records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogRecord'
+  /logs/{id}:
+    get:
+      summary: Get a Markdown log record
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Log record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogRecord'
+    put:
+      summary: Update a Markdown log record
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [markdown]
+              properties:
+                markdown:
+                  type: string
+      responses:
+        '200':
+          description: Updated log record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogRecord'
+  /agent/conversations:
+    get:
+      summary: List Agent conversations
+      responses:
+        '200':
+          description: Conversation list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentConversation'
+  /agent/conversations/{id}/messages:
+    get:
+      summary: List messages in a conversation
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentMessage'
+    post:
+      summary: Send a message to Agent
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+      responses:
+        '200':
+          description: Agent response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentMessage'
+  /settings:
+    get:
+      summary: Get user settings
+      responses:
+        '200':
+          description: Settings by category
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    put:
+      summary: Update user settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated settings
+  /models/config:
+    get:
+      summary: Get model configuration
+      responses:
+        '200':
+          description: Model config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfig'
+    put:
+      summary: Update model configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfig'
+      responses:
+        '200':
+          description: Updated model config
 components:
-  schemas: {}
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    TodayState:
+      type: object
+      required: [date, primary_action, momentum]
+      properties:
+        date:
+          type: string
+          format: date
+        primary_action:
+          $ref: '#/components/schemas/DailyAction'
+        momentum:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 4
+    DailyAction:
+      type: object
+      required: [id, title, status]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [planned, done, partial, not_done, skipped]
+    GoalSummary:
+      type: object
+      required: [id, title, objectives]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        risk_status:
+          type: string
+        objectives:
+          type: array
+          items:
+            $ref: '#/components/schemas/Objective'
+    Objective:
+      type: object
+      required: [id, title, key_results]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        key_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyResult'
+    KeyResult:
+      type: object
+      required: [id, title]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+    LogRecord:
+      type: object
+      required: [id, cycle_type, cycle_key, path, markdown]
+      properties:
+        id:
+          type: string
+        cycle_type:
+          type: string
+          enum: [year, quarter, month, week, day]
+        cycle_key:
+          type: string
+        path:
+          type: string
+        markdown:
+          type: string
+    AgentConversation:
+      type: object
+      required: [id, title]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+    AgentMessage:
+      type: object
+      required: [id, role, content]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, agent, system]
+        content:
+          type: string
+    ModelConfig:
+      type: object
+      required: [provider, default_model, api_base_url]
+      properties:
+        provider:
+          type: string
+          example: deepseek
+        default_model:
+          type: string
+          example: DeepSeek V4 Flash
+        reasoning_model:
+          type: string
+          example: DeepSeek Reasoner
+        api_base_url:
+          type: string
+          example: https://api.deepseek.com
+        fallback_strategy:
+          type: string
+          enum: [retry_then_fallback, fail_fast]

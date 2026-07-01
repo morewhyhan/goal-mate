@@ -1,8 +1,120 @@
 @startuml
-' 当前领域模型占位。新增业务模块后，在这里维护实体、属性和关系。
+hide circle
+skinparam linetype ortho
 
-class PlaceholderAggregate {
-  +id: string
+entity User {
+  * id
+  --
+  display_name
+  timezone
+  locale
 }
+
+entity Goal {
+  * id
+  --
+  user_id
+  title
+  status
+  priority
+  risk_status
+  current_focus
+}
+
+entity Objective {
+  * id
+  --
+  goal_id
+  title
+  horizon
+}
+
+entity KeyResult {
+  * id
+  --
+  objective_id
+  title
+  metric_type
+  current_value
+  target_value
+  status
+}
+
+entity WbsItem {
+  * id
+  --
+  goal_id
+  parent_id
+  title
+  start_date
+  end_date
+  status
+}
+
+entity DailyAction {
+  * id
+  --
+  goal_id
+  key_result_id
+  action_date
+  title
+  status
+}
+
+entity LogRecord {
+  * id
+  --
+  user_id
+  cycle_type
+  cycle_key
+  path
+  markdown
+}
+
+entity AgentConversation {
+  * id
+  --
+  user_id
+  title
+}
+
+entity AgentMessage {
+  * id
+  --
+  conversation_id
+  role
+  content
+}
+
+entity UserSetting {
+  * id
+  --
+  user_id
+  category
+  key
+  value_json
+}
+
+entity ModelConfig {
+  * id
+  --
+  user_id
+  provider
+  default_model
+  reasoning_model
+  api_base_url
+}
+
+User ||--o{ Goal
+Goal ||--o{ Objective
+Objective ||--o{ KeyResult
+Goal ||--o{ WbsItem
+Goal ||--o{ DailyAction
+KeyResult ||--o{ DailyAction
+User ||--o{ LogRecord
+User ||--o{ AgentConversation
+AgentConversation ||--o{ AgentMessage
+User ||--o{ UserSetting
+User ||--o{ ModelConfig
 
 @enduml
