@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info:
+  title: Goal Mate API
+  version: 0.0.0
+  description: API contract placeholder. Update this file when backend APIs are introduced.
+paths: {}
+components:
+  schemas: {}

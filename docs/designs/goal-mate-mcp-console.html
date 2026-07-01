@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goal Mate Prototype</title>
+  <style>
+    :root {
+      --bg: #f3f5ef;
+      --paper: #fffdf7;
+      --surface: #ffffff;
+      --soft: #f8faf6;
+      --ink: #161b16;
+      --text: #242b22;
+      --muted: #6d7668;
+      --line: #dbe1d4;
+      --line-strong: #b7c0af;
+      --green: #2f7d4c;
+      --green-soft: #e7f3eb;
+      --blue: #286a93;
+      --blue-soft: #e6f1f7;
+      --amber: #9a6a18;
+      --amber-soft: #f7eedc;
+      --red: #a23c35;
+      --red-soft: #f6e8e6;
+      --purple: #64579a;
+      --purple-soft: #eceaf7;
+      --shadow: 0 1px 2px rgba(20, 28, 19, 0.06);
+      --shadow-soft: 0 16px 40px rgba(20, 28, 19, 0.07);
+      --sidebar: 252px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-size: 14px; }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 22px; line-height: 1.15; letter-spacing: -0.02em; }
+    h2 { font-size: 28px; line-height: 1.06; letter-spacing: -0.04em; }
+    h3 { font-size: 16px; line-height: 1.22; }
+
+    .app { min-height: 100vh; display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); }
+    .sidebar { border-right: 1px solid var(--line); background: #fbfcf8; padding: 18px 16px; display: flex; flex-direction: column; gap: 18px; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--ink); display: grid; place-items: center; font-weight: 800; background: var(--surface); }
+    .brand-copy { display: grid; gap: 2px; }
+    .brand-copy strong { font-size: 15px; }
+    .muted, .sub, .brand-copy span, .label { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+    .nav { display: grid; gap: 5px; }
+    .nav-button { border: 0; min-height: 42px; border-radius: 10px; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 10px; padding: 0 11px; text-align: left; }
+    .nav-button[data-active="true"] { background: #eef1ea; color: var(--ink); font-weight: 720; }
+    .nav-icon { width: 22px; text-align: center; }
+    .sidebar-principle { margin-top: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 13px; display: grid; gap: 8px; box-shadow: var(--shadow); }
+
+    .main { display: grid; grid-template-rows: 72px minmax(0, 1fr); min-width: 0; }
+    .topbar { border-bottom: 1px solid var(--line); background: rgba(243, 245, 239, 0.94); position: sticky; top: 0; z-index: 5; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .heading { min-width: 0; }
+    .heading p { margin-top: 4px; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .content { padding: 22px; display: grid; gap: 18px; align-content: start; }
+    .page { display: none; }
+    .page[data-active="true"] { display: grid; gap: 18px; }
+    .page-shell { width: min(1180px, 100%); margin: 0 auto; display: grid; gap: 18px; }
+
+    .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .badge, .pill { min-height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; padding: 0 9px; border: 1px solid transparent; white-space: nowrap; font-size: 12px; font-weight: 720; }
+    .pill { background: var(--soft); border-color: var(--line); color: var(--text); }
+    .green { color: var(--green); background: var(--green-soft); border-color: #c9e4d2; }
+    .blue { color: var(--blue); background: var(--blue-soft); border-color: #c9e0ec; }
+    .amber { color: var(--amber); background: var(--amber-soft); border-color: #ead6aa; }
+    .red { color: var(--red); background: var(--red-soft); border-color: #e4c5c0; }
+    .purple { color: var(--purple); background: var(--purple-soft); border-color: #d8d2ee; }
+
+    .btn { min-height: 36px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; box-shadow: var(--shadow); }
+    .btn-primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .btn-ghost { background: var(--soft); box-shadow: none; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    /* Today */
+    .today-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) 340px; gap: 16px; align-items: start; }
+    .today-side { display: grid; gap: 14px; align-content: start; }
+    .next-card { border: 1px solid var(--line); border-radius: 24px; background: var(--ink); color: #fff; box-shadow: var(--shadow-soft); padding: 22px; display: grid; gap: 18px; }
+    .next-card .sub, .next-card .label { color: rgba(255, 255, 255, 0.72); }
+    .next-card h2 { font-size: 34px; max-width: 780px; }
+    .next-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+    .next-meta .pill { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.18); color: #fff; }
+    .matrix { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .quadrant { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); padding: 14px; display: grid; gap: 10px; box-shadow: var(--shadow); }
+    .quadrant[data-primary="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px rgba(22, 27, 22, 0.08); }
+    .task-card { border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 10px; display: grid; gap: 6px; text-align: left; color: var(--text); }
+    .task-card[data-main="true"] { background: var(--green-soft); border-color: #c9e4d2; }
+    .task-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .daily-panel, .momentum-panel { border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-soft); padding: 16px; display: grid; gap: 14px; }
+    .habit-row { border-top: 1px solid var(--line); padding-top: 10px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .momentum-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .heatmap { width: 100%; display: grid; grid-template-columns: repeat(56, minmax(3px, 1fr)); gap: 3px; }
+    .heat-cell { width: 100%; height: 10px; border-radius: 2px; background: #e6ebe0; }
+    .heat-cell[data-level="1"] { background: #cfe1d4; }
+    .heat-cell[data-level="2"] { background: #94bf9e; }
+    .heat-cell[data-level="3"] { background: #4f8f63; }
+    .heat-cell[data-level="4"] { background: #1f6138; }
+    .momentum-foot { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; }
+    .heat-legend { display: flex; align-items: center; gap: 5px; }
+    .heat-legend .heat-cell { width: 9px; height: 9px; flex: 0 0 auto; }
+
+    /* Goals */
+    .goal-tabs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .goal-tab { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); min-height: 34px; padding: 0 13px; box-shadow: var(--shadow); }
+    .goal-tab[data-active="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 780; }
+    .goal-view { display: none; }
+    .goal-view[data-active="true"] { display: grid; gap: 14px; }
+    .goal-hierarchy { border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden; }
+    .goal-hierarchy-head, .goal-hierarchy-row { display: grid; grid-template-columns: 1.05fr 1fr 1.3fr 150px; }
+    .goal-hierarchy-head { background: #fbfcf8; color: var(--muted); font-size: 12px; font-weight: 820; }
+    .goal-hierarchy-head > div, .goal-hierarchy-row > div { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 13px 14px; min-width: 0; }
+    .goal-hierarchy-head > div:last-child, .goal-hierarchy-row > div:last-child { border-right: 0; }
+    .goal-hierarchy-row:last-child > div { border-bottom: 0; }
+    .objective-cell { display: grid; gap: 7px; }
+    .objective-cell strong { font-size: 18px; letter-spacing: -0.02em; }
+    .kr-list, .action-list { display: grid; gap: 7px; }
+    .kr-item, .action-item { display: grid; gap: 3px; }
+    .kr-item strong, .action-item strong { font-size: 13px; }
+    .progress-cell { display: grid; gap: 8px; align-content: center; }
+    .progress-track { height: 8px; border-radius: 999px; background: #e5eadf; overflow: hidden; }
+    .progress-bar { height: 100%; border-radius: inherit; background: var(--green); }
+    .progress-bar.blue { background: var(--blue); }
+    .progress-bar.purple { background: var(--purple); }
+    .progress-bar.amber { background: var(--amber); }
+    .wbs-board { border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); overflow: auto; }
+    .wbs-grid { min-width: 1140px; display: grid; grid-template-columns: 400px repeat(5, 1fr) 92px; }
+    .wbs-cell { min-height: 42px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 9px 10px; position: relative; background: var(--surface); }
+    .wbs-cell:nth-child(7n) { border-right: 0; }
+    .wbs-head { background: #fbfcf8; color: var(--muted); font-size: 12px; font-weight: 800; display: flex; align-items: center; }
+    .today-col { background: linear-gradient(180deg, rgba(162, 60, 53, 0.06), rgba(255,255,255,0)); }
+    .today-col::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: rgba(162,60,53,.58); z-index: 1; }
+    .work-label { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 34px; }
+    .work-label[data-level="1"] { grid-template-columns: minmax(0, 1fr); padding: 6px 0; }
+    .work-label[data-level="2"] { padding-left: 22px; }
+    .work-label[data-level="3"] { padding-left: 44px; }
+    .work-label[data-level="1"] strong { font-size: 16px; }
+    .work-label strong { font-size: 13px; line-height: 1.25; }
+    .work-label span { color: var(--muted); font-size: 11px; }
+    .work-icon { width: 18px; height: 18px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--soft); }
+    .work-icon.daily { border-radius: 999px; background: var(--green-soft); border-color: #c9e4d2; }
+    .work-icon.project { background: var(--blue-soft); border-color: #c9e0ec; }
+    .work-icon.content { background: var(--purple-soft); border-color: #d8d2ee; }
+    .plan-bar { position: absolute; left: 8px; right: 8px; top: 10px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 9px; color: #fff; font-size: 11px; font-weight: 760; white-space: nowrap; overflow: hidden; box-shadow: 0 6px 16px rgba(20,28,19,.12); z-index: 2; }
+    .plan-bar[data-span="2"] { right: calc(-100% + 8px); }
+    .plan-bar[data-span="3"] { right: calc(-200% + 8px); }
+    .plan-bar[data-span="4"] { right: calc(-300% + 8px); }
+    .plan-bar[data-span="5"] { right: calc(-400% + 8px); }
+    .plan-bar small { opacity: .82; font-size: 10px; }
+    .plan-health { background: var(--green); }
+    .plan-english { background: var(--blue); }
+    .plan-media { background: var(--purple); }
+    .plan-project { background: var(--amber); }
+    .plan-muted { background: var(--line-strong); color: var(--ink); }
+    .milestone { position: absolute; top: 10px; left: 50%; width: 20px; height: 20px; transform: translateX(-50%) rotate(45deg); background: var(--ink); border-radius: 4px; z-index: 2; }
+    .milestone-text { position: absolute; top: 32px; left: 8px; right: 8px; color: var(--muted); font-size: 10px; text-align: center; }
+    .status-cell { display: grid; place-items: center; font-size: 11px; font-weight: 780; color: var(--muted); text-align: center; }
+    .status-cell.ok { color: var(--green); }
+    .status-cell.risk { color: var(--amber); }
+
+    /* Logs */
+    .logs-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .log-tree-panel, .md-paper { border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-soft); min-width: 0; overflow: hidden; }
+    .log-tree-panel { padding: 14px; display: grid; gap: 12px; }
+    .log-tree { display: grid; gap: 2px; position: relative; }
+    .log-tree::before { content: ""; position: absolute; left: 10px; top: 14px; bottom: 14px; border-left: 1px solid var(--line-strong); }
+    .tree-row { min-height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 8px; border-radius: 8px; color: var(--muted); font-size: 13px; position: relative; border: 0; background: transparent; text-align: left; }
+    .tree-row:hover { background: var(--soft); }
+    .tree-row[data-hidden="true"] { display: none; }
+    .tree-row::before { content: ""; position: absolute; top: 50%; border-top: 1px solid var(--line-strong); }
+    .tree-row[data-depth="1"]::before { left: 10px; width: 12px; }
+    .tree-row[data-depth="2"]::before { left: 30px; width: 12px; }
+    .tree-row[data-depth="3"]::before { left: 50px; width: 12px; }
+    .tree-row[data-depth="4"]::before { left: 70px; width: 12px; }
+    .tree-row[data-depth="5"]::before { left: 90px; width: 12px; }
+    .tree-row::after { content: ""; position: absolute; top: -2px; bottom: -2px; border-left: 1px solid var(--line); pointer-events: none; }
+    .tree-row[data-depth="2"]::after { left: 30px; }
+    .tree-row[data-depth="3"]::after { left: 50px; }
+    .tree-row[data-depth="4"]::after { left: 70px; }
+    .tree-row[data-depth="5"]::after { left: 90px; }
+    .tree-row.folder { color: var(--text); font-weight: 760; }
+    .tree-row[data-depth="1"] { padding-left: 28px; }
+    .tree-row[data-depth="2"] { padding-left: 48px; }
+    .tree-row[data-depth="3"] { padding-left: 68px; }
+    .tree-row[data-depth="4"] { padding-left: 88px; }
+    .tree-row[data-depth="5"] { padding-left: 108px; }
+    .tree-row .chev { color: var(--muted); width: 12px; text-align: center; }
+    .file-item { border-radius: 9px; padding: 0 8px; color: var(--muted); font-size: 13px; }
+    .file-item.active { background: var(--ink); color: #fff; font-weight: 780; }
+    .md-head { border-bottom: 1px solid var(--line); padding: 14px 16px; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; background: #fbfcf8; }
+    .md-title { font-size: 24px; line-height: 1.1; letter-spacing: -0.03em; }
+    .md-editor { width: 100%; min-height: calc(100vh - 202px); border: 0; resize: vertical; padding: 20px; background: #fffdf7; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; line-height: 1.7; outline: none; }
+
+    /* Agent */
+    .agent-layout { display: grid; grid-template-columns: 286px minmax(0, 900px); gap: 18px; align-items: stretch; justify-content: center; min-height: calc(100vh - 150px); }
+    .agent-history, .chat-panel, .settings-console { border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-soft); min-width: 0; }
+    .agent-history { display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+    .history-head { border-bottom: 1px solid var(--line); padding: 14px 16px; background: #fbfcf8; }
+    .history-list { padding: 10px; display: grid; gap: 6px; align-content: start; overflow: auto; }
+    .history-item { border: 0; border-radius: 10px; background: transparent; color: var(--muted); min-height: 44px; padding: 9px 10px; text-align: left; display: grid; gap: 3px; }
+    .history-item[data-active="true"] { background: #eef1ea; color: var(--ink); font-weight: 760; }
+    .history-item[data-active="true"] .sub { color: var(--muted); }
+    .chat-panel { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: calc(100vh - 150px); overflow: hidden; }
+    .chat-head, .control-head { border-bottom: 1px solid var(--line); padding: 16px 18px; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .chat-thread { padding: 42px 44px; display: grid; gap: 22px; align-content: start; justify-items: center; overflow: auto; background: linear-gradient(180deg, #fbfcf8, #fff); }
+    .agent-hero { width: min(760px, 100%); display: grid; gap: 10px; padding: 12px 0 8px; }
+    .agent-hero h2 { font-size: 34px; line-height: 1.08; letter-spacing: -0.04em; max-width: 640px; }
+    .agent-hero p { color: var(--muted); font-size: 14px; line-height: 1.7; max-width: 680px; }
+    .message { width: min(720px, 100%); border: 0; border-radius: 0; background: transparent; padding: 0; display: grid; gap: 7px; }
+    .message p { font-size: 15px; line-height: 1.7; }
+    .message[data-from="user"] { justify-self: end; background: var(--ink); border-radius: 18px; color: #fff; padding: 12px 14px; width: min(620px, 88%); }
+    .message[data-from="user"] .sub { color: rgba(255,255,255,.72); }
+    .message-action { border: 1px solid var(--line); border-radius: 14px; background: var(--soft); padding: 12px; display: grid; gap: 8px; }
+    .context-strip { width: min(760px, 100%); border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+    .composer { border-top: 1px solid var(--line); padding: 18px 28px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; background: #fbfcf8; }
+    .composer input { min-height: 56px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); padding: 0 18px; color: var(--text); box-shadow: var(--shadow); }
+    .control-panel { display: grid; align-content: start; overflow: hidden; }
+    .control-flow { padding: 14px; display: grid; gap: 12px; }
+    .flow-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; }
+    .flow-dot { width: 28px; height: 28px; border-radius: 999px; background: var(--ink); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 820; }
+    .flow-copy { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+    .flow-step:last-child .flow-copy { border-bottom: 0; padding-bottom: 0; }
+    .confirm-list { border-top: 1px solid var(--line); padding: 14px; display: grid; gap: 10px; }
+    .confirm-card { border: 1px solid var(--line); border-radius: 14px; background: var(--soft); padding: 12px; display: grid; gap: 8px; }
+    .channel-list { border-top: 1px solid var(--line); padding: 14px; display: grid; gap: 8px; }
+    .channel-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+
+    /* Settings */
+    .settings-console { overflow: hidden; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+    .settings-menu { border-right: 1px solid var(--line); background: #fbfcf8; padding: 14px; display: grid; gap: 6px; align-content: start; }
+    .settings-menu-button { border: 0; min-height: 38px; border-radius: 10px; background: transparent; color: var(--muted); text-align: left; padding: 0 10px; }
+    .settings-menu-button[data-active="true"] { background: var(--ink); color: #fff; font-weight: 780; }
+    .settings-detail { min-width: 0; }
+    .settings-panel { display: none; }
+    .settings-panel[data-active="true"] { display: block; }
+    .config-field { display: grid; gap: 5px; min-width: 0; }
+    .config-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .select-control, .input-control { min-height: 34px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); padding: 0 10px; min-width: 120px; }
+    .input-control.path { width: min(280px, 100%); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .settings-intro { padding: 18px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; background: #fbfcf8; }
+    .settings-rules { display: grid; }
+    .settings-row { display: grid; grid-template-columns: 190px minmax(0, 1fr) minmax(0, 1fr) 132px; border-bottom: 1px solid var(--line); }
+    .settings-row:last-child { border-bottom: 0; }
+    .settings-row > div { padding: 14px 16px; border-right: 1px solid var(--line); min-width: 0; }
+    .settings-row > div:last-child { border-right: 0; }
+    .rule-name { display: grid; gap: 6px; align-content: center; }
+    .rule-name strong { font-size: 16px; }
+    .rule-copy { display: grid; gap: 5px; align-content: center; }
+    .rule-control { display: grid; gap: 8px; align-content: center; justify-items: start; }
+    .switch { width: 46px; height: 26px; border-radius: 999px; background: #dfe5d8; border: 1px solid var(--line-strong); padding: 2px; display: flex; justify-content: flex-start; cursor: pointer; }
+    .switch::before { content: ""; width: 20px; height: 20px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow); }
+    .switch[data-on="true"] { background: var(--green); border-color: var(--green); justify-content: flex-end; }
+    .settings-bottom { border-top: 1px solid var(--line); padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 8px; background: #fbfcf8; }
+    .toast { position: fixed; right: 22px; bottom: 22px; z-index: 30; border-radius: 9px; background: var(--ink); color: #fff; padding: 10px 12px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 160ms ease, transform 160ms ease; }
+    .toast[data-show="true"] { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 1180px) { .today-grid, .agent-layout, .logs-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 880px) { .goal-hierarchy-head { display: none; } .goal-hierarchy-row, .settings-row, .settings-console { grid-template-columns: 1fr; } .goal-hierarchy-row > div, .settings-row > div { border-right: 0; } .settings-menu { border-right: 0; border-bottom: 1px solid var(--line); grid-template-columns: repeat(2, minmax(0, 1fr)); } .settings-intro { display: grid; } }
+    @media (max-width: 760px) { .app { display: block; } .sidebar { display: none; } .main { display: block; } .topbar { position: static; flex-direction: column; align-items: flex-start; padding: 14px; } .heading p { white-space: normal; } .content { padding: 14px; } .matrix, .composer { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">GM</div><div class="brand-copy"><strong>Goal Mate</strong><span>AI 处理系统，你只做下一步</span></div></div>
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-button" data-page-target="today" data-active="true"><span class="nav-icon">◎</span><span>Today</span></button>
+        <button class="nav-button" data-page-target="goals"><span class="nav-icon">▥</span><span>Goals</span></button>
+        <button class="nav-button" data-page-target="logs"><span class="nav-icon">▤</span><span>Logs</span></button>
+        <button class="nav-button" data-page-target="agent"><span class="nav-icon">◐</span><span>Agent</span></button>
+        <button class="nav-button" data-page-target="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+      </nav>
+      <div class="sidebar-principle"><span class="label">设计原则</span><strong>复杂方法交给 AI</strong><span class="sub">OKR、WBS、Gantt、复盘和监督都在后台运转。用户只需要知道现在下一步。</span></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar"><div class="heading"><h1 id="pageTitle">Today</h1><p id="pageSubtitle">今天只看下一步。</p></div><div class="actions"></div></header>
+      <section class="content">
+        <section class="page" data-page="today" data-active="true">
+          <section class="page-shell today-grid">
+            <div class="stack" style="display:grid;gap:14px;">
+              <article class="next-card">
+                <span class="label">现在只做这一步</span>
+                <h2>走路 2 小时，同时背单词。</h2>
+                <div class="next-meta"><span class="pill">身体管理</span><span class="pill">英语攻坚</span><span class="pill">可合并执行</span></div>
+                <div class="button-row"><button class="btn btn-primary" data-toast="已开始：走路 + 背单词">开始</button><button class="btn" data-toast="已拆成 10 分钟启动版">拆成 10 分钟</button></div>
+              </article>
+              <section class="matrix">
+                <article class="quadrant" data-primary="true"><div class="row"><strong>重要且紧急</strong><span class="badge green">先做</span></div><button class="task-card" data-main="true"><h3>走路 2 小时 + 背单词</h3><div class="task-meta"><span class="badge blue">2h</span><span class="badge green">今日主线</span></div></button><button class="task-card"><h3>写 3000 字</h3><div class="task-meta"><span class="badge purple">媒体影响力</span></div></button></article>
+                <article class="quadrant"><div class="row"><strong>重要不紧急</strong><span class="badge blue">保持</span></div><button class="task-card"><h3>新概念二默写 1 课</h3></button><button class="task-card"><h3>Goal Mate 原型继续打磨</h3></button></article>
+                <article class="quadrant"><div class="row"><strong>不重要但紧急</strong><span class="badge amber">确认</span></div><button class="task-card"><h3>确认今天饮食只吃简单食物</h3></button></article>
+                <article class="quadrant"><div class="row"><strong>不重要不紧急</strong><span class="badge red">不碰</span></div><button class="task-card"><h3>刷信息流、临时换计划</h3></button></article>
+              </section>
+            </div>
+<aside class="today-side"><section class="daily-panel"><div><span class="label">今天的锚点</span><h3>2026-07-01</h3></div><div class="habit-row"><strong>饮食</strong><span class="pill">鸡蛋 / 红薯</span></div><div class="habit-row"><strong>运动</strong><span class="pill">走路 2h</span></div><div class="habit-row"><strong>核心</strong><span class="pill">平板 1min</span></div><div class="habit-row"><strong>写作</strong><span class="pill">3000 字</span></div><div class="habit-row"><strong>项目</strong><span class="pill">Goal Mate</span></div></section><section class="momentum-panel"><div class="momentum-head"><div><span class="label">Momentum</span><h3>8-week contribution</h3></div><span class="pill">56 days</span></div><div class="heatmap" id="momentumGrid" aria-label="Momentum heatmap"></div><div class="momentum-foot"><span>Recent goal movement</span><span class="heat-legend">Less <i class="heat-cell"></i><i class="heat-cell" data-level="1"></i><i class="heat-cell" data-level="2"></i><i class="heat-cell" data-level="3"></i><i class="heat-cell" data-level="4"></i> More</span></div></section></aside>
+          </section>
+        </section>
+
+        <section class="page" data-page="goals">
+          <section class="page-shell">
+            <nav class="goal-tabs" aria-label="目标视图">
+              <button class="goal-tab" data-goal-tab="okr" data-active="true">OKR</button>
+              <button class="goal-tab" data-goal-tab="gantt">拆解甘特</button>
+            </nav>
+            <section class="goal-view" data-goal-view="okr" data-active="true">
+              <section class="goal-hierarchy" aria-label="OKR 目标层级">
+                <div class="goal-hierarchy-head"><div>大目标</div><div>验收结果</div><div>关键动作</div><div>当前进度</div></div>
+                <article class="goal-hierarchy-row">
+                  <div class="objective-cell"><span class="badge green">O1 身体管理</span><strong>9 月 1 日前，从 165 斤到 130 斤</strong><span class="sub">核心不是研究减脂方法，而是把每天的动作稳定发生。</span></div>
+                  <div class="kr-list"><span class="kr-item"><strong>KR1</strong><span class="sub">9 月 1 日前体重从 165 斤降到 130-135 斤。</span></span><span class="kr-item"><strong>KR2</strong><span class="sub">暑假身体管理计划完成率达到 80%。</span></span></div>
+                  <div class="action-list"><span class="action-item"><strong>每日饮食</strong><span class="sub">鸡蛋、红薯等简单食物。</span></span><span class="action-item"><strong>每日运动</strong><span class="sub">走路 2 小时，平板支撑 1 分钟，早睡早起。</span></span></div>
+                  <div class="progress-cell"><span class="pill">今日待执行</span><div class="progress-track"><div class="progress-bar" style="width:18%"></div></div></div>
+                </article>
+                <article class="goal-hierarchy-row">
+                  <div class="objective-cell"><span class="badge blue">O2 英语攻坚</span><strong>暑假把新概念英语二默写到滚瓜烂熟</strong><span class="sub">学习动作和走路合并，减少额外决策成本。</span></div>
+                  <div class="kr-list"><span class="kr-item"><strong>KR1</strong><span class="sub">新概念英语二全册可默写。</span></span><span class="kr-item"><strong>KR2</strong><span class="sub">随机抽取课文能准确复述或背诵。</span></span></div>
+                  <div class="action-list"><span class="action-item"><strong>课文默写</strong><span class="sub">7 月前半本，8 月后半本和总复盘。</span></span><span class="action-item"><strong>单词输入</strong><span class="sub">走路时背单词 2 小时。</span></span></div>
+                  <div class="progress-cell"><span class="pill">刚开始</span><div class="progress-track"><div class="progress-bar blue" style="width:12%"></div></div></div>
+                </article>
+                <article class="goal-hierarchy-row">
+                  <div class="objective-cell"><span class="badge purple">O3 媒体影响力</span><strong>每天写 3000 字，沉淀可发布内容</strong><span class="sub">先保证文字资产持续产生，再筛选发布渠道。</span></div>
+                  <div class="kr-list"><span class="kr-item"><strong>KR1</strong><span class="sub">暑假沉淀不少于 18 万字可整理内容。</span></span><span class="kr-item"><strong>KR2</strong><span class="sub">发布不少于 20 条公开内容。</span></span><span class="kr-item"><strong>KR3</strong><span class="sub">获得明确外部反馈记录。</span></span></div>
+                  <div class="action-list"><span class="action-item"><strong>每日写作</strong><span class="sub">日记、想法、文章草稿都算。</span></span><span class="action-item"><strong>公开发布</strong><span class="sub">从素材池里挑选内容改成公开稿。</span></span></div>
+                  <div class="progress-cell"><span class="pill">待启动</span><div class="progress-track"><div class="progress-bar purple" style="width:8%"></div></div></div>
+                </article>
+                <article class="goal-hierarchy-row">
+                  <div class="objective-cell"><span class="badge amber">O4 项目杠杆</span><strong>推进软件杯和 Goal Mate，增加代码杠杆</strong><span class="sub">把项目推进变成可复用的组件、脚本和工作流。</span></div>
+                  <div class="kr-list"><span class="kr-item"><strong>KR1</strong><span class="sub">软件杯项目达到可提交或可演示状态。</span></span><span class="kr-item"><strong>KR2</strong><span class="sub">Goal Mate 原型达到可演示状态。</span></span><span class="kr-item"><strong>KR3</strong><span class="sub">沉淀一套可复用开发框架、组件或脚本。</span></span></div>
+                  <div class="action-list"><span class="action-item"><strong>软件杯</strong><span class="sub">补齐未完成模块。</span></span><span class="action-item"><strong>Goal Mate</strong><span class="sub">继续打磨产品、原型和工程框架。</span></span></div>
+                  <div class="progress-cell"><span class="pill">推进中</span><div class="progress-track"><div class="progress-bar amber" style="width:26%"></div></div></div>
+                </article>
+              </section>
+            </section>
+            <section class="goal-view" data-goal-view="gantt">
+              <section class="wbs-board" aria-label="WBS 甘特图"><div class="wbs-grid" id="wbsGrid"></div></section>
+            </section>
+          </section>
+        </section>
+
+        <section class="page" data-page="logs">
+          <section class="page-shell logs-layout">
+            <aside class="log-tree-panel">
+              <div><span class="label">01. Daily</span><h3>Log files</h3><span class="sub">Year -> Quarter -> Month -> Week -> Day.</span></div>
+              <div class="log-tree" aria-label="Log hierarchy">
+                <button class="tree-row folder" data-depth="1" data-folder="2025" data-open="false"><span class="chev">▸</span><span>2025</span></button>
+                <button class="tree-row" data-depth="2" data-parent="2025" data-file="2025-Overview.md" data-hidden="true"><span class="chev"></span><span class="file-item">2025-Overview.md</span></button>
+                <button class="tree-row folder" data-depth="1" data-folder="2026" data-open="true"><span class="chev">▾</span><span>2026</span></button>
+                <button class="tree-row" data-depth="2" data-parent="2026" data-file="2026-Overview.md"><span class="chev"></span><span class="file-item">2026-Overview.md</span></button>
+                <button class="tree-row folder" data-depth="2" data-parent="2026" data-folder="q03" data-open="true"><span class="chev">▾</span><span>Q03</span></button>
+                <button class="tree-row" data-depth="3" data-parent="q03" data-file="2026-Q03.md"><span class="chev"></span><span class="file-item">2026-Q03.md</span></button>
+                <button class="tree-row folder" data-depth="3" data-parent="q03" data-folder="m07" data-open="true"><span class="chev">▾</span><span>M07</span></button>
+                <button class="tree-row" data-depth="4" data-parent="m07" data-file="2026-M07.md"><span class="chev"></span><span class="file-item">2026-M07.md</span></button>
+                <button class="tree-row folder" data-depth="4" data-parent="m07" data-folder="w27" data-open="true"><span class="chev">▾</span><span>W27</span></button>
+                <button class="tree-row" data-depth="5" data-parent="w27" data-file="2026-W27.md"><span class="chev"></span><span class="file-item">2026-W27.md</span></button>
+                <button class="tree-row" data-depth="5" data-parent="w27" data-file="2026-07-02.md"><span class="chev"></span><span class="file-item active">2026-07-02.md</span></button>
+                <button class="tree-row" data-depth="5" data-parent="w27" data-file="2026-07-03.md"><span class="chev"></span><span class="file-item">2026-07-03.md</span></button>
+                <button class="tree-row" data-depth="5" data-parent="w27" data-file="2026-07-04.md"><span class="chev"></span><span class="file-item">2026-07-04.md</span></button>
+                <button class="tree-row folder" data-depth="4" data-parent="m07" data-folder="w28" data-open="false"><span class="chev">▸</span><span>W28</span></button>
+                <button class="tree-row" data-depth="5" data-parent="w28" data-file="2026-W28.md" data-hidden="true"><span class="chev"></span><span class="file-item">2026-W28.md</span></button>
+                <button class="tree-row folder" data-depth="3" data-parent="q03" data-folder="m08" data-open="false"><span class="chev">▸</span><span>M08</span></button>
+                <button class="tree-row" data-depth="4" data-parent="m08" data-file="2026-M08.md" data-hidden="true"><span class="chev"></span><span class="file-item">2026-M08.md</span></button>
+              </div>
+            </aside>
+            <article class="md-paper">
+              <header class="md-head"><div><span class="label" id="mdPath">01. Daily/Day/2026-07-02.md</span><h3 class="md-title" id="mdTitle">2026-07-02.md</h3></div><span class="pill">Editable</span></header>
+              <textarea class="md-editor" id="mdEditor" spellcheck="false">---
+daynote:
+Score: 0
+---
+#Note/life/daily #Note/life/2026/weekly/W27 #Note/life/2026/month/July
+
+# Direction
+
+> [!tip] Weekly Plans
+> ![[01. Daily/Weekly/2026-W27#Weekly Priority]]
+
+## Linked OKR
+
+- [[2026-Q03#Body Management]]: from 165 jin to 130 jin before Sep 1.
+- [[2026-Q03#English Sprint]]: master New Concept English 2 during summer.
+
+## Today
+
+- [ ] Walk for 2 hours while memorizing vocabulary.
+
+## Review
+
+### Gains
+
+-
+
+### Shortcoming
+
+-
+
+### Realisation
+
+-</textarea>
+            </article>
+          </section>
+        </section>
+
+        <section class="page" data-page="agent">
+          <section class="page-shell agent-layout">
+            <aside class="agent-history">
+              <header class="history-head"><h3>Conversations</h3><span class="sub">Agent knows your goals, logs, and current plan.</span></header>
+              <div class="history-list">
+                <button class="history-item" data-active="true"><strong>暑假目标推进</strong><span class="sub">今天</span></button>
+                <button class="history-item"><strong>Goal Mate 原型讨论</strong><span class="sub">昨天</span></button>
+                <button class="history-item"><strong>英语背诵计划</strong><span class="sub">3 天前</span></button>
+                <button class="history-item"><strong>写作与媒体节奏</strong><span class="sub">上周</span></button>
+              </div>
+            </aside>
+            <section class="chat-panel">
+              <header class="chat-head"><div><h3>Agent</h3><span class="sub">像和一个了解你全部规划的助手对话。</span></div><span class="pill">Goals / Logs / Today</span></header>
+              <div class="chat-thread">
+                <div class="agent-hero"><span class="label">GOAL MATE AGENT</span><h2>Ask anything about your goals, logs, and next move.</h2><p>Agent understands your OKR, Markdown logs, current Today action, and allowed memory. Talk to it like a real planning assistant.</p></div>
+                <div class="context-strip"><strong>Context</strong><span>Goals</span><span>Logs</span><span>Today</span><span>Memory allowed</span></div>
+                <article class="message" data-from="user"><span class="sub">你</span><p>我今天有点乱，帮我看一下现在最应该推进什么。</p></article>
+                <article class="message" data-from="agent"><span class="label">Agent</span><p>你今天最值得先做的是“走路 2 小时，同时背单词”。它同时服务身体管理和英语攻坚两个目标，而且已经在 Today 里被设为主行动。</p></article>
+                <article class="message" data-from="user"><span class="sub">你</span><p>那晚上我应该怎么安排写作？</p></article>
+                <article class="message" data-from="agent"><span class="label">Agent</span><p>建议晚上只保留一个动作：写满 3000 字草稿，不要求发布。完成后我可以把事实写入 2026-07-02.md，并在周日志里汇总。</p><div class="message-action"><strong>需要确认时会出现在这里</strong><span class="sub">例如：写入日志、创建提醒、发送外部消息。</span><div class="button-row"><button class="btn btn-primary" data-toast="已确认写入日志">确认写入</button><button class="btn">暂不写入</button></div></div></article>
+              </div>
+              <form class="composer"><input type="text" placeholder="Ask Agent to review, plan, summarize, or update logs..."><button class="btn btn-primary" type="button" data-toast="已发送给 Agent">发送</button></form>
+            </section>
+          </section>
+        </section>
+
+        <section class="page" data-page="settings">
+          <section class="page-shell">
+            <section class="settings-console" aria-label="Settings">
+              <aside class="settings-menu" aria-label="Settings categories">
+                <button class="settings-menu-button" data-settings-target="general" data-active="true">General</button>
+                <button class="settings-menu-button" data-settings-target="goals">Goals</button>
+                <button class="settings-menu-button" data-settings-target="logs">Logs</button>
+                <button class="settings-menu-button" data-settings-target="today">Today</button>
+                <button class="settings-menu-button" data-settings-target="agent">Agent</button>
+                <button class="settings-menu-button" data-settings-target="notifications">Notifications</button>
+                <button class="settings-menu-button" data-settings-target="integrations">Integrations</button>
+                <button class="settings-menu-button" data-settings-target="data">Data & Privacy</button>
+              </aside>
+              <div class="settings-detail">
+                <section class="settings-panel" data-settings-panel="general" data-active="true"><div class="settings-intro"><div><span class="label">General</span><h3>账号、语言、时间和工作区。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge blue">Account</span><strong>Profile</strong></div><div class="rule-copy"><strong>设置什么</strong><span class="sub">昵称、邮箱、头像和登录状态。</span></div><div class="rule-copy"><strong>影响哪里</strong><span class="sub">同步、导出、提醒和多端登录。</span></div><div class="rule-control"><span class="pill">Manage</span></div></div><div class="settings-row"><div class="rule-name"><span class="badge green">Locale</span><strong>Language / Timezone</strong></div><div class="rule-copy"><strong>配置</strong><span class="sub">日期、周起始日、提醒时间按本地规则显示。</span></div><div class="rule-copy"><strong>当前</strong><span class="sub">简体中文，Asia/Shanghai，周一开始。</span></div><div class="rule-control"><div class="config-field"><select class="select-control"><option>zh-CN</option><option>en-US</option></select><select class="select-control"><option>Asia/Shanghai</option><option>UTC</option></select></div></div></div></div></section>
+                <section class="settings-panel" data-settings-panel="goals"><div class="settings-intro"><div><span class="label">Goals</span><h3>目标、OKR 和推进规则。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge green">Focus</span><strong>Current Goal</strong></div><div class="rule-copy"><strong>配置</strong><span class="sub">系统维护一个当前主目标，并限制 active 目标数量。</span></div><div class="rule-copy"><strong>当前</strong><span class="sub">Today 默认围绕当前主目标选择行动。</span></div><div class="rule-control"><div class="config-row"><span class="switch" data-on="true"></span><input class="input-control" type="number" value="3" min="1" max="8" aria-label="Max active goals"></div></div></div><div class="settings-row"><div class="rule-name"><span class="badge blue">OKR</span><strong>KR calculation</strong></div><div class="rule-copy"><strong>设置什么</strong><span class="sub">KR 是否按手动、日志证据或行动完成率更新。</span></div><div class="rule-copy"><strong>影响哪里</strong><span class="sub">Goals 页进度和风险状态。</span></div><div class="rule-control"><select class="select-control"><option>Evidence-based</option><option>Manual</option><option>Action completion</option></select></div></div><div class="settings-row"><div class="rule-name"><span class="badge amber">Risk</span><strong>Risk rules</strong></div><div class="rule-copy"><strong>开启后</strong><span class="sub">长期无推进、计划超载、KR 无证据时标记风险。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">Goals 只显示静态状态。</span></div><div class="rule-control"><span class="switch" data-on="true"></span></div></div></div></section>
+                <section class="settings-panel" data-settings-panel="logs"><div class="settings-intro"><div><span class="label">Logs</span><h3>Markdown 文件、模板和写入规则。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge blue">Path</span><strong>Vault path</strong></div><div class="rule-copy"><strong>设置什么</strong><span class="sub">日志根目录和 Obsidian 兼容路径。</span></div><div class="rule-copy"><strong>默认</strong><span class="sub">01. Daily / Year / Phase / Month / Weekly / Day。</span></div><div class="rule-control"><input class="input-control path" value="01. Daily" aria-label="Logs root path"></div></div><div class="settings-row"><div class="rule-name"><span class="badge green">Template</span><strong>Auto templates</strong></div><div class="rule-copy"><strong>配置</strong><span class="sub">新年、季度、月、周、日自动生成 MD。</span></div><div class="rule-copy"><strong>模板</strong><span class="sub">Year / Quarter / Month / Week / Day。</span></div><div class="rule-control"><div class="config-field"><span class="switch" data-on="true"></span><select class="select-control"><option>Goal Mate default</option><option>Obsidian compatible</option><option>Minimal</option></select></div></div></div><div class="settings-row"><div class="rule-name"><span class="badge amber">Write</span><strong>Agent write logs</strong></div><div class="rule-copy"><strong>开启后</strong><span class="sub">Agent 可生成写入草稿。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">Agent 只能回复文本，不写入文件。</span></div><div class="rule-control"><span class="switch" data-on="true"></span><span class="pill amber">Confirm</span></div></div></div></section>
+                <section class="settings-panel" data-settings-panel="today"><div class="settings-intro"><div><span class="label">Today</span><h3>今日主行动和 Momentum 显示。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge green">Action</span><strong>Primary action</strong></div><div class="rule-copy"><strong>开启后</strong><span class="sub">Today 只突出一个最该做的行动。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">Today 可显示多个并列任务。</span></div><div class="rule-control"><span class="switch" data-on="true"></span></div></div><div class="settings-row"><div class="rule-name"><span class="badge blue">Momentum</span><strong>Heatmap range</strong></div><div class="rule-copy"><strong>设置什么</strong><span class="sub">最近 8 周、12 周或全年。</span></div><div class="rule-copy"><strong>影响哪里</strong><span class="sub">Today 右侧 Momentum 小面板。</span></div><div class="rule-control"><select class="select-control"><option>8 weeks</option><option>12 weeks</option><option>Year</option></select></div></div></div></section>
+                <section class="settings-panel" data-settings-panel="agent"><div class="settings-intro"><div><span class="label">Agent</span><h3>对话助手、上下文和模型。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge blue">Context</span><strong>Read context</strong></div><div class="rule-copy"><strong>开启后</strong><span class="sub">Agent 可读取 Goals、Logs、Today 和记忆。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">Agent 只根据当前对话回答。</span></div><div class="rule-control"><span class="switch" data-on="true"></span></div></div><div class="settings-row"><div class="rule-name"><span class="badge purple">Memory</span><strong>Long-term memory</strong></div><div class="rule-copy"><strong>开启后</strong><span class="sub">Agent 记住长期偏好和有效推进方式。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">不保存新的长期记忆。</span></div><div class="rule-control"><span class="switch" data-on="true"></span></div></div><div class="settings-row"><div class="rule-name"><span class="badge amber">Model</span><strong>Model / MCP</strong></div><div class="rule-copy"><strong>配置</strong><span class="sub">选择模型、上下文长度和 MCP 执行确认。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">只做普通对话，不调用工具。</span></div><div class="rule-control"><div class="config-field"><select class="select-control"><option>Default model</option><option>Local model</option><option>OpenAI compatible</option></select><span class="pill amber">Confirm tools</span></div></div></div></div></section>
+                <section class="settings-panel" data-settings-panel="notifications"><div class="settings-intro"><div><span class="label">Notifications</span><h3>提醒时间、渠道和免打扰。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge green">Morning</span><strong>Morning plan</strong></div><div class="rule-copy"><strong>配置</strong><span class="sub">每天开始时确认 Today 主行动。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">不主动发送早间计划。</span></div><div class="rule-control"><div class="config-row"><span class="switch" data-on="true"></span><input class="input-control" value="09:00" aria-label="Morning reminder time"></div></div></div><div class="settings-row"><div class="rule-name"><span class="badge amber">Limit</span><strong>Max reminders</strong></div><div class="rule-copy"><strong>设置什么</strong><span class="sub">每天最多提醒次数和免打扰时间。</span></div><div class="rule-copy"><strong>影响哪里</strong><span class="sub">微信、飞书、应用内提醒。</span></div><div class="rule-control"><div class="config-row"><input class="input-control" type="number" value="2" min="0" max="8" aria-label="Max reminders"><input class="input-control" value="23:00-08:00" aria-label="Quiet hours"></div></div></div></div></section>
+                <section class="settings-panel" data-settings-panel="integrations"><div class="settings-intro"><div><span class="label">Integrations</span><h3>外部工具和渠道接入。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge green">Channels</span><strong>WeChat / Feishu</strong></div><div class="rule-copy"><strong>配置</strong><span class="sub">选择提醒和回复渠道。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">只在 Web 内使用。</span></div><div class="rule-control"><select class="select-control"><option>Web only</option><option>WeChat</option><option>Feishu</option></select></div></div><div class="settings-row"><div class="rule-name"><span class="badge blue">Calendar</span><strong>Calendar read</strong></div><div class="rule-copy"><strong>开启后</strong><span class="sub">Agent 可读取日程用于安排建议。</span></div><div class="rule-copy"><strong>关闭后</strong><span class="sub">不读取外部日历。</span></div><div class="rule-control"><span class="switch"></span></div></div></div></section>
+                <section class="settings-panel" data-settings-panel="data"><div class="settings-intro"><div><span class="label">Data & Privacy</span><h3>导出、备份、删除和审计。</h3></div></div><div class="settings-rules"><div class="settings-row"><div class="rule-name"><span class="badge blue">Export</span><strong>Export data</strong></div><div class="rule-copy"><strong>包含</strong><span class="sub">Goals、Logs、Settings、Memory。</span></div><div class="rule-copy"><strong>格式</strong><span class="sub">Markdown、JSON 或完整 Vault。</span></div><div class="rule-control"><select class="select-control"><option>Full Vault</option><option>Markdown</option><option>JSON</option></select></div></div><div class="settings-row"><div class="rule-name"><span class="badge red">Delete</span><strong>Delete data</strong></div><div class="rule-copy"><strong>允许</strong><span class="sub">用户删除记忆、日志或账号。</span></div><div class="rule-copy"><strong>限制</strong><span class="sub">任何删除都不能由 Agent 自动执行。</span></div><div class="rule-control"><span class="pill red">Strong confirm</span></div></div></div></section>
+              </div>
+            </section>
+          </section>
+        </section>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast">已更新</div>
+  <script>
+    const pageMeta = { today: ['Today', '今天只看下一步。'], goals: ['Goals', 'OKR 摘要 + WBS 甘特图：方向、执行、验收。'], logs: ['Logs', 'Markdown records from year to day.'], agent: ['Agent', '和助理对话，并确认它准备执行的动作。'], settings: ['Settings', '设置机器人三道边界。'] };
+    const rows = [
+      ['身体管理','165斤 -> 130斤，7/1 到 9/1','section','',0,5,'plan-health','7/1-9/1','Risk'],
+      ['每日简单饮食','鸡蛋 / 红薯 / 简单食物','daily','daily',0,5,'plan-health','每日','Todo'],
+      ['每天走路 2 小时','同时背单词','daily','daily',0,5,'plan-health','每日','Todo'],
+      ['每天 1 分钟平板支撑','最低动作，保持启动','daily','daily',0,5,'plan-health','每日','Todo'],
+      ['早睡早起','稳定作息','daily','daily',0,5,'plan-muted','每日','Todo'],
+      ['英语攻坚','新概念英语二完整默写 + 走路背单词','section','',0,5,'plan-english','62天','Todo'],
+      ['新概念英语二默写','最终滚瓜烂熟','project','project',0,5,'plan-english','96课','Todo'],
+      ['7月：前半本','建立默写节奏','project','project',1,1,'plan-english','7月','Todo'],
+      ['8月：后半本 + 总复盘','进入滚瓜烂熟','project','project',2,2,'plan-english','8月','Todo'],
+      ['每天走路背单词 2 小时','和走路合并执行','daily','daily',0,5,'plan-english','每日','Todo'],
+      ['媒体影响力','每天 3000 字，沉淀内容资产','section','',0,5,'plan-media','62天','Todo'],
+      ['每天写 3000 字','日记、想法、文章素材都算','daily','daily',0,5,'plan-media','3000字','Todo'],
+      ['沉淀可发布内容','公众号 / Twitter / B站素材池','content','content',1,4,'plan-media','7-8月','Todo'],
+      ['形成发布节奏','从写作到公开发布','content','content',2,3,'plan-media','8月','Todo'],
+      ['项目与代码杠杆','推进软件杯、Goal Mate、代码复用','section','',0,5,'plan-project','62天','Todo'],
+      ['软件杯项目','补齐未完成部分','project','project',1,2,'plan-project','7月','Todo'],
+      ['Goal Mate','继续打磨产品和原型','project','project',1,4,'plan-project','迭代','OK'],
+      ['代码杠杆','组件、脚本、自动化、复用能力','project','project',2,3,'plan-project','8月','Todo']
+    ];
+    const grid = document.querySelector('#wbsGrid');
+    function workLabel(r) { if (r[2] === 'section') return `<div class="work-label" data-level="1"><strong>${r[0]}</strong><span>${r[1]}</span></div>`; return `<div class="work-label" data-level="2"><i class="work-icon ${r[3]}"></i><div><strong>${r[0]}</strong><span>${r[1]}</span></div></div>`; }
+    function buildWbs() { const head = ['WBS 执行计划','暑假全程','7 月','8 月','今天','9/1 验收','状态']; grid.innerHTML = head.map((h,i)=>`<div class="wbs-cell wbs-head ${i===4?'today-col':''}">${h}</div>`).join(''); rows.forEach(r => { grid.insertAdjacentHTML('beforeend', `<div class="wbs-cell">${workLabel(r)}</div>`); for (let i=0;i<5;i++){ const today = i===3 ? ' today-col' : ''; let bar = ''; if (i === r[4]) bar = `<div class="plan-bar ${r[6]}" data-span="${r[5]}"><span>${r[0]}</span><small>${r[7]}</small></div>`; if (i === 4 && r[2] === 'section') bar += '<span class="milestone"></span><span class="milestone-text">9/1 验收</span>'; grid.insertAdjacentHTML('beforeend', `<div class="wbs-cell${today}">${bar}</div>`); } const cls = r[8] === 'OK' ? 'ok' : r[8] === 'Risk' ? 'risk' : ''; grid.insertAdjacentHTML('beforeend', `<div class="wbs-cell status-cell ${cls}">${r[8]}</div>`); }); }
+    buildWbs();
+    const momentumGrid = document.querySelector('#momentumGrid');
+    if (momentumGrid) {
+      const momentum = [0,1,0,2,3,1,0,2,3,4,2,0,1,3,1,2,2,0,3,4,2,0,1,2,4,3,2,1,0,1,3,2,4,4,1,0,2,3,2,1,4,3,0,1,2,4,3,2,1,0,3,4,2,2,1,3];
+      momentumGrid.innerHTML = momentum.map(level => `<span class="heat-cell" data-level="${level}"></span>`).join('');
+    }
+    const title = document.querySelector('#pageTitle'); const subtitle = document.querySelector('#pageSubtitle'); const toast = document.querySelector('#toast'); let toastTimer;
+    function showToast(text){ toast.textContent = text || '已更新'; toast.dataset.show = 'true'; clearTimeout(toastTimer); toastTimer = setTimeout(()=>toast.dataset.show='false', 1400); }
+    document.querySelectorAll('[data-page-target]').forEach(btn => btn.addEventListener('click', () => { const page = btn.dataset.pageTarget; document.querySelectorAll('.page').forEach(p => p.dataset.active = String(p.dataset.page === page)); document.querySelectorAll('[data-page-target]').forEach(b => b.dataset.active = String(b === btn)); title.textContent = pageMeta[page][0]; subtitle.textContent = pageMeta[page][1]; }));
+    document.querySelectorAll('[data-goal-tab]').forEach(tab => tab.addEventListener('click', () => { const view = tab.dataset.goalTab; document.querySelectorAll('[data-goal-tab]').forEach(t => t.dataset.active = String(t === tab)); document.querySelectorAll('[data-goal-view]').forEach(panel => panel.dataset.active = String(panel.dataset.goalView === view)); }));
+    document.querySelectorAll('.history-item').forEach(item => item.addEventListener('click', () => { document.querySelectorAll('.history-item').forEach(i => i.dataset.active = 'false'); item.dataset.active = 'true'; }));
+    document.querySelectorAll('.switch').forEach(sw => sw.addEventListener('click', () => { sw.dataset.on = String(sw.dataset.on !== 'true'); }));
+    document.querySelectorAll('[data-settings-target]').forEach(btn => btn.addEventListener('click', () => { const target = btn.dataset.settingsTarget; document.querySelectorAll('[data-settings-target]').forEach(b => b.dataset.active = String(b === btn)); document.querySelectorAll('[data-settings-panel]').forEach(panel => panel.dataset.active = String(panel.dataset.settingsPanel === target)); }));
+    const mdSamples = {
+      '2025-Overview.md': '# 2025 Overview\n\n## Annual Review\n\n-\n',
+      '2026-Overview.md': '# 2026 Overview\n\n## Annual OKR\n\n- Body, English, media, and projects all move forward.\n\n## Quarters\n\n- [[2026-Q03]] Summer sprint.\n',
+      '2026-Q03.md': '# 2026 Q03\n\n## Body Management\n\n- KR: from 165 jin to 130 jin before Sep 1.\n\n## English Sprint\n\n- KR: master New Concept English 2.\n',
+      '2026-M07.md': '# 2026-M07\n\n## Monthly Focus\n\n- Build stable daily rhythm.\n- Keep walking, vocabulary, writing, and project work moving.\n',
+      '2026-W27.md': '# 2026-W27\n\n## Weekly Priority\n\n- Walk 2 hours while memorizing vocabulary.\n- Write 3000 words.\n- Continue Goal Mate prototype.\n',
+      '2026-07-02.md': document.querySelector('#mdEditor').value,
+      '2026-07-03.md': '# 2026-07-03\n\n## Direction\n\n> [!tip] Weekly Plans\n> ![[01. Daily/Weekly/2026-W27#Weekly Priority]]\n\n## Today\n\n- [ ] Walk for 2 hours while memorizing vocabulary.\n\n## Review\n\n### Gains\n\n-\n',
+      '2026-07-04.md': '# 2026-07-04\n\n## Today\n\n- [ ] Keep the core routine.\n\n## Review\n\n### Gains\n\n-\n',
+      '2026-W28.md': '# 2026-W28\n\n## Weekly Priority\n\n-\n',
+      '2026-M08.md': '# 2026-M08\n\n## Monthly Focus\n\n-\n'
+    };
+    const mdPath = document.querySelector('#mdPath'); const mdTitle = document.querySelector('#mdTitle'); const mdEditor = document.querySelector('#mdEditor');
+    function refreshTreeVisibility(){ document.querySelectorAll('[data-parent]').forEach(row => { const parent = document.querySelector(`[data-folder="${row.dataset.parent}"]`); if (!parent) return; const parentHidden = parent.dataset.hidden === 'true'; const parentClosed = parent.dataset.open === 'false'; row.dataset.hidden = String(parentHidden || parentClosed); }); }
+    document.querySelectorAll('[data-folder]').forEach(folder => folder.addEventListener('click', () => { const open = folder.dataset.open !== 'true'; folder.dataset.open = String(open); folder.querySelector('.chev').textContent = open ? '▾' : '▸'; refreshTreeVisibility(); }));
+    document.querySelectorAll('[data-file]').forEach(file => file.addEventListener('click', () => { document.querySelectorAll('.file-item').forEach(item => item.classList.remove('active')); file.querySelector('.file-item').classList.add('active'); const name = file.dataset.file; mdTitle.textContent = name; mdPath.textContent = name.includes('-W') ? `01. Daily/Weekly/${name}` : name.includes('-M') ? `01. Daily/Month/${name}` : name.includes('Overview') ? `01. Daily/Year/${name}` : name.includes('-Q') ? `01. Daily/Phase/${name}` : `01. Daily/Day/${name}`; mdEditor.value = mdSamples[name] || `# ${name}\n\n`; }));
+    document.addEventListener('click', e => { const btn = e.target.closest('[data-toast]'); if (btn) showToast(btn.dataset.toast); });
+  </script>
+</body>
+</html>

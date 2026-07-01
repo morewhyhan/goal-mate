@@ -1,0 +1,8 @@
+@startuml
+' 当前领域模型占位。新增业务模块后，在这里维护实体、属性和关系。
+
+class PlaceholderAggregate {
+  +id: string
+}
+
+@enduml

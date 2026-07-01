@@ -1,0 +1,27 @@
+# local tool state
+.codex/
+.claude/
+.ai/
+
+# third-party reference vault kept local
+example-obsidian-library-of-dice/
+
+# dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+.vite/
+coverage/
+
+# environment and local files
+.env
+.env.*
+*.local
+.DS_Store
+Thumbs.db
+
+# temp/log files
+*.log
+.tmp/
+tmp/
