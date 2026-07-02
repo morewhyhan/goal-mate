@@ -14,8 +14,59 @@ const settingsSchema = z.object({
   dataPrivacy: z.record(z.string(), z.unknown()).optional(),
 })
 
+const reminderRuleInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  reminderType: z.string().min(1),
+  channel: z.string().min(1).default('qq'),
+  schedule: z.string().min(1),
+  timezone: z.string().min(1).default('Asia/Shanghai'),
+  maxPerDay: z.number().int().min(1).max(8).default(1),
+  enabled: z.boolean().default(true),
+})
+
+const reminderRulesSchema = z.object({
+  rules: z.array(reminderRuleInputSchema).min(1),
+})
+
+const defaultReminderRules = [
+  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
+  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
+  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
+  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
+]
+
 function redactModel(config: any) {
   return { ...config, apiKeyRef: config.apiKeyRef ? 'sk-••••••••••••' : '' }
+}
+
+function modelForSettings(config: any) {
+  if (!config) return null
+  return {
+    ...config,
+    apiKeyRef: config.apiKeyRef || 'DEEPSEEK_API_KEY',
+    apiKeyConfigured: Boolean(process.env[config.apiKeyRef || 'DEEPSEEK_API_KEY'] || process.env.DEEPSEEK_API_KEY),
+  }
+}
+
+function maskContextId(contextId: string) {
+  if (!contextId) return ''
+  if (contextId.length <= 10) return contextId
+  return `${contextId.slice(0, 4)}...${contextId.slice(-6)}`
+}
+
+async function ensureDefaultModel(userId: string) {
+  const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultDeepSeekModel.provider, usage: defaultDeepSeekModel.usage } })
+  if (existing) return existing
+  return prisma.modelConfig.create({ data: { ...defaultDeepSeekModel, userId } })
+}
+
+async function ensureDefaultReminderRules(userId: string) {
+  for (const rule of defaultReminderRules) {
+    const existing = await prisma.reminderRule.findFirst({
+      where: { userId, reminderType: rule.reminderType, channel: rule.channel },
+    })
+    if (!existing) await prisma.reminderRule.create({ data: { userId, ...rule, metadata: { source: 'settings_default' } } })
+  }
 }
 
 async function probeModelConnection(model: any) {
@@ -76,6 +127,72 @@ async function probeModelConnection(model: any) {
 
 const app = new Hono()
   .basePath('/settings')
+  .get('/control-center', async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    const [settings, model] = await Promise.all([
+      prisma.userSetting.findUnique({ where: { userId } }),
+      ensureDefaultModel(userId),
+      ensureDefaultReminderRules(userId),
+    ])
+
+    const [reminderRules, qqBindings, toolActions, schedulerEvents] = await Promise.all([
+      prisma.reminderRule.findMany({ where: { userId }, orderBy: [{ channel: 'asc' }, { reminderType: 'asc' }] }),
+      prisma.qqChatBinding.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
+      prisma.agentToolAction.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 12 }),
+      prisma.schedulerEvent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 8 }),
+    ])
+
+    return c.json({
+      data: {
+        settings: settings || { userId, ...defaultUserSettings },
+        model: modelForSettings(model),
+        reminderRules,
+        qqBindings: qqBindings.map((binding) => ({
+          ...binding,
+          contextIdMasked: maskContextId(binding.contextId),
+        })),
+        toolActions,
+        schedulerEvents,
+        permissionPolicy: {
+          read: '直接执行',
+          draft: '生成草稿',
+          execute: '默认需要确认',
+          highRisk: '只生成草稿，不自动执行',
+        },
+      },
+    })
+  })
+  .put('/reminders', zValidator('json', reminderRulesSchema), async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    const input = c.req.valid('json')
+    const saved = []
+    for (const rule of input.rules) {
+      const existing = rule.id
+        ? await prisma.reminderRule.findFirst({ where: { id: rule.id, userId } })
+        : await prisma.reminderRule.findFirst({ where: { userId, reminderType: rule.reminderType, channel: rule.channel } })
+
+      const data = {
+        reminderType: rule.reminderType,
+        channel: rule.channel,
+        schedule: rule.schedule,
+        timezone: rule.timezone,
+        maxPerDay: rule.maxPerDay,
+        enabled: rule.enabled,
+        metadata: { source: 'settings_ui' },
+      }
+
+      const nextRule = existing
+        ? await prisma.reminderRule.update({ where: { id: existing.id }, data })
+        : await prisma.reminderRule.create({ data: { userId, ...data } })
+      saved.push(nextRule)
+    }
+
+    return c.json({ data: saved })
+  })
   .get('/', async (c) => {
     const userId = await getCurrentUserId(c)
     if (!userId) return unauthorized(c)
@@ -111,7 +228,7 @@ const app = new Hono()
     const userId = await getCurrentUserId(c)
     if (!userId) return unauthorized(c)
 
-    const [goals, logs, markdownDocuments, markdownLinks, threads, models, settings] = await Promise.all([
+    const [goals, logs, markdownDocuments, markdownLinks, threads, models, settings, reminderRules, toolActions, schedulerEvents, qqChatBindings] = await Promise.all([
       prisma.goal.findMany({ where: { userId }, include: { keyResults: true, conditions: true, stagePlans: true, dailyActions: true, reviews: true } }),
       prisma.logEntry.findMany({ where: { userId }, orderBy: { path: 'asc' } }),
       prisma.markdownDocument.findMany({ where: { userId }, orderBy: { path: 'asc' } }),
@@ -119,9 +236,28 @@ const app = new Hono()
       prisma.agentThread.findMany({ where: { userId }, include: { messages: true } }),
       prisma.modelConfig.findMany({ where: { userId } }),
       prisma.userSetting.findUnique({ where: { userId } }),
+      prisma.reminderRule.findMany({ where: { userId } }),
+      prisma.agentToolAction.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
+      prisma.schedulerEvent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
+      prisma.qqChatBinding.findMany({ where: { userId } }),
     ])
 
-    return c.json({ data: { exportedAt: new Date().toISOString(), goals, logs, markdownDocuments, markdownLinks, agentThreads: threads, models: models.map(redactModel), settings } })
+    return c.json({
+      data: {
+        exportedAt: new Date().toISOString(),
+        goals,
+        logs,
+        markdownDocuments,
+        markdownLinks,
+        agentThreads: threads,
+        models: models.map(redactModel),
+        settings,
+        reminderRules,
+        toolActions,
+        schedulerEvents,
+        qqChatBindings: qqChatBindings.map((binding) => ({ ...binding, contextId: maskContextId(binding.contextId) })),
+      },
+    })
   })
 
 export default app

@@ -34,6 +34,8 @@ Scheduler Worker 是 Goal Mate 的主动推进层。
 
 时间必须可配置，默认值只是系统初始建议。
 
+Settings Control Center 已承载这些提醒规则。用户可以在设置页启用/关闭早晨规划、中午检查、晚上复盘和周复盘，并修改触发时间。
+
 ## 4. 调度流程
 
 ```text

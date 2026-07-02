@@ -27,6 +27,7 @@ export function useCreateModel() {
     mutationFn: async (json) => (await $post({ json })).json(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })
+      queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
       toast.success('模型配置已创建')
     },
     onError: (error) => toast.error(error.message || '模型配置创建失败'),
@@ -39,6 +40,7 @@ export function useUpdateModel() {
     mutationFn: async ({ id, ...json }) => (await $put({ param: { id }, json })).json(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] })
+      queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
       toast.success('模型配置已保存')
     },
     onError: (error) => toast.error(error.message || '模型配置保存失败'),
