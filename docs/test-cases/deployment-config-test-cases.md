@@ -17,13 +17,15 @@ pnpm verify:deployment-config:write
 
 | ID | 检查 | 期望 |
 | --- | --- | --- |
-| DEPLOY-PACKAGE | `src/package.json` scripts | 包含 `start`、`worker:qq`、`worker:scheduler` |
+| DEPLOY-PACKAGE | `src/package.json` scripts | 包含 `start`、`worker:qq`、`worker:scheduler`、`worker:scheduler:once` |
 | DEPLOY-WEB-EXISTS | Web service | `deploy/systemd/goal-mate-web.service` 存在 |
 | DEPLOY-WEB-CONTENT | Web service 内容 | 包含 WorkingDirectory、EnvironmentFile、ExecStart、Restart |
 | DEPLOY-QQ-EXISTS | QQ worker service | `deploy/systemd/goal-mate-qq-worker.service` 存在 |
 | DEPLOY-QQ-CONTENT | QQ worker service 内容 | 包含 `pnpm worker:qq` 和自动重启策略 |
 | DEPLOY-SCHEDULER-EXISTS | Scheduler service | `deploy/systemd/goal-mate-scheduler-worker.service` 存在 |
 | DEPLOY-SCHEDULER-CONTENT | Scheduler service 内容 | 包含 `pnpm worker:scheduler` 和自动重启策略 |
+| DEPLOY-QQ-WORKER-SYNTAX | QQ worker 语法 | `node --check scripts/qq-bot-worker.mjs` 通过 |
+| DEPLOY-SCHEDULER-WORKER-SYNTAX | Scheduler worker 语法 | `node --check scripts/scheduler-worker.mjs` 通过 |
 | DEPLOY-README | systemd README | 包含安装、启动、状态、日志查看命令 |
 | DEPLOY-ENV-EXAMPLE | `.env.example` | 包含部署所需环境变量 |
 | DEPLOY-ENV-RECOMMENDED | `.env.example` 建议变量 | 包含 `QQ_ALLOWED_CONTEXT_IDS` 和 `QQ_SCHEDULER_REPLY_WINDOW_HOURS` |

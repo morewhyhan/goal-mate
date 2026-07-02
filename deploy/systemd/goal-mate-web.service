@@ -9,6 +9,8 @@ User=goalmate
 Group=goalmate
 WorkingDirectory=/opt/goal-mate/src
 Environment=NODE_ENV=production
+Environment=HOSTNAME=0.0.0.0
+Environment=PORT=3000
 EnvironmentFile=/opt/goal-mate/src/.env
 ExecStart=/usr/bin/env pnpm start
 Restart=always
@@ -20,4 +22,3 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-

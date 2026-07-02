@@ -54,6 +54,7 @@ Scheduler Worker
 | 代码 | 已部署当前仓库版本 |
 | 环境变量 | `.env` 只在服务器本地保存 |
 | 数据库 | `DATABASE_URL` 指向持久化数据库文件 |
+| Web 地址 | `BETTER_AUTH_URL`、`NEXT_PUBLIC_BETTER_AUTH_URL`、`NEXT_PUBLIC_APP_URL` 指向实际访问地址 |
 | QQ | `QQ_BOT_APP_ID`、`QQ_BOT_TOKEN` 已配置 |
 | 模型 | DeepSeek 配置可用 |
 | 用户 | `QQ_DEFAULT_USER_EMAIL` 能映射到系统用户 |

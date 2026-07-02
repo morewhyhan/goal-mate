@@ -30,11 +30,17 @@ Scheduler Worker
 | 存储 | SQLite 数据库文件必须持久化 |
 | 环境变量 | `.env` 只放在服务器本地，不提交 Git |
 | 进程守护 | worker 崩溃后必须自动重启 |
+| Web 地址 | `BETTER_AUTH_URL`、`NEXT_PUBLIC_BETTER_AUTH_URL`、`NEXT_PUBLIC_APP_URL` 必须指向实际访问地址 |
 
 ## 4. 必需环境变量
 
 ```text
 DATABASE_URL
+PORT
+HOSTNAME
+BETTER_AUTH_URL
+NEXT_PUBLIC_BETTER_AUTH_URL
+NEXT_PUBLIC_APP_URL
 DEEPSEEK_API_KEY
 DEEPSEEK_API_BASE
 DEEPSEEK_MODEL
@@ -59,6 +65,8 @@ QQ_SCHEDULER_REPLY_WINDOW_HOURS
 ```
 
 `QQ_ALLOWED_CONTEXT_IDS` 用于限制机器人响应的 QQ 会话范围。`QQ_SCHEDULER_REPLY_WINDOW_HOURS` 用于限制用户回复主动提醒后，系统仍把它识别为 Scheduler 回复的时间窗口。
+
+没有域名时，Web 地址变量可以使用 `http://服务器IP:3000`。如果后续接入域名和 HTTPS，这三个变量必须同步改成最终公网地址。
 
 真实密钥只能存在服务器 `.env`，不能写入文档、代码、提交记录或日志。
 
@@ -111,12 +119,15 @@ deploy/systemd/README.md
 1. 安装依赖
 2. 配置 .env
 3. pnpm db:generate
-4. 执行数据库迁移或 reset/seed
-5. 启动 Web
-6. 启动 QQ Worker
-7. 启动 Scheduler Worker
-8. 用 QQ 发消息验证绑定
-9. 用 Settings 查看 QQ 绑定、提醒规则、工具审计
+4. pnpm exec prisma migrate deploy
+5. pnpm verify:static
+6. pnpm build
+7. 启动 Web
+8. 启动 QQ Worker
+9. 启动 Scheduler Worker
+10. 用 `pnpm worker:scheduler:once` 立即验证 Scheduler
+11. 用 QQ 发消息验证绑定
+12. 用 Settings 查看 QQ 绑定、提醒规则、工具审计
 ```
 
 ## 8. 运行观察
@@ -144,8 +155,10 @@ pnpm verify:deployment-config:write
 它检查：
 
 - `src/package.json` 是否包含 Web、QQ Worker、Scheduler Worker 脚本。
+- `src/package.json` 是否包含一次性 Scheduler 验收脚本。
 - `deploy/systemd` service 是否包含必要 systemd 指令。
 - `.env.example` 是否列出部署必需变量。
+- QQ Worker / Scheduler Worker 是否通过 Node 语法检查。
 - 部署事实文档是否仍然记录真实部署缺口。
 
 Settings Control Center 还会返回 `runtimeStatus`，用于在页面上快速判断：

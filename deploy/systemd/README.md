@@ -37,18 +37,59 @@ EnvironmentFile: /opt/goal-mate/src/.env
 
 ## 4. 安装步骤
 
+先在本地完成提交，不要直接把半成品传到服务器。
+
+服务器首次准备：
+
+```bash
+sudo useradd --system --create-home --shell /usr/sbin/nologin goalmate || true
+sudo mkdir -p /opt/goal-mate
+sudo chown -R goalmate:goalmate /opt/goal-mate
+```
+
+把项目放到 `/opt/goal-mate` 后，在服务器上：
+
 在服务器上：
 
 ```bash
 cd /opt/goal-mate/src
 pnpm install --frozen-lockfile
 pnpm db:generate
+pnpm exec prisma migrate deploy
+pnpm verify:static
+pnpm build
 ```
 
 确认 `.env` 已存在：
 
 ```bash
 test -f /opt/goal-mate/src/.env
+```
+
+`.env` 至少要配置：
+
+```text
+DATABASE_URL
+PORT
+HOSTNAME
+BETTER_AUTH_URL
+NEXT_PUBLIC_BETTER_AUTH_URL
+NEXT_PUBLIC_APP_URL
+DEEPSEEK_API_KEY
+DEEPSEEK_API_BASE
+DEEPSEEK_MODEL
+QQ_BOT_APP_ID
+QQ_BOT_TOKEN
+QQ_BOT_API_BASE
+QQ_BOT_INTENTS
+QQ_DEFAULT_USER_EMAIL
+SCHEDULER_TIMEZONE
+```
+
+没有域名时，`BETTER_AUTH_URL`、`NEXT_PUBLIC_BETTER_AUTH_URL` 和 `NEXT_PUBLIC_APP_URL` 可以先用：
+
+```text
+http://服务器IP:3000
 ```
 
 复制 service：

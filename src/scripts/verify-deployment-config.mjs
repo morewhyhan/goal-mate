@@ -39,6 +39,11 @@ const runtimeScripts = [
 
 const requiredEnvVars = [
   'DATABASE_URL',
+  'PORT',
+  'HOSTNAME',
+  'BETTER_AUTH_URL',
+  'NEXT_PUBLIC_BETTER_AUTH_URL',
+  'NEXT_PUBLIC_APP_URL',
   'DEEPSEEK_API_KEY',
   'DEEPSEEK_API_BASE',
   'DEEPSEEK_MODEL',

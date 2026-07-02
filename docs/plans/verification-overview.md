@@ -17,6 +17,7 @@
 - 本轮已执行 Dashboard 截图 smoke，发现并修复 Today 热力图横向滚动/灰条问题；修复后 `pnpm typecheck` 和 `pnpm build` 均通过。
 - 本轮发现并修复 QQ Worker 语法失败问题；`pnpm verify:static` 已新增 QQ Worker / Scheduler Worker `node --check` 防回归检查并通过。
 - 本轮新增并验证 `pnpm worker:scheduler:once`，可在服务器上立即触发 Scheduler 验证；本地无 QQ 绑定场景已产生 `SchedulerEvent.status=failed` 和明确失败原因。
+- 本轮只做本地部署准备，没有继续上传服务器；部署文档和 `.env.example` 已补齐生产 Web URL、端口、systemd 用户权限、migrate/build/static-gate 顺序。
 
 ## 2. 验收层级
 
