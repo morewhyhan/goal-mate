@@ -16,6 +16,10 @@ import {
   sharedAgentToolCatalog,
   toAgentToolDateInput,
 } from '../lib/agent-tool-shared.mjs'
+import {
+  canHandleSharedReadDraftTool,
+  runSharedReadDraftToolHandler,
+} from '../lib/agent-tool-read-handlers.mjs'
 
 const prisma = new PrismaClient()
 
@@ -327,6 +331,10 @@ async function generateToolIntent(userId, latestUserContent) {
 }
 
 async function runQqToolHandler(userId, toolName, input) {
+  if (canHandleSharedReadDraftTool(toolName)) {
+    return runSharedReadDraftToolHandler(prisma, userId, toolName, input)
+  }
+
   if (toolName === 'goal.list') {
     const goals = await prisma.goal.findMany({
       where: { userId },
