@@ -75,6 +75,7 @@ function verifySharedRuntimeContracts() {
   const sharedCatalog = readProjectFile('src/lib/agent-tool-shared.mjs')
   const readHandlers = readProjectFile('src/lib/agent-tool-read-handlers.mjs')
   const writeHandlers = readProjectFile('src/lib/agent-tool-write-handlers.mjs')
+  const executor = readProjectFile('src/lib/agent-tool-executor.mjs')
   const webRuntime = readProjectFile('src/lib/agent-tools.ts')
   const qqWorker = readProjectFile('src/scripts/qq-bot-worker.mjs')
   const combinedHandlers = `${readHandlers}\n${writeHandlers}`
@@ -92,15 +93,21 @@ function verifySharedRuntimeContracts() {
     'read and write handler files scanned',
   )
   record(
+    'AAL-SHARED-EXECUTOR',
+    'shared executor centralizes confirmation, execution and audit writing',
+    executor.includes('executeAgentToolWithPrisma') && executor.includes('pending_confirmation') && executor.includes('agentToolAction.create'),
+    'src/lib/agent-tool-executor.mjs scanned',
+  )
+  record(
     'AAL-WEB-SHARED-RUNTIME',
-    'Web Agent executes through shared read/write handlers',
-    webRuntime.includes('runSharedReadDraftToolHandler') && webRuntime.includes('runSharedWriteToolHandler'),
-    'src/lib/agent-tools.ts imports shared handlers',
+    'Web Agent executes through shared executor',
+    webRuntime.includes('executeAgentToolWithPrisma') && !webRuntime.includes('agentToolAction.create'),
+    'src/lib/agent-tools.ts is a thin adapter',
   )
   record(
     'AAL-QQ-SHARED-RUNTIME',
-    'QQ Agent executes through shared read/write handlers without duplicated tool branches',
-    qqWorker.includes('runSharedReadDraftToolHandler') && qqWorker.includes('runSharedWriteToolHandler') && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
+    'QQ Agent executes through shared executor without duplicated tool branches',
+    qqWorker.includes('executeAgentToolWithPrisma') && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
     'src/scripts/qq-bot-worker.mjs is channel adapter only',
   )
 }

@@ -2,8 +2,6 @@ import WebSocket from 'ws'
 import { PrismaClient } from '@prisma/client'
 import { existsSync, readFileSync } from 'node:fs'
 import {
-  asAgentToolRecord,
-  compactAgentToolSummary,
   detectConfirmToolMessage,
   formatAgentToolDatePath,
   formatAgentToolReply,
@@ -12,13 +10,8 @@ import {
   sharedAgentToolCatalog,
 } from '../lib/agent-tool-shared.mjs'
 import {
-  canHandleSharedReadDraftTool,
-  runSharedReadDraftToolHandler,
-} from '../lib/agent-tool-read-handlers.mjs'
-import {
-  canHandleSharedWriteTool,
-  runSharedWriteToolHandler,
-} from '../lib/agent-tool-write-handlers.mjs'
+  executeAgentToolWithPrisma,
+} from '../lib/agent-tool-executor.mjs'
 
 const prisma = new PrismaClient()
 
@@ -295,18 +288,15 @@ async function generateToolIntent(userId, latestUserContent) {
   }
 }
 
-async function runQqToolHandler(userId, toolName, input) {
-  if (canHandleSharedReadDraftTool(toolName)) {
-    return runSharedReadDraftToolHandler(prisma, userId, toolName, input)
-  }
-  if (canHandleSharedWriteTool(toolName)) {
-    return runSharedWriteToolHandler(prisma, userId, toolName, input)
-  }
-
-  throw new Error(`未知 Agent 工具：${toolName}`)
-}
-
 async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessageId }, toolName, rawInput) {
+  return executeAgentToolWithPrisma(
+    prisma,
+    { userId, source: 'qq', confirmed, agentThreadId, agentMessageId },
+    toolName,
+    rawInput,
+  )
+}
+, toolName, rawInput) {
   const definition = qqToolCatalog.find((item) => item.name === toolName)
   if (!definition) throw new Error(`未知 Agent 工具：${toolName}`)
   const input = asAgentToolRecord(rawInput)

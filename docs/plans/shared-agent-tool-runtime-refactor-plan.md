@@ -118,6 +118,7 @@ detectConfirmToolMessage(text)
 | Done | 抽出 shared reply formatter | Web 和 QQ 对工具结果的描述一致 |
 | Done | Web API 迁移到 shared runtime | Web 已复用 shared catalog、confirm detector、reply formatter 和全量业务 handler |
 | Done | QQ Worker 迁移到 shared runtime | QQ 已复用 shared catalog、confirm detector、reply formatter 和全量业务 handler |
+| Done | 抽出 shared executor | Web 和 QQ 共用确认拦截、业务执行和 `AgentToolAction` 审计写入 |
 | Done | 更新 `verify:agent-loop` | 验证共享 runtime 后的 read/write/confirm |
 | Done | 删除 QQ 重复业务代码 | `qq-bot-worker.mjs` 的工具业务 handler 已切到共享 runtime，文件只保留 QQ 通道、消息解析、确认和回复逻辑 |
 | Done | 删除 Web 重复业务代码 | `src/lib/agent-tools.ts` 只保留 Web 工具适配、确认拦截、审计写入和 shared handler 调用 |
@@ -152,3 +153,4 @@ pnpm worker:qq
 - 2026-07-02：删除 `src/scripts/qq-bot-worker.mjs` 中已经不可达的旧工具业务分支，QQ Worker 现在只通过 shared read/write handlers 执行业务动作。
 - 2026-07-02：更新 `src/scripts/verify-agent-action-loop.mjs`，新增 shared catalog、shared read/write handlers、Web runtime、QQ Worker 通道适配层的源码契约检查。
 - 2026-07-02：重写 `src/lib/agent-tools.ts` 为薄适配层，删除 Web 侧旧业务 handler body；业务动作统一由 shared read/write handlers 承载。
+- 2026-07-02：新增 `src/lib/agent-tool-executor.mjs`，Web 和 QQ 已共享确认拦截、业务执行、失败处理和 `AgentToolAction` 审计写入；`verify-agent-action-loop` 已同步检查 shared executor。
