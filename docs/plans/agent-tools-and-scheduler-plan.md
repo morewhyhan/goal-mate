@@ -161,7 +161,7 @@ P0 提醒类型：
 | Done | 实现 `reminder.schedule` | 显式工具 API 可创建或调整提醒规则 |
 | Done | 新增 Scheduler Worker | `worker:scheduler` 已添加，按规则生成主动推进消息 |
 | Done | 接入 QQ 主动发送 | Scheduler 已复用 QQ OpenAPI 发送提醒；长期稳定性待验证 |
-| Todo | 接入 QQ 工具确认流程 | QQ 对话里能确认待执行工具动作 |
+| Done | 接入 QQ 工具确认流程 | QQ 对话里可生成待确认动作，回复“确认执行”后执行并审计 |
 | Todo | 设置页补齐模型、提醒、权限配置 | 用户能看懂每项配置影响 |
 | Todo | 更新验收用例 | 覆盖 Agent 工具、调度、审计主路径 |
 
@@ -192,3 +192,4 @@ P0 提醒类型：
 - 2026-07-02：新增 `/api/agent/tools`、`/api/agent/tools/actions`、`/api/agent/tools/execute`。
 - 2026-07-02：新增 `src/scripts/scheduler-worker.mjs` 和 `worker:scheduler` 脚本。
 - 2026-07-02：Web Agent 消息链路接入工具意图识别；execute 工具默认挂起，用户回复“确认执行”后再执行。
+- 2026-07-02：QQ Worker 接入工具意图识别；read/draft 工具可直接返回，execute 工具进入待确认，QQ 回复“确认执行”后执行并写入 `AgentToolAction`。

@@ -52,6 +52,126 @@ function trimForPrompt(value, max = 900) {
   return value.length > max ? `${value.slice(0, max)}...` : value
 }
 
+function asRecord(input) {
+  return input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+}
+
+function readString(input, key, fallback = '') {
+  const value = input[key]
+  return typeof value === 'string' ? value.trim() : fallback
+}
+
+function readNumber(input, key, fallback) {
+  const value = input[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function readBoolean(input, key) {
+  const value = input[key]
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function compactSummary(input) {
+  const text = JSON.stringify(input)
+  return text.length > 500 ? `${text.slice(0, 500)}...` : text
+}
+
+function toDateInput(value) {
+  if (!value) return new Date()
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
+}
+
+function formatDatePath(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return {
+    title: `${year}-${month}-${day}`,
+    path: `Logs/${year}/${month}/${year}-${month}-${day}.md`,
+  }
+}
+
+function isConfirmToolMessage(content) {
+  return /^(确认执行|确认|执行|同意|可以|就这么做|开始执行)$/i.test(String(content || '').trim())
+}
+
+function normalizeCheckinResult(value) {
+  const normalized = String(value || '').toLowerCase()
+  if (normalized === 'done') return 'DONE'
+  if (normalized === 'partial') return 'PARTIAL'
+  if (normalized === 'not_done') return 'NOT_DONE'
+  return 'NO_RESPONSE'
+}
+
+function normalizeActionStatus(value) {
+  const normalized = normalizeCheckinResult(value)
+  if (normalized === 'DONE') return 'DONE'
+  if (normalized === 'PARTIAL') return 'PARTIAL'
+  if (normalized === 'NOT_DONE') return 'NOT_DONE'
+  return 'PLANNED'
+}
+
+const qqToolCatalog = [
+  { name: 'goal.list', description: '列出当前用户的目标摘要。', permission: 'read', targetType: 'goal', riskLevel: 'low' },
+  { name: 'goal.get', description: '读取目标详情、KR、条件、阶段计划和近期行动。', permission: 'read', targetType: 'goal', riskLevel: 'low' },
+  { name: 'goal.create_draft', description: '根据对话创建目标草案和目标推理卡。', permission: 'draft', targetType: 'goal', riskLevel: 'medium' },
+  { name: 'goal.update', description: '更新目标基础字段或当前焦点。', permission: 'execute', targetType: 'goal', riskLevel: 'medium' },
+  { name: 'today.get', description: '读取今天或最近的下一步行动。', permission: 'read', targetType: 'today', riskLevel: 'low' },
+  { name: 'today.set_next_action', description: '设置今天下一步行动。', permission: 'execute', targetType: 'today', riskLevel: 'medium' },
+  { name: 'checkin.submit', description: '提交今日行动的完成情况和阻塞原因。', permission: 'execute', targetType: 'checkin', riskLevel: 'low' },
+  { name: 'log.write_daily', description: '写入或更新当天 Markdown 日志。', permission: 'execute', targetType: 'log', riskLevel: 'low' },
+  { name: 'review.generate', description: '生成日复盘或周复盘草稿。', permission: 'draft', targetType: 'review', riskLevel: 'low' },
+  { name: 'reminder.schedule', description: '创建或调整提醒规则。', permission: 'execute', targetType: 'reminder', riskLevel: 'medium' },
+  { name: 'settings.model.get', description: '读取当前默认模型配置。', permission: 'read', targetType: 'settings', riskLevel: 'low' },
+  { name: 'settings.model.update', description: '修改默认模型配置。', permission: 'execute', targetType: 'settings', riskLevel: 'medium' },
+]
+
+function parseToolIntentJson(value) {
+  const match = String(value || '').match(/\{[\s\S]*\}/)
+  if (!match) return null
+  try {
+    const parsed = JSON.parse(match[0])
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+async function getCurrentGoal(userId, goalId) {
+  if (goalId) {
+    const goal = await prisma.goal.findFirst({ where: { id: goalId, userId } })
+    if (!goal) throw new Error('目标不存在。')
+    return goal
+  }
+  const goal = await prisma.goal.findFirst({ where: { userId, isCurrentFocus: true } })
+  if (!goal) throw new Error('当前没有主目标。')
+  return goal
+}
+
+async function getOrCreateCondition(userId, goalId, input) {
+  const conditionId = readString(input, 'conditionId')
+  if (conditionId) {
+    const condition = await prisma.goalCondition.findFirst({ where: { id: conditionId, userId, goalId } })
+    if (!condition) throw new Error('目标条件不存在。')
+    return condition
+  }
+
+  const existing = await prisma.goalCondition.findFirst({ where: { userId, goalId }, orderBy: { createdAt: 'asc' } })
+  if (existing) return existing
+
+  return prisma.goalCondition.create({
+    data: {
+      userId,
+      goalId,
+      title: readString(input, 'conditionTitle', '当前关键条件'),
+      type: 'ASSUMED',
+      status: 'PARTIAL',
+      whyRequired: readString(input, 'conditionReason', '用于承接 QQ Agent 设置今日行动时缺失的关键条件。'),
+    },
+  })
+}
+
 async function getAppAccessToken() {
   if (cachedAccessToken && Date.now() < accessTokenExpiresAt - 60_000) return cachedAccessToken
 
@@ -214,6 +334,419 @@ async function findMarkdownDocuments(userId, input) {
   return prisma.markdownDocument.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' }, take: 8 })
 }
 
+async function generateToolIntent(userId, latestUserContent) {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) return null
+
+  const modelConfig = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
+  const apiBaseForModel = String(modelConfig?.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
+  const modelName = String(modelConfig?.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
+
+  try {
+    const response = await fetch(`${apiBaseForModel}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: modelName,
+        temperature: 0,
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              '你是 Goal Mate 的 QQ 工具路由器，只判断用户是否明确要求操作系统。',
+              '如果用户只是聊天、提问、讨论、解释概念，不要选择工具。',
+              '只有用户明确要求查看、创建、更新、提交、写入、生成、设置时才选择工具。',
+              '输出必须是 JSON，不要输出 Markdown。',
+              '',
+              'JSON 格式：',
+              '{"toolName":null,"input":{},"confidence":0,"reason":"不需要工具"}',
+              '{"toolName":"today.get","input":{},"confidence":0.95,"reason":"用户要求查看今日行动"}',
+              '',
+              '可用工具：',
+              JSON.stringify(qqToolCatalog),
+            ].join('\n'),
+          },
+          { role: 'user', content: latestUserContent },
+        ],
+      }),
+    })
+    if (!response.ok) return null
+    const data = await response.json()
+    const content = data?.choices?.[0]?.message?.content
+    if (typeof content !== 'string') return null
+    const parsed = parseToolIntentJson(content)
+    if (!parsed) return null
+
+    const toolName = typeof parsed.toolName === 'string' ? parsed.toolName : null
+    const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0
+    const input = parsed.input && typeof parsed.input === 'object' ? parsed.input : {}
+    const reason = typeof parsed.reason === 'string' ? parsed.reason : ''
+    if (!toolName || confidence < 0.75) return null
+    if (!qqToolCatalog.some((tool) => tool.name === toolName)) return null
+    return { toolName, input, confidence, reason }
+  } catch {
+    return null
+  }
+}
+
+async function runQqToolHandler(userId, toolName, input) {
+  if (toolName === 'goal.list') {
+    const goals = await prisma.goal.findMany({
+      where: { userId },
+      orderBy: [{ isCurrentFocus: 'desc' }, { updatedAt: 'desc' }],
+      include: { keyResults: true, conditions: true, dailyActions: { orderBy: { actionDate: 'desc' }, take: 1 } },
+    })
+    return {
+      result: goals.map((goal) => ({
+        id: goal.id,
+        title: goal.title,
+        status: goal.status,
+        isCurrentFocus: goal.isCurrentFocus,
+        keyResultCount: goal.keyResults.length,
+        conditionCount: goal.conditions.length,
+        latestAction: goal.dailyActions[0]?.title || null,
+      })),
+    }
+  }
+
+  if (toolName === 'goal.get') {
+    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const detail = await prisma.goal.findFirst({
+      where: { id: goal.id, userId },
+      include: {
+        keyResults: true,
+        conditions: true,
+        stagePlans: { orderBy: { sortOrder: 'asc' } },
+        dailyActions: { orderBy: { actionDate: 'desc' }, take: 7 },
+        reasoningCards: { orderBy: { version: 'desc' }, take: 1 },
+      },
+    })
+    return { targetId: goal.id, result: detail }
+  }
+
+  if (toolName === 'goal.create_draft') {
+    const title = readString(input, 'title')
+    if (!title) throw new Error('缺少目标标题。')
+    const rawInput = readString(input, 'rawInput', title)
+    const goal = await prisma.goal.create({
+      data: {
+        userId,
+        title,
+        rawInput,
+        interpretedGoal: readString(input, 'interpretedGoal', rawInput),
+        status: 'DRAFT',
+        isCurrentFocus: false,
+      },
+    })
+    const card = await prisma.goalReasoningCard.create({
+      data: {
+        userId,
+        goalId: goal.id,
+        purposeSummary: readString(input, 'purposeSummary', rawInput),
+        successSignals: input.successSignals || [],
+        sufficientConditionSet: readString(input, 'sufficientConditionSet', '待 Agent 与用户继续确认。'),
+        recommendedFocus: readString(input, 'recommendedFocus', '先确认这个目标怎么算真正有进展。'),
+        evidence: input.evidence || {},
+        status: 'DRAFT',
+      },
+    })
+    return { targetId: goal.id, result: { goal, reasoningCard: card } }
+  }
+
+  if (toolName === 'goal.update') {
+    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const isCurrentFocus = readBoolean(input, 'isCurrentFocus')
+    if (isCurrentFocus) {
+      await prisma.goal.updateMany({ where: { userId }, data: { isCurrentFocus: false } })
+    }
+    const updated = await prisma.goal.update({
+      where: { id: goal.id },
+      data: {
+        title: readString(input, 'title', goal.title),
+        interpretedGoal: readString(input, 'interpretedGoal', goal.interpretedGoal || '') || goal.interpretedGoal,
+        status: readString(input, 'status', goal.status),
+        isCurrentFocus: typeof isCurrentFocus === 'boolean' ? isCurrentFocus : goal.isCurrentFocus,
+      },
+    })
+    return { targetId: updated.id, result: updated }
+  }
+
+  if (toolName === 'today.get') {
+    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const actions = await prisma.dailyAction.findMany({
+      where: { userId, goalId: goal.id },
+      orderBy: { actionDate: 'desc' },
+      take: 5,
+      include: { condition: true, checkins: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    })
+    return { targetId: actions[0]?.id, result: { goal: { id: goal.id, title: goal.title }, actions } }
+  }
+
+  if (toolName === 'today.set_next_action') {
+    const title = readString(input, 'title')
+    if (!title) throw new Error('缺少行动标题。')
+    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const condition = await getOrCreateCondition(userId, goal.id, input)
+    const action = await prisma.dailyAction.create({
+      data: {
+        userId,
+        goalId: goal.id,
+        conditionId: condition.id,
+        actionDate: toDateInput(readString(input, 'actionDate')),
+        title,
+        reason: readString(input, 'reason', '由 QQ Agent 根据当前推进状态设置。'),
+        doneWhen: readString(input, 'doneWhen', '用户明确回复已完成，并说明完成结果。'),
+        minimumStep: readString(input, 'minimumStep', title),
+        estimatedMinutes: Math.round(readNumber(input, 'estimatedMinutes', 20)),
+        fallbackAction: readString(input, 'fallbackAction', '如果今天状态很差，只完成最小启动动作。'),
+        checkinQuestion: readString(input, 'checkinQuestion', '这一步现在能开始吗？'),
+        status: 'PLANNED',
+      },
+    })
+    return { targetId: action.id, result: action }
+  }
+
+  if (toolName === 'checkin.submit') {
+    const actionId = readString(input, 'actionId')
+    const action = actionId
+      ? await prisma.dailyAction.findFirst({ where: { id: actionId, userId } })
+      : await prisma.dailyAction.findFirst({ where: { userId }, orderBy: { actionDate: 'desc' } })
+    if (!action) throw new Error('没有找到可提交的今日行动。')
+    const result = normalizeCheckinResult(readString(input, 'result', 'no_response'))
+    const checkin = await prisma.checkin.create({
+      data: {
+        userId,
+        goalId: action.goalId,
+        actionId: action.id,
+        result,
+        reasonCategory: readString(input, 'reasonCategory') || undefined,
+        userFeedback: readString(input, 'userFeedback'),
+        adjustment: readString(input, 'adjustment'),
+      },
+    })
+    await prisma.dailyAction.update({ where: { id: action.id }, data: { status: normalizeActionStatus(result) } })
+    return { targetId: checkin.id, result: checkin }
+  }
+
+  if (toolName === 'log.write_daily') {
+    const content = readString(input, 'content')
+    if (!content) throw new Error('缺少日志内容。')
+    const date = toDateInput(readString(input, 'date'))
+    const dateInfo = formatDatePath(date)
+    const title = readString(input, 'title', dateInfo.title)
+    const linkedGoalIds = input.linkedGoalIds || []
+    const linkedActionIds = input.linkedActionIds || []
+    const document = await prisma.markdownDocument.upsert({
+      where: { userId_path: { userId, path: dateInfo.path } },
+      update: {
+        title,
+        content,
+        linkedGoalIds,
+        linkedActionIds,
+        source: 'AGENT',
+      },
+      create: {
+        userId,
+        type: 'DAY',
+        title,
+        path: dateInfo.path,
+        content,
+        linkedGoalIds,
+        linkedActionIds,
+        source: 'AGENT',
+      },
+    })
+    await prisma.logEntry.upsert({
+      where: { userId_path: { userId, path: dateInfo.path } },
+      update: { title, content, linkedGoalIds, linkedActionIds },
+      create: {
+        userId,
+        periodType: 'DAY',
+        title,
+        path: dateInfo.path,
+        content,
+        linkedGoalIds,
+        linkedActionIds,
+      },
+    })
+    return { targetId: document.id, result: document }
+  }
+
+  if (toolName === 'review.generate') {
+    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const recentActions = await prisma.dailyAction.findMany({
+      where: { userId, goalId: goal.id },
+      orderBy: { actionDate: 'desc' },
+      take: 7,
+      include: { checkins: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    })
+    const lines = [
+      `# ${readString(input, 'type', 'daily')} review draft`,
+      '',
+      `目标：${goal.title}`,
+      '',
+      '## 最近行动',
+      ...recentActions.map((action) => `- ${action.title}：${action.status}`),
+      '',
+      '## 下一步',
+      readString(input, 'nextFocus', '继续围绕当前最关键条件推进一个最小行动。'),
+    ]
+    return { targetId: goal.id, result: { markdown: lines.join('\n') } }
+  }
+
+  if (toolName === 'reminder.schedule') {
+    const reminderType = readString(input, 'reminderType', 'morning_planning')
+    const schedule = readString(input, 'schedule', '08:30')
+    const ruleId = readString(input, 'ruleId')
+    const data = {
+      goalId: readString(input, 'goalId') || null,
+      reminderType,
+      channel: readString(input, 'channel', 'qq'),
+      schedule,
+      timezone: readString(input, 'timezone', 'Asia/Shanghai'),
+      maxPerDay: Math.round(readNumber(input, 'maxPerDay', 2)),
+      quietHours: input.quietHours || undefined,
+      enabled: readBoolean(input, 'enabled') ?? true,
+      metadata: input.metadata || undefined,
+    }
+    const rule = ruleId
+      ? await prisma.reminderRule.update({ where: { id: ruleId }, data })
+      : await prisma.reminderRule.create({ data: { userId, ...data } })
+    return { targetId: rule.id, result: rule }
+  }
+
+  if (toolName === 'settings.model.get') {
+    const modelConfig = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
+    return { targetId: modelConfig?.id, result: modelConfig }
+  }
+
+  if (toolName === 'settings.model.update') {
+    const existing = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
+    const data = {
+      provider: readString(input, 'provider', existing?.provider || 'deepseek'),
+      model: readString(input, 'model', existing?.model || 'deepseek-v4-flash'),
+      reasoningModel: readString(input, 'reasoningModel', existing?.reasoningModel || ''),
+      apiBase: readString(input, 'apiBase', existing?.apiBase || 'https://api.deepseek.com'),
+      apiKeyRef: readString(input, 'apiKeyRef', existing?.apiKeyRef || 'DEEPSEEK_API_KEY'),
+      usage: 'CHAT',
+      isDefault: true,
+      temperature: readNumber(input, 'temperature', existing?.temperature ?? 0.3),
+    }
+    const modelConfig = existing
+      ? await prisma.modelConfig.update({ where: { id: existing.id }, data })
+      : await prisma.modelConfig.create({ data: { userId, ...data } })
+    return { targetId: modelConfig.id, result: modelConfig }
+  }
+
+  throw new Error(`未知 Agent 工具：${toolName}`)
+}
+
+async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessageId }, toolName, rawInput) {
+  const definition = qqToolCatalog.find((item) => item.name === toolName)
+  if (!definition) throw new Error(`未知 Agent 工具：${toolName}`)
+  const input = asRecord(rawInput)
+  const requiresConfirmation = definition.permission === 'execute' && !confirmed
+
+  if (requiresConfirmation) {
+    const action = await prisma.agentToolAction.create({
+      data: {
+        userId,
+        source: 'qq',
+        toolName: definition.name,
+        permission: definition.permission,
+        inputSummary: compactSummary(input),
+        input,
+        targetType: definition.targetType,
+        riskLevel: definition.riskLevel,
+        requiresConfirmation: true,
+        status: 'pending_confirmation',
+        agentThreadId,
+        agentMessageId,
+      },
+    })
+    return { needsConfirmation: true, action, result: null }
+  }
+
+  try {
+    const output = await runQqToolHandler(userId, toolName, input)
+    const action = await prisma.agentToolAction.create({
+      data: {
+        userId,
+        source: 'qq',
+        toolName: definition.name,
+        permission: definition.permission,
+        inputSummary: compactSummary(input),
+        input,
+        result: output.result || {},
+        targetType: definition.targetType,
+        targetId: output.targetId,
+        riskLevel: definition.riskLevel,
+        requiresConfirmation: false,
+        status: definition.permission === 'draft' ? 'drafted' : 'executed',
+        agentThreadId,
+        agentMessageId,
+      },
+    })
+    return { needsConfirmation: false, action, result: output.result }
+  } catch (error) {
+    const action = await prisma.agentToolAction.create({
+      data: {
+        userId,
+        source: 'qq',
+        toolName: definition.name,
+        permission: definition.permission,
+        inputSummary: compactSummary(input),
+        input,
+        targetType: definition.targetType,
+        riskLevel: definition.riskLevel,
+        requiresConfirmation,
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        agentThreadId,
+        agentMessageId,
+      },
+    })
+    return { needsConfirmation: false, action, result: null }
+  }
+}
+
+function formatToolReply(toolName, execution) {
+  const action = execution?.action
+  if (action?.status === 'failed') return `这个操作没有执行成功：${action.errorMessage || '未知错误'}`
+  if (execution?.needsConfirmation) {
+    return [
+      '我理解你要改动 Goal Mate 的系统数据。',
+      `动作：${toolName}`,
+      '我已经生成待确认动作。你回复“确认执行”后，我再真正执行。',
+    ].join('\n')
+  }
+
+  const result = execution?.result
+  if (toolName === 'goal.list' && Array.isArray(result)) {
+    if (!result.length) return '当前还没有目标。你可以直接告诉我你想推进什么，我先帮你生成目标草案。'
+    return ['当前目标：', ...result.map((goal) => `- ${goal.title}${goal.isCurrentFocus ? '（当前主目标）' : ''}：${goal.status}`)].join('\n')
+  }
+  if (toolName === 'today.get') {
+    const actions = Array.isArray(result?.actions) ? result.actions : []
+    if (!actions.length) return '当前还没有今日行动。你可以让我基于当前目标设置下一步。'
+    const action = actions[0]
+    return [`当前下一步：${action.title}`, `完成标准：${action.doneWhen}`, `最小启动：${action.minimumStep}`, `状态：${action.status}`].join('\n')
+  }
+  if (toolName === 'goal.create_draft') return '目标草案已经生成。下一步应该确认：这个目标怎么算真正有进展。'
+  if (toolName === 'today.set_next_action') return `今日下一步已经设置：${result?.title || '新的行动'}`
+  if (toolName === 'checkin.submit') return '完成情况已经记录。'
+  if (toolName === 'log.write_daily') return `日志已经写入：${result?.path || '今日日志'}`
+  if (toolName === 'review.generate') return result?.markdown || '复盘草稿已经生成。'
+  if (toolName === 'reminder.schedule') return `提醒规则已经设置：${result?.reminderType || 'reminder'} ${result?.schedule || ''}`
+  if (toolName === 'settings.model.get') return result ? `当前默认模型：${result.provider} / ${result.model}` : '当前还没有默认模型配置。'
+  if (toolName === 'settings.model.update') return `默认模型已经更新为：${result?.provider || 'provider'} / ${result?.model || 'model'}`
+  return `已处理：${toolName}`
+}
+
 async function generateReply(userId, threadId, latestUserContent) {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) return '当前服务器没有配置 DEEPSEEK_API_KEY，所以我只能先保存你的消息。'
@@ -354,18 +887,66 @@ async function processDispatch(eventType, payload) {
   }
 
   const thread = await findOrCreateThread(userId, context.contextType, context.contextId)
-  await prisma.agentMessage.create({
+  const userMessage = await prisma.agentMessage.create({
     data: { userId, threadId: thread.id, role: 'USER', content: context.text },
   })
-  const reply = await generateReply(userId, thread.id, context.text)
+
+  let reply = ''
+  let structuredOutputType = 'qq_reply'
+  let structuredOutput = { eventType, eventId, contextType: context.contextType, contextId: context.contextId }
+
+  const pendingAction = isConfirmToolMessage(context.text)
+    ? await prisma.agentToolAction.findFirst({
+        where: { userId, source: 'qq', agentThreadId: thread.id, status: 'pending_confirmation' },
+        orderBy: { createdAt: 'desc' },
+      })
+    : null
+
+  if (pendingAction) {
+    await prisma.agentToolAction.update({ where: { id: pendingAction.id }, data: { status: 'approved' } })
+    const execution = await executeQqAgentTool(
+      { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+      pendingAction.toolName,
+      pendingAction.input,
+    )
+    reply = formatToolReply(pendingAction.toolName, execution)
+    structuredOutputType = 'qq_tool_result'
+    structuredOutput = {
+      ...structuredOutput,
+      confirmedActionId: pendingAction.id,
+      executedActionId: execution.action?.id,
+      toolName: pendingAction.toolName,
+      needsConfirmation: execution.needsConfirmation,
+    }
+  } else {
+    const toolIntent = await generateToolIntent(userId, context.text)
+    if (toolIntent) {
+      const execution = await executeQqAgentTool(
+        { userId, confirmed: false, agentThreadId: thread.id, agentMessageId: userMessage.id },
+        toolIntent.toolName,
+        toolIntent.input,
+      )
+      reply = formatToolReply(toolIntent.toolName, execution)
+      structuredOutputType = 'qq_tool_result'
+      structuredOutput = {
+        ...structuredOutput,
+        toolIntent,
+        toolActionId: execution.action?.id,
+        needsConfirmation: execution.needsConfirmation,
+      }
+    }
+  }
+
+  if (!reply) reply = await generateReply(userId, thread.id, context.text)
+
   const assistantMessage = await prisma.agentMessage.create({
     data: {
       userId,
       threadId: thread.id,
       role: 'ASSISTANT',
       content: reply,
-      structuredOutputType: 'qq_reply',
-      structuredOutput: { eventType, eventId, contextType: context.contextType, contextId: context.contextId },
+      structuredOutputType,
+      structuredOutput,
     },
   })
   await prisma.agentThread.update({ where: { id: thread.id }, data: { updatedAt: new Date() } })

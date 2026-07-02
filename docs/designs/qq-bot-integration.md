@@ -145,6 +145,11 @@ QQ Bot 不可以：
 - Agent 读取目标和 MD 文档。
 - DeepSeek 回复。
 - QQ sendMessage 回发。
+- QQ 工具意图识别。
+- QQ read/draft 工具执行。
+- QQ execute 工具待确认。
+- QQ 文本“确认执行”后执行工具动作。
+- Agent 工具审计。
 
 暂未实现：
 
@@ -154,8 +159,6 @@ QQ Bot 不可以：
 - QQ 主动定时提醒。
 - QQ 卡片消息。
 - 权限审批 UI。
-- Agent 工具调用。
-- Agent 工具审计。
 
 ## 9. 与 Agent Tool Runtime 的关系
 
@@ -170,7 +173,19 @@ QQ Message
   -> QQ Reply
 ```
 
-QQ Bot 可以触发 read 和 draft 工具。execute 工具默认需要用户确认，除非该动作属于用户已授权的低风险自动化，例如已配置的每日提醒。
+QQ Bot 可以触发 read 和 draft 工具。execute 工具默认需要用户回复“确认执行”。
+
+当前 QQ 确认流程：
+
+```text
+用户 QQ 消息
+  -> 工具意图识别
+  -> read/draft 直接执行
+  -> execute 创建 pending_confirmation
+  -> 用户回复“确认执行”
+  -> 执行工具动作
+  -> 写入 AgentToolAction 审计
+```
 
 ## 10. 与 Scheduler Worker 的关系
 
