@@ -204,5 +204,6 @@ P0 提醒类型：
 - 2026-07-02：新增 `verify:deployment-config` 静态检查脚本和部署配置测试矩阵，部署前可检查 systemd 模板、package scripts、环境变量样例和事实文档是否一致。
 - 2026-07-02：Settings Control Center 新增 runtime status，汇总 Web、模型、QQ、Scheduler、Agent Tools 的当前运行状态，便于部署后快速定位断点。
 - 2026-07-02：新增 `docs/plans/self-hosted-runtime-verification-plan.md`，明确服务器真实长期运行验证步骤；`verify:deployment-config` 已增加该计划文件的静态存在性检查。
+- 2026-07-02：新增 `docs/plans/self-hosted-runtime-verification-report-template.md`，服务器验收结果必须按脱敏模板记录；`verify:deployment-config` 已增加报告模板检查。
 - 2026-07-02：共享工具运行时重构推进第一步；Web 和 QQ 现在共享工具目录、确认语识别和工具回复文案，业务 handler 后续再抽。
 - 2026-07-02：共享工具运行时重构推进第二步；Web 和 QQ 现在共享参数读取、日期路径、状态归一化和工具意图 JSON 解析。

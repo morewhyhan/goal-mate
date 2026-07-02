@@ -98,10 +98,21 @@ ID:
 下一步:
 ```
 
-## 8. 当前状态
+## 8. 验收报告
+
+执行真实服务器验收时，复制并填写：
+
+```text
+docs/plans/self-hosted-runtime-verification-report-template.md
+```
+
+报告必须脱敏，不能写入 API Key、Bot Token、SSH 密码、Cookie 或 Session。
+
+## 9. 当前状态
 
 截至 2026-07-02：
 
 - 计划已创建。
+- 报告模板已创建。
 - 尚未执行服务器运行验收。
 - 不能声明“长期主动推进能力已通过生产验证”。

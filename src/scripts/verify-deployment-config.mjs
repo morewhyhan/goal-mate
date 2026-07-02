@@ -130,8 +130,16 @@ const runtimePlan = readText(resolve(projectRoot, 'docs/plans/self-hosted-runtim
 record(
   'DEPLOY-RUNTIME-PLAN',
   'self-hosted runtime verification plan documents real long-running checks',
-  Boolean(runtimePlan && runtimePlan.includes('Web') && runtimePlan.includes('QQ Worker') && runtimePlan.includes('Scheduler Worker') && runtimePlan.includes('AgentToolAction.source = scheduler')),
+  Boolean(runtimePlan && runtimePlan.includes('Web') && runtimePlan.includes('QQ Worker') && runtimePlan.includes('Scheduler Worker') && runtimePlan.includes('AgentToolAction.source = scheduler') && runtimePlan.includes('self-hosted-runtime-verification-report-template.md')),
   runtimePlan ? 'runtime verification plan present' : 'missing runtime verification plan',
+)
+
+const runtimeReportTemplate = readText(resolve(projectRoot, 'docs/plans/self-hosted-runtime-verification-report-template.md'))
+record(
+  'DEPLOY-RUNTIME-REPORT',
+  'self-hosted runtime verification report template documents sanitized evidence format',
+  Boolean(runtimeReportTemplate && runtimeReportTemplate.includes('不得记录任何 API Key') && runtimeReportTemplate.includes('RUNTIME-SCHEDULER-REPLY') && runtimeReportTemplate.includes('source=scheduler')),
+  runtimeReportTemplate ? 'runtime verification report template present' : 'missing runtime verification report template',
 )
 
 const lines = [

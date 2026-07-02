@@ -28,6 +28,7 @@ pnpm verify:deployment-config:write
 | DEPLOY-ENV-EXAMPLE | `.env.example` | 包含部署所需环境变量 |
 | DEPLOY-DESIGN-DOC | 部署事实文档 | 引用 `deploy/systemd` 并保留真实部署缺口 |
 | DEPLOY-RUNTIME-PLAN | 服务器运行验收计划 | `docs/plans/self-hosted-runtime-verification-plan.md` 说明真实长期运行验证步骤 |
+| DEPLOY-RUNTIME-REPORT | 服务器运行验收报告模板 | `docs/plans/self-hosted-runtime-verification-report-template.md` 说明脱敏证据记录格式 |
 
 ## 4. 不覆盖
 
