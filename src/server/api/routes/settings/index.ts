@@ -257,7 +257,7 @@ const app = new Hono()
         vault_root: defaultUserSettings.logs.vault_root,
         naming_pattern: defaultUserSettings.logs.naming_pattern,
       },
-      today: { ...defaultUserSettings.today, ...(input.today || {}) },
+      today: { ...defaultUserSettings.today, ...(input.today || {}), generate_time: defaultUserSettings.today.generate_time },
       agent: { ...defaultUserSettings.agent, ...(input.agent || {}) },
       notifications: { ...defaultUserSettings.notifications, ...(input.notifications || {}) },
       dataPrivacy: { ...defaultUserSettings.dataPrivacy, ...(input.dataPrivacy || {}) },

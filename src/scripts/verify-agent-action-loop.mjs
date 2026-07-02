@@ -177,6 +177,12 @@ function verifySharedRuntimeContracts() {
     'src/server/api/routes/settings/index.ts scanned',
   )
   record(
+    'AAL-TODAY-GENERATE-TIME-BOUNDARY',
+    'settings API keeps Today generation time as a reminder-controlled boundary instead of accepting a fake second scheduler field',
+    settingsRoute.includes('generate_time: defaultUserSettings.today.generate_time'),
+    'src/server/api/routes/settings/index.ts scanned',
+  )
+  record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),

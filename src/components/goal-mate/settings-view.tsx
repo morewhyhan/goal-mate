@@ -237,6 +237,10 @@ export function SettingsView() {
         vault_root: 'logs/',
         naming_pattern: 'YYYY/Q#/YYYY-MM/W##/YYYY-MM-DD.md',
       },
+      today: {
+        ...behaviorDraft.today,
+        generate_time: '08:30',
+      },
     })
   }
 
@@ -342,7 +346,8 @@ export function SettingsView() {
                 </label>
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Today Generate Time</span>
-                  <input value={behaviorDraft.today.generate_time} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, today: { ...draft.today, generate_time: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                  <input value={reminderDrafts.find((rule) => rule.reminderType === 'morning_planning')?.schedule || behaviorDraft.today.generate_time} disabled className="mt-1 w-full rounded-2xl border border-stone-200 bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-500 outline-none" />
+                  <span className="mt-2 block text-xs leading-5 text-stone-500">真实触发时间由下方 Reminders 的“早晨规划”控制，这里只展示当前生效时间。</span>
                 </label>
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Heatmap Scope</span>
