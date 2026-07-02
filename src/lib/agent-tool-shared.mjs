@@ -153,17 +153,23 @@ export function formatAgentToolReply(toolName, execution) {
     const diagnosisLine = result?.diagnosis
       ? `诊断：${result.diagnosis.category}，下一问：${result.diagnosis.nextQuestion}`
       : '这次反馈没有触发诊断。'
+    const logLine = result?.logEntry?.path || result?.markdownDocument?.path
+      ? `日志：${result.logEntry?.path || result.markdownDocument?.path}`
+      : 'Settings 已关闭自动写入 Check-in 日志，本次只记录结构化反馈。'
     return [
       '完成情况已经记录。',
       diagnosisLine,
-      `日志：${result?.logEntry?.path || result?.markdownDocument?.path || '今日日志'}`,
+      logLine,
     ].join('\n')
   }
   if (toolName === 'log.write_daily') return `日志已经写入：${result?.path || '今日日志'}`
   if (toolName === 'review.generate') {
+    const logLine = result?.logEntry?.path || result?.markdownDocument?.path
+      ? `日志：${result.logEntry?.path || result.markdownDocument?.path}`
+      : 'Settings 已关闭自动写入复盘日志，本次只生成 Review 和 markdown 草稿。'
     return [
-      '复盘草稿已经生成并写入日志。',
-      `日志：${result?.logEntry?.path || result?.markdownDocument?.path || '复盘日志'}`,
+      result?.logEntry?.path || result?.markdownDocument?.path ? '复盘草稿已经生成并写入日志。' : '复盘草稿已经生成。',
+      logLine,
       result?.markdown || '',
     ].filter(Boolean).join('\n')
   }

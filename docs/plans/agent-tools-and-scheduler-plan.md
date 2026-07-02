@@ -232,3 +232,5 @@ P0 提醒类型：
 - 2026-07-02：强化 Goals 只读推进总览，页面现在直接显示整体 KR 进度、当前缺口、今日行动、条件进度和当前阶段标记；Goals 仍不提供编辑操作，只承载目标拆解和推进状态。
 
 - 2026-07-02：强化 Settings 运行时闭环，Agent runtime 现在会真实执行 `can_read_goals`、`can_read_logs`、`memory_enabled`；关闭 Goals/Logs 读取后不会把对应上下文注入模型，工具路由也不会绕过读取范围。
+
+- 2026-07-02：强化 Logs 自动写入设置闭环，`auto_write_checkin` 现在控制 Today Check-in 和 Agent/QQ Check-in 是否写入 LogEntry/MarkdownDocument；`auto_write_review` 现在控制 API/Agent 复盘是否写入周期日志。关闭后仍保留 Checkin/Diagnosis/Review 结构化记录。

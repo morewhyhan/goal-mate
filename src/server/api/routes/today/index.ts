@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '../../validator'
 import { prisma } from '@/lib/db'
-import { getCurrentUserId, unauthorized } from '../../context'
+import { defaultUserSettings, getCurrentUserId, unauthorized } from '../../context'
 import { buildCheckinLogBlock, buildDailyLogPath } from '@/lib/goal-mate-log-format'
 import { inferDiagnosis } from '@/lib/goal-mate-diagnosis'
 import { upsertMarkdownDocument } from '@/lib/markdown-document-store'
@@ -33,6 +33,20 @@ const resultLabel = {
   not_done: '没做',
   skipped: '跳过',
 } as const
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function readBooleanSetting(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+async function shouldAutoWriteCheckin(userId: string) {
+  const settings = await prisma.userSetting.findUnique({ where: { userId } })
+  const logs = { ...defaultUserSettings.logs, ...asRecord(settings?.logs) }
+  return readBooleanSetting(logs.auto_write_checkin, defaultUserSettings.logs.auto_write_checkin)
+}
 
 const app = new Hono()
   .basePath('/today')
@@ -125,55 +139,61 @@ const app = new Hono()
       })
     }
 
-    const logPath = buildDailyLogPath(action.actionDate)
-    const logBlock = buildCheckinLogBlock({
-      goalTitle: action.goal.title,
-      actionTitle: action.title,
-      linkedCondition: action.condition.title,
-      result: resultLabel[input.result],
-      doneWhen: action.doneWhen,
-      minimumStep: action.minimumStep,
-      userFeedback: input.userFeedback,
-      diagnosisQuestion: diagnosis?.nextQuestion,
-      createdAt: new Date(),
-    })
+    let logEntry = null
+    let markdownDocument = null
+    const autoWriteCheckin = await shouldAutoWriteCheckin(userId)
 
-    const existingLog = await prisma.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
-    const logEntry = await prisma.logEntry.upsert({
-      where: { userId_path: { userId, path: logPath } },
-      update: {
-        content: existingLog ? `${existingLog.content}\n\n${logBlock}` : logBlock,
-        linkedGoalIds: [action.goalId],
-        linkedActionIds: [action.id],
-      },
-      create: {
-        userId,
-        periodType: 'DAY',
-        title: logPath.split('/').pop() || logPath,
-        path: logPath,
-        content: logBlock,
-        linkedGoalIds: [action.goalId],
-        linkedActionIds: [action.id],
-      },
-    })
-
-    const markdownDocument = await upsertMarkdownDocument(prisma, {
-      userId,
-      type: 'DAY',
-      title: logPath.split('/').pop() || logPath,
-      path: logPath,
-      content: logEntry.content,
-      linkedGoalIds: [action.goalId],
-      linkedActionIds: [action.id],
-      source: 'AGENT',
-      frontmatter: {
-        kind: 'checkin',
+    if (autoWriteCheckin) {
+      const logPath = buildDailyLogPath(action.actionDate)
+      const logBlock = buildCheckinLogBlock({
         goalTitle: action.goal.title,
         actionTitle: action.title,
-      },
-    })
+        linkedCondition: action.condition.title,
+        result: resultLabel[input.result],
+        doneWhen: action.doneWhen,
+        minimumStep: action.minimumStep,
+        userFeedback: input.userFeedback,
+        diagnosisQuestion: diagnosis?.nextQuestion,
+        createdAt: new Date(),
+      })
 
-    return c.json({ data: { action: updatedAction, checkin, diagnosis, logEntry, markdownDocument } })
+      const existingLog = await prisma.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
+      logEntry = await prisma.logEntry.upsert({
+        where: { userId_path: { userId, path: logPath } },
+        update: {
+          content: existingLog ? `${existingLog.content}\n\n${logBlock}` : logBlock,
+          linkedGoalIds: [action.goalId],
+          linkedActionIds: [action.id],
+        },
+        create: {
+          userId,
+          periodType: 'DAY',
+          title: logPath.split('/').pop() || logPath,
+          path: logPath,
+          content: logBlock,
+          linkedGoalIds: [action.goalId],
+          linkedActionIds: [action.id],
+        },
+      })
+
+      markdownDocument = await upsertMarkdownDocument(prisma, {
+        userId,
+        type: 'DAY',
+        title: logPath.split('/').pop() || logPath,
+        path: logPath,
+        content: logEntry.content,
+        linkedGoalIds: [action.goalId],
+        linkedActionIds: [action.id],
+        source: 'AGENT',
+        frontmatter: {
+          kind: 'checkin',
+          goalTitle: action.goal.title,
+          actionTitle: action.title,
+        },
+      })
+    }
+
+    return c.json({ data: { action: updatedAction, checkin, diagnosis, logEntry, markdownDocument, autoWriteCheckin } })
   })
 
 export default app

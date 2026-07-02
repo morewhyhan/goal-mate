@@ -20,6 +20,16 @@ function normalizeGoalStatus(value, fallback) {
   return goalStatuses.has(normalized) ? normalized : fallback
 }
 
+function asObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+async function readSharedLogBooleanSetting(prisma, userId, key, fallback) {
+  const settings = await prisma.userSetting.findUnique({ where: { userId } })
+  const logs = asObject(settings?.logs)
+  return typeof logs[key] === 'boolean' ? logs[key] : fallback
+}
+
 function pad(value) {
   return String(value).padStart(2, '0')
 }
@@ -224,6 +234,7 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
     const result = normalizeAgentToolCheckinResult(readAgentToolString(input, 'result', 'no_response'))
     const userFeedback = readAgentToolString(input, 'userFeedback')
     const resultLabel = result === 'DONE' ? '完成' : result === 'PARTIAL' ? '部分完成' : result === 'NOT_DONE' ? '没做' : '未回应'
+    const autoWriteCheckin = await readSharedLogBooleanSetting(prisma, userId, 'auto_write_checkin', true)
 
     const output = await prisma.$transaction(async (tx) => {
       const checkin = await tx.checkin.create({
@@ -270,73 +281,77 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
         })
       }
 
-      const logPath = buildSharedDailyLogPath(action.actionDate)
-      const logTitle = logPath.split('/').pop() || logPath
-      const logBlock = buildSharedCheckinLogBlock({
-        goalTitle: action.goal.title,
-        actionTitle: action.title,
-        linkedCondition: action.condition.title,
-        resultLabel,
-        doneWhen: action.doneWhen,
-        minimumStep: action.minimumStep,
-        userFeedback,
-        diagnosisQuestion: diagnosis?.nextQuestion,
-        proposedNextAction: diagnosis?.proposedNextAction,
-        createdAt: new Date(),
-      })
+      let logEntry = null
+      let markdownDocument = null
+      if (autoWriteCheckin) {
+        const logPath = buildSharedDailyLogPath(action.actionDate)
+        const logTitle = logPath.split('/').pop() || logPath
+        const logBlock = buildSharedCheckinLogBlock({
+          goalTitle: action.goal.title,
+          actionTitle: action.title,
+          linkedCondition: action.condition.title,
+          resultLabel,
+          doneWhen: action.doneWhen,
+          minimumStep: action.minimumStep,
+          userFeedback,
+          diagnosisQuestion: diagnosis?.nextQuestion,
+          proposedNextAction: diagnosis?.proposedNextAction,
+          createdAt: new Date(),
+        })
 
-      const existingLog = await tx.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
-      const logEntry = await tx.logEntry.upsert({
-        where: { userId_path: { userId, path: logPath } },
-        update: {
-          title: logTitle,
-          content: existingLog ? `${existingLog.content}\n\n${logBlock}` : logBlock,
-          linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
-        },
-        create: {
-          userId,
-          periodType: 'DAY',
-          title: logTitle,
-          path: logPath,
-          content: logBlock,
-          linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
-        },
-      })
-
-      const markdownDocument = await tx.markdownDocument.upsert({
-        where: { userId_path: { userId, path: logPath } },
-        update: {
-          title: logTitle,
-          content: logEntry.content,
-          linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
-          source: 'AGENT',
-          frontmatter: {
-            kind: 'checkin',
-            goalTitle: action.goal.title,
-            actionTitle: action.title,
+        const existingLog = await tx.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
+        logEntry = await tx.logEntry.upsert({
+          where: { userId_path: { userId, path: logPath } },
+          update: {
+            title: logTitle,
+            content: existingLog ? `${existingLog.content}\n\n${logBlock}` : logBlock,
+            linkedGoalIds: [action.goalId],
+            linkedActionIds: [action.id],
           },
-        },
-        create: {
-          userId,
-          type: 'DAY',
-          title: logTitle,
-          path: logPath,
-          content: logEntry.content,
-          linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
-          source: 'AGENT',
-          frontmatter: {
-            kind: 'checkin',
-            goalTitle: action.goal.title,
-            actionTitle: action.title,
+          create: {
+            userId,
+            periodType: 'DAY',
+            title: logTitle,
+            path: logPath,
+            content: logBlock,
+            linkedGoalIds: [action.goalId],
+            linkedActionIds: [action.id],
           },
-        },
-      })
+        })
 
-      return { action: updatedAction, checkin, diagnosis, logEntry, markdownDocument }
+        markdownDocument = await tx.markdownDocument.upsert({
+          where: { userId_path: { userId, path: logPath } },
+          update: {
+            title: logTitle,
+            content: logEntry.content,
+            linkedGoalIds: [action.goalId],
+            linkedActionIds: [action.id],
+            source: 'AGENT',
+            frontmatter: {
+              kind: 'checkin',
+              goalTitle: action.goal.title,
+              actionTitle: action.title,
+            },
+          },
+          create: {
+            userId,
+            type: 'DAY',
+            title: logTitle,
+            path: logPath,
+            content: logEntry.content,
+            linkedGoalIds: [action.goalId],
+            linkedActionIds: [action.id],
+            source: 'AGENT',
+            frontmatter: {
+              kind: 'checkin',
+              goalTitle: action.goal.title,
+              actionTitle: action.title,
+            },
+          },
+        })
+      }
+
+      return { action: updatedAction, checkin, diagnosis, logEntry, markdownDocument, autoWriteCheckin }
     })
 
     return { targetId: output.checkin.id, result: output }

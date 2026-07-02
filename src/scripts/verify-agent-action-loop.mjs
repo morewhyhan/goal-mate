@@ -106,9 +106,9 @@ function verifySharedRuntimeContracts() {
   )
   record(
     'AAL-REVIEW-GENERATE-CONTRACT',
-    'review.generate shared tool writes Review, LogEntry and MarkdownDocument',
-    readHandlers.includes('review.create') && readHandlers.includes('logEntry.upsert') && readHandlers.includes('markdownDocument.upsert') && readHandlers.includes('buildSharedReviewMarkdown'),
-    'review.generate persists review evidence in shared runtime',
+    'review.generate shared tool writes Review and respects logs.auto_write_review before writing LogEntry/MarkdownDocument',
+    readHandlers.includes('review.create') && readHandlers.includes('auto_write_review') && readHandlers.includes('logEntry.upsert') && readHandlers.includes('markdownDocument.upsert') && readHandlers.includes('buildSharedReviewMarkdown'),
+    'review.generate persists review evidence and gates log writing by Settings',
   )
   record(
     'AAL-SHARED-EXECUTOR',
@@ -154,9 +154,9 @@ function verifySharedRuntimeContracts() {
   )
   record(
     'AAL-CHECKIN-DIAGNOSIS-CONTRACT',
-    'checkin.submit shared tool writes diagnosis and Markdown log evidence for partial/not-done feedback',
-    writeHandlers.includes('diagnosis.create') && writeHandlers.includes('logEntry.upsert') && writeHandlers.includes('markdownDocument.upsert') && writeHandlers.includes('inferSharedDiagnosis'),
-    'checkin.submit creates diagnosis, LogEntry and MarkdownDocument in shared runtime',
+    'checkin.submit shared tool writes diagnosis and respects logs.auto_write_checkin before writing Markdown log evidence',
+    writeHandlers.includes('diagnosis.create') && writeHandlers.includes('auto_write_checkin') && writeHandlers.includes('logEntry.upsert') && writeHandlers.includes('markdownDocument.upsert') && writeHandlers.includes('inferSharedDiagnosis'),
+    'checkin.submit creates diagnosis and gates log writing by Settings',
   )
 }
 

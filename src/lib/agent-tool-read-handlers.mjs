@@ -15,6 +15,12 @@ function isRecord(value) {
   return value && typeof value === 'object' && !Array.isArray(value)
 }
 
+async function readSharedLogBooleanSetting(prisma, userId, key, fallback) {
+  const settings = await prisma.userSetting.findUnique({ where: { userId } })
+  const logs = isRecord(settings?.logs) ? settings.logs : {}
+  return typeof logs[key] === 'boolean' ? logs[key] : fallback
+}
+
 function addDays(date, days) {
   return new Date(date.getTime() + days * DAY_MS)
 }
@@ -539,57 +545,62 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
     })
     const logPath = buildSharedReviewLogPath(type, periodEnd)
     const logTitle = logPath.split('/').pop() || logPath
+    const autoWriteReview = await readSharedLogBooleanSetting(prisma, userId, 'auto_write_review', true)
 
     const result = await prisma.$transaction(async (tx) => {
-      const existingLog = await tx.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
-      const logEntry = await tx.logEntry.upsert({
-        where: { userId_path: { userId, path: logPath } },
-        update: {
-          title: logTitle,
-          content: existingLog ? `${existingLog.content}\n\n${markdown}` : markdown,
-          linkedGoalIds: [detail.id],
-          linkedActionIds: [],
-        },
-        create: {
-          userId,
-          periodType: reviewTypeToPeriodType(type),
-          title: logTitle,
-          path: logPath,
-          content: markdown,
-          linkedGoalIds: [detail.id],
-          linkedActionIds: [],
-        },
-      })
-      const markdownDocument = await tx.markdownDocument.upsert({
-        where: { userId_path: { userId, path: logPath } },
-        update: {
-          title: logTitle,
-          content: logEntry.content,
-          linkedGoalIds: [detail.id],
-          linkedActionIds: [],
-          source: 'AGENT',
-          frontmatter: {
-            kind: 'review',
-            reviewType: type,
-            goalTitle: detail.title,
+      let logEntry = null
+      let markdownDocument = null
+      if (autoWriteReview) {
+        const existingLog = await tx.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
+        logEntry = await tx.logEntry.upsert({
+          where: { userId_path: { userId, path: logPath } },
+          update: {
+            title: logTitle,
+            content: existingLog ? `${existingLog.content}\n\n${markdown}` : markdown,
+            linkedGoalIds: [detail.id],
+            linkedActionIds: [],
           },
-        },
-        create: {
-          userId,
-          type: reviewTypeToPeriodType(type),
-          title: logTitle,
-          path: logPath,
-          content: logEntry.content,
-          linkedGoalIds: [detail.id],
-          linkedActionIds: [],
-          source: 'AGENT',
-          frontmatter: {
-            kind: 'review',
-            reviewType: type,
-            goalTitle: detail.title,
+          create: {
+            userId,
+            periodType: reviewTypeToPeriodType(type),
+            title: logTitle,
+            path: logPath,
+            content: markdown,
+            linkedGoalIds: [detail.id],
+            linkedActionIds: [],
           },
-        },
-      })
+        })
+        markdownDocument = await tx.markdownDocument.upsert({
+          where: { userId_path: { userId, path: logPath } },
+          update: {
+            title: logTitle,
+            content: logEntry.content,
+            linkedGoalIds: [detail.id],
+            linkedActionIds: [],
+            source: 'AGENT',
+            frontmatter: {
+              kind: 'review',
+              reviewType: type,
+              goalTitle: detail.title,
+            },
+          },
+          create: {
+            userId,
+            type: reviewTypeToPeriodType(type),
+            title: logTitle,
+            path: logPath,
+            content: logEntry.content,
+            linkedGoalIds: [detail.id],
+            linkedActionIds: [],
+            source: 'AGENT',
+            frontmatter: {
+              kind: 'review',
+              reviewType: type,
+              goalTitle: detail.title,
+            },
+          },
+        })
+      }
       const review = await tx.review.create({
         data: {
           userId,
@@ -601,11 +612,11 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
           conditionChanges: detail.conditions.map((condition) => ({ title: condition.title, status: condition.status })),
           blockerSummary: detail.diagnoses[0]?.nextQuestion || '暂无明确阻塞。',
           nextFocus: detail.conditions.find((condition) => condition.status !== 'SATISFIED')?.title || '继续保持当前节奏。',
-          logEntryId: logEntry.id,
+          logEntryId: logEntry?.id,
         },
       })
 
-      return { review, logEntry, markdownDocument, markdown }
+      return { review, logEntry, markdownDocument, markdown, autoWriteReview }
     })
     return { targetId: result.review.id, result }
   }
