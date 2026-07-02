@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { readFileSync } from 'node:fs'
 
 const prisma = new PrismaClient()
 const baseUrl = process.env.GOAL_MATE_BASE_URL || 'http://127.0.0.1:3000'
@@ -66,6 +67,44 @@ function todayText() {
   return `${year}-${month}-${day}`
 }
 
+function readProjectFile(path) {
+  return readFileSync(path, 'utf8')
+}
+
+function verifySharedRuntimeContracts() {
+  const sharedCatalog = readProjectFile('src/lib/agent-tool-shared.mjs')
+  const readHandlers = readProjectFile('src/lib/agent-tool-read-handlers.mjs')
+  const writeHandlers = readProjectFile('src/lib/agent-tool-write-handlers.mjs')
+  const webRuntime = readProjectFile('src/lib/agent-tools.ts')
+  const qqWorker = readProjectFile('src/scripts/qq-bot-worker.mjs')
+  const combinedHandlers = `${readHandlers}\n${writeHandlers}`
+
+  record(
+    'AAL-SHARED-CATALOG',
+    'shared tool catalog contains every P0 tool',
+    requiredTools.every((tool) => sharedCatalog.includes(`name: '${tool}'`)),
+    `required=${requiredTools.length}`,
+  )
+  record(
+    'AAL-SHARED-HANDLERS',
+    'shared read/write handlers cover every P0 tool',
+    requiredTools.every((tool) => combinedHandlers.includes(`'${tool}'`)),
+    'read and write handler files scanned',
+  )
+  record(
+    'AAL-WEB-SHARED-RUNTIME',
+    'Web Agent executes through shared read/write handlers',
+    webRuntime.includes('runSharedReadDraftToolHandler') && webRuntime.includes('runSharedWriteToolHandler'),
+    'src/lib/agent-tools.ts imports shared handlers',
+  )
+  record(
+    'AAL-QQ-SHARED-RUNTIME',
+    'QQ Agent executes through shared read/write handlers without duplicated tool branches',
+    qqWorker.includes('runSharedReadDraftToolHandler') && qqWorker.includes('runSharedWriteToolHandler') && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
+    'src/scripts/qq-bot-worker.mjs is channel adapter only',
+  )
+}
+
 async function executeTool(toolName, input = {}, confirmed = false) {
   return request('/api/agent/tools/execute', {
     method: 'POST',
@@ -78,6 +117,8 @@ async function confirmToolAction(id) {
 }
 
 async function run() {
+  verifySharedRuntimeContracts()
+
   assert(cookie, 'GOAL_MATE_COOKIE is required for Agent Action Loop verification')
 
   const health = await request('/api/health')

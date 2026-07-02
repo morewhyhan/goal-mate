@@ -118,7 +118,7 @@ detectConfirmToolMessage(text)
 | Done | 抽出 shared reply formatter | Web 和 QQ 对工具结果的描述一致 |
 | Done | Web API 迁移到 shared runtime | Web 已复用 shared catalog、confirm detector、reply formatter 和全量业务 handler |
 | Done | QQ Worker 迁移到 shared runtime | QQ 已复用 shared catalog、confirm detector、reply formatter 和全量业务 handler |
-| Todo | 更新 `verify:agent-loop` | 验证共享 runtime 后的 read/write/confirm |
+| Done | 更新 `verify:agent-loop` | 验证共享 runtime 后的 read/write/confirm |
 | Done | 删除 QQ 重复业务代码 | `qq-bot-worker.mjs` 的工具业务 handler 已切到共享 runtime，文件只保留 QQ 通道、消息解析、确认和回复逻辑 |
 
 ## 7. 验收标准
@@ -149,3 +149,4 @@ pnpm worker:qq
 - 2026-07-02：新增 `src/lib/agent-tool-read-handlers.mjs`，Web 和 QQ 已共享 `goal.list`、`goal.get`、`goal.create_draft`、`today.get`、`review.generate`、`settings.model.get` 的业务 handler；下一步抽取执行类写入工具。
 - 2026-07-02：新增 `src/lib/agent-tool-write-handlers.mjs`，Web 和 QQ 已共享 `goal.update`、`today.set_next_action`、`checkin.submit`、`log.write_daily`、`reminder.schedule`、`settings.model.update` 的业务 handler。
 - 2026-07-02：删除 `src/scripts/qq-bot-worker.mjs` 中已经不可达的旧工具业务分支，QQ Worker 现在只通过 shared read/write handlers 执行业务动作。
+- 2026-07-02：更新 `src/scripts/verify-agent-action-loop.mjs`，新增 shared catalog、shared read/write handlers、Web runtime、QQ Worker 通道适配层的源码契约检查。

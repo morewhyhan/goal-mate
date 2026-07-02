@@ -42,6 +42,7 @@
 | AAL-11 | Scheduler 回复闭环 | 最近 sent 事件收到 QQ 回复后写 check-in、log，并标记 `responded` |
 | AAL-12 | 安全边界 | API Key 不以明文出现在 settings、models、export 响应中 |
 | AAL-13 | Web 确认 UI | Agent 消息出现待确认动作卡片，可点击确认或取消 |
+| AAL-14 | 共享工具运行时 | Web Agent 和 QQ Agent 都通过 shared catalog、shared read/write handlers 执行业务工具 |
 
 ## 4. 自动化验证入口
 
@@ -62,6 +63,8 @@ pnpm verify:agent-loop:write
 | Prisma | 已执行 `pnpm db:generate` |
 
 默认 `verify:agent-loop` 只做读取和契约检查。
+
+其中共享运行时契约检查不需要真实 QQ Gateway，它只确认 Web / QQ 入口已经接入 shared catalog 和 shared read/write handlers，并确认 QQ worker 不再保留重复工具业务分支。
 
 `verify:agent-loop:write` 会执行写入型验证，包括工具挂起、确认执行、check-in、log 和提醒保存。
 
