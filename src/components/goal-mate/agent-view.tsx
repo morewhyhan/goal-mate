@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAgentMessages, useAgentThreads, useAgentToolActions, useConfirmAgentToolAction, useCreateAgentThread, useRejectAgentToolAction, useSendAgentMessage } from '@/hooks/use-agent'
 
 function statusClass(status?: string) {
@@ -48,7 +48,7 @@ function ToolActionCard({
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(status)}`}>{status}</span>
       </div>
       <p className="mt-3 line-clamp-2 text-xs leading-5 text-stone-600">{inputSummary}</p>
-      {status === 'pending_confirmation' ? (
+      {status === 'pending_confirmation' && actionId ? (
         <div className="mt-4 flex flex-wrap gap-2">
           <button disabled={busy} onClick={() => onConfirm(actionId)} className="rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
             确认执行
@@ -57,6 +57,8 @@ function ToolActionCard({
             取消
           </button>
         </div>
+      ) : status === 'pending_confirmation' ? (
+        <p className="mt-3 text-xs font-medium text-amber-700">动作正在生成编号，稍后会自动刷新。</p>
       ) : (
         <p className="mt-3 text-xs font-medium text-stone-500">该动作已处理，结果已写入工具审计。</p>
       )}
@@ -78,6 +80,7 @@ export function AgentView() {
   const confirmToolAction = useConfirmAgentToolAction(activeThreadId)
   const rejectToolAction = useRejectAgentToolAction(activeThreadId)
   const [draft, setDraft] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!selectedThreadId && threads[0]?.id) setSelectedThreadId(threads[0].id)
@@ -86,6 +89,11 @@ export function AgentView() {
   const visibleThreads = threads.map((thread: any) => ({ title: thread.title, time: '最近', active: thread.id === activeThreadId, id: thread.id }))
   const visibleMessages = apiMessages
   const actionById = new Map(toolActions.map((action: any) => [action.id, action]))
+  const isSending = sendMessage.isPending || createThread.isPending
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [activeThreadId, visibleMessages.length, isSending])
 
   const handleCreateThread = () => {
     createThread.mutate(
@@ -95,9 +103,30 @@ export function AgentView() {
   }
 
   const handleSend = () => {
-    if (!draft.trim() || !activeThreadId) return
-    sendMessage.mutate({ threadId: activeThreadId, content: draft.trim() })
+    const content = draft.trim()
+    if (!content || isSending) return
     setDraft('')
+
+    if (activeThreadId) {
+      sendMessage.mutate({ threadId: activeThreadId, content })
+      return
+    }
+
+    createThread.mutate(
+      { title: content.length > 24 ? `${content.slice(0, 24)}...` : content },
+      {
+        onSuccess: (response: any) => {
+          const threadId = response?.data?.id
+          if (!threadId) {
+            setDraft(content)
+            return
+          }
+          setSelectedThreadId(threadId)
+          sendMessage.mutate({ threadId, content })
+        },
+        onError: () => setDraft(content),
+      },
+    )
   }
 
   return (
@@ -124,7 +153,7 @@ export function AgentView() {
             </button>
           )) : (
             <div className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm leading-6 text-stone-500">
-              还没有对话。新建一段对话后，Agent 会读取目标、日志和 Today。
+              还没有对话。你可以直接在右侧输入第一句话，Agent 会自动创建对话并读取目标、日志和 Today。
             </div>
           )}
         </div>
@@ -168,6 +197,7 @@ export function AgentView() {
                 </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
         </div>
 
@@ -185,7 +215,7 @@ export function AgentView() {
               placeholder="问 Agent：今天没做怎么办？这个目标为什么这么拆？帮我生成周志。"
               className="max-h-40 min-h-[72px] flex-1 resize-none bg-transparent px-3 py-2 text-sm leading-6 outline-none"
             />
-            <button disabled={!activeThreadId || sendMessage.isPending} onClick={handleSend} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">发送</button>
+            <button disabled={!draft.trim() || isSending} onClick={handleSend} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">发送</button>
           </div>
         </footer>
       </main>

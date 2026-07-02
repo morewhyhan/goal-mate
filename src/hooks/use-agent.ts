@@ -63,6 +63,7 @@ export function useSendAgentMessage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
       queryClient.invalidateQueries({ queryKey: ['agent', 'messages', variables.threadId] })
+      queryClient.invalidateQueries({ queryKey: ['agent', 'tool-actions'] })
     },
     onError: (error) => toast.error(error.message || '消息发送失败'),
   })
