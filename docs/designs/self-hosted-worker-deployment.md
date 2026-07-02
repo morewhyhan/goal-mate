@@ -122,7 +122,23 @@ deploy/systemd/README.md
 | QQ 是否被平台限制 | `SchedulerEvent.errorMessage` 和 worker 日志 |
 | 模型是否可用 | Settings 模型测试 |
 
-## 9. 当前缺口
+## 9. 静态配置验证
+
+仓库提供不连接服务器的静态验证脚本：
+
+```bash
+pnpm verify:deployment-config
+pnpm verify:deployment-config:write
+```
+
+它检查：
+
+- `src/package.json` 是否包含 Web、QQ Worker、Scheduler Worker 脚本。
+- `deploy/systemd` service 是否包含必要 systemd 指令。
+- `.env.example` 是否列出部署必需变量。
+- 部署事实文档是否仍然记录真实部署缺口。
+
+## 10. 当前缺口
 
 截至 2026-07-02：
 
@@ -132,7 +148,7 @@ deploy/systemd/README.md
 - 尚未在服务器上完成长期运行验证。
 - 尚未完成 worker 崩溃自动重启验证。
 
-## 10. 下一步
+## 11. 下一步
 
 - 在服务器上执行一次真实部署验证。
 - 把验证结果写入 `docs/plans`。

@@ -6,4 +6,6 @@
 
 当前 v0.2 Agent Action Loop 测试矩阵：`docs/test-cases/agent-action-loop-v0.2-test-cases.md`。
 
+当前自部署配置测试矩阵：`docs/test-cases/deployment-config-test-cases.md`。
+
 新测试用例请复制 `template-e2e-case.md` 或按模块创建专用文档。

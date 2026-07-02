@@ -201,3 +201,4 @@ P0 提醒类型：
 - 2026-07-02：Agent 页面新增工具确认卡片；新增工具动作确认/取消 API，用户可在 Web 里点击确认或取消，不再依赖输入“确认执行”。
 - 2026-07-02：发现 Web / QQ 工具逻辑重复风险；新增共享工具运行时重构计划和自部署 worker 运行事实文档。
 - 2026-07-02：新增 `deploy/systemd` 模板，覆盖 Web、QQ Worker、Scheduler Worker，并提供服务器安装、启动、日志查看和验证顺序说明。
+- 2026-07-02：新增 `verify:deployment-config` 静态检查脚本和部署配置测试矩阵，部署前可检查 systemd 模板、package scripts、环境变量样例和事实文档是否一致。
