@@ -234,3 +234,5 @@ P0 提醒类型：
 - 2026-07-02：强化 Settings 运行时闭环，Agent runtime 现在会真实执行 `can_read_goals`、`can_read_logs`、`memory_enabled`；关闭 Goals/Logs 读取后不会把对应上下文注入模型，工具路由也不会绕过读取范围。
 
 - 2026-07-02：强化 Logs 自动写入设置闭环，`auto_write_checkin` 现在控制 Today Check-in 和 Agent/QQ Check-in 是否写入 LogEntry/MarkdownDocument；`auto_write_review` 现在控制 API/Agent 复盘是否写入周期日志。关闭后仍保留 Checkin/Diagnosis/Review 结构化记录。
+
+- 2026-07-02：强化 Today 设置闭环，Today 页面现在读取 `/api/settings` 的 `today.heatmap_scope` 作为 Momentum 默认范围，并用 `today.low_energy_mode` 控制是否展示备用动作卡。

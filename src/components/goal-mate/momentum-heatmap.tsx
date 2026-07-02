@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const levels = ['bg-stone-200', 'bg-emerald-100', 'bg-emerald-300', 'bg-emerald-500', 'bg-emerald-700']
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -11,12 +11,25 @@ const scopes = [
   { label: 'Week', weeks: 1 },
 ]
 
+function normalizeScope(value?: string) {
+  const normalized = String(value || '').toLowerCase()
+  if (normalized === 'quarter') return 'Quarter'
+  if (normalized === 'month') return 'Month'
+  if (normalized === 'week') return 'Week'
+  return 'Year'
+}
+
 function emptyWeeks(count: number) {
   return Array.from({ length: count }, () => Array.from({ length: 7 }, () => 0))
 }
 
-export function MomentumHeatmap() {
-  const [scope, setScope] = useState('Year')
+export function MomentumHeatmap({ defaultScope = 'year' }: { defaultScope?: string }) {
+  const [scope, setScope] = useState(() => normalizeScope(defaultScope))
+
+  useEffect(() => {
+    setScope(normalizeScope(defaultScope))
+  }, [defaultScope])
+
   const selectedScope = scopes.find((item) => item.label === scope) || scopes[0]
   const heatmapWeeks = useMemo(() => emptyWeeks(selectedScope.weeks), [selectedScope.weeks])
   const activeDays = heatmapWeeks.flat().filter((value) => value > 0).length

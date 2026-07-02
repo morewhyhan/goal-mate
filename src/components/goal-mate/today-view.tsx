@@ -1,6 +1,7 @@
 'use client'
 
 import { useSubmitCheckin, useToday } from '@/hooks/use-today'
+import { useSettings } from '@/hooks/use-settings'
 import { MomentumHeatmap } from './momentum-heatmap'
 
 const feedbackOptions = [
@@ -12,10 +13,14 @@ const feedbackOptions = [
 
 export function TodayView() {
   const today = useToday()
+  const settings = useSettings()
   const submitCheckin = useSubmitCheckin()
   const apiData = today.data?.data
   const apiGoal = apiData?.goal
   const apiAction = apiData?.action
+  const todaySettings = settings.data?.data?.today || {}
+  const lowEnergyMode = todaySettings.low_energy_mode !== false
+  const heatmapScope = typeof todaySettings.heatmap_scope === 'string' ? todaySettings.heatmap_scope : 'year'
 
   const action = apiAction
     ? {
@@ -47,6 +52,7 @@ export function TodayView() {
           <span className="rounded-full bg-white/10 px-3 py-1">Current focus</span>
           <span>{horizon}</span>
           {today.isLoading && <span className="rounded-full bg-white/10 px-3 py-1">加载中</span>}
+          {lowEnergyMode && <span className="rounded-full bg-emerald-300 px-3 py-1 text-stone-950">低精力模式</span>}
         </div>
 
         <div className="mt-12 max-w-4xl">
@@ -59,7 +65,7 @@ export function TodayView() {
           </p>
         </div>
 
-        <div className="mt-12 grid gap-4 lg:grid-cols-3">
+        <div className={`mt-12 grid gap-4 ${lowEnergyMode ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
           <div className="rounded-3xl bg-white p-5 text-stone-950">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Done when</p>
             <p className="mt-3 text-lg font-medium leading-7">{action?.doneWhen || '等待 Agent 明确完成标准。'}</p>
@@ -68,10 +74,10 @@ export function TodayView() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Minimum</p>
             <p className="mt-3 text-lg font-medium leading-7">{action?.minimumStep || '没有精力时，系统会给出更小版本。'}</p>
           </div>
-          <div className="rounded-3xl bg-white/10 p-5">
+          {lowEnergyMode && <div className="rounded-3xl bg-white/10 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Fallback</p>
             <p className="mt-3 text-lg font-medium leading-7">{action?.fallbackAction || '当前还没有备用动作。'}</p>
-          </div>
+          </div>}
         </div>
 
         <div className="mt-10 flex flex-wrap gap-3">
@@ -101,7 +107,7 @@ export function TodayView() {
           </p>
           <p className="mt-4 text-xs text-stone-400">目标：{goalTitle}</p>
         </section>
-        <MomentumHeatmap />
+        <MomentumHeatmap defaultScope={heatmapScope} />
       </aside>
     </div>
   )
