@@ -53,6 +53,85 @@ async function findRelevantMarkdownDocuments(userId: string, input: string) {
   })
 }
 
+function pickTextAfterCommand(content: string) {
+  const normalized = content.trim()
+  const separatorMatch = normalized.match(/[：:]\s*(.+)$/)
+  if (separatorMatch?.[1]?.trim()) return separatorMatch[1].trim()
+  return normalized
+    .replace(/^(请|帮我|麻烦)?(查看|列出|创建|生成|新增|新建|写入|写|记录|更新|设置|安排)(一下|一个|一条)?/u, '')
+    .replace(/^(目标|日志|记录|复盘|周报|日报|月报|季报|年报)/u, '')
+    .trim()
+}
+
+function inferReviewType(content: string) {
+  if (/年报|年度|yearly|year/i.test(content)) return 'yearly'
+  if (/季报|季度|quarterly|quarter/i.test(content)) return 'quarterly'
+  if (/月报|月度|monthly|month/i.test(content)) return 'monthly'
+  if (/日报|日复盘|daily|day/i.test(content)) return 'daily'
+  if (/目标周期|goal_cycle/i.test(content)) return 'goal_cycle'
+  return 'weekly'
+}
+
+function generateFallbackAgentToolIntent(latestUserContent: string) {
+  const content = latestUserContent.trim()
+  if (!content) return null
+
+  if (/(查看|列出|有哪些|当前).*(目标)|目标.*(列表|有哪些)/u.test(content)) {
+    return { toolName: 'goal.list', input: {}, confidence: 0.82, reason: '本地兜底：用户明确要求查看目标。' }
+  }
+
+  if (/(查看|当前|今天|下一步).*(行动|任务|要做什么)|今天.*(做什么|下一步)/u.test(content)) {
+    return { toolName: 'today.get', input: {}, confidence: 0.82, reason: '本地兜底：用户明确要求查看今日行动。' }
+  }
+
+  if (/(当前|查看|读取).*(模型|model)|模型.*(配置|是什么)/iu.test(content)) {
+    return { toolName: 'settings.model.get', input: {}, confidence: 0.82, reason: '本地兜底：用户明确要求查看模型配置。' }
+  }
+
+  if (/(创建|生成|新增|新建).*(目标)|目标.*(创建|生成|新增|新建)/u.test(content)) {
+    const title = pickTextAfterCommand(content)
+    if (title.length >= 2) {
+      return {
+        toolName: 'goal.create_draft',
+        input: {
+          title: trimForPrompt(title, 60),
+          rawInput: content,
+          interpretedGoal: title,
+        },
+        confidence: 0.8,
+        reason: '本地兜底：用户明确要求创建目标草稿。',
+      }
+    }
+  }
+
+  if (/(写入|写|记录).*(日志|记录)|记到日志|写个日志/u.test(content)) {
+    const contentToWrite = pickTextAfterCommand(content)
+    if (contentToWrite.length >= 2) {
+      return {
+        toolName: 'log.write_daily',
+        input: {
+          content: contentToWrite,
+        },
+        confidence: 0.8,
+        reason: '本地兜底：用户明确要求写入日志。',
+      }
+    }
+  }
+
+  if (/(生成|写|做).*(复盘|周报|日报|月报|季报|年报)|复盘一下/u.test(content)) {
+    return {
+      toolName: 'review.generate',
+      input: {
+        type: inferReviewType(content),
+      },
+      confidence: 0.8,
+      reason: '本地兜底：用户明确要求生成复盘。',
+    }
+  }
+
+  return null
+}
+
 export async function generateAssistantReply(userId: string, threadId: string, latestUserContent: string) {
   const apiKey = process.env.DEEPSEEK_API_KEY
   const modelConfig = await prisma.modelConfig.findFirst({
@@ -165,7 +244,8 @@ export async function generateAssistantReply(userId: string, threadId: string, l
 
 export async function generateAgentToolIntent(userId: string, latestUserContent: string) {
   const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) return null
+  const fallbackIntent = generateFallbackAgentToolIntent(latestUserContent)
+  if (!apiKey) return fallbackIntent
 
   const modelConfig = await prisma.modelConfig.findFirst({
     where: { userId, isDefault: true },
@@ -212,17 +292,17 @@ export async function generateAgentToolIntent(userId: string, latestUserContent:
     const content = data?.choices?.[0]?.message?.content
     if (typeof content !== 'string') return null
     const parsed = parseAgentToolIntentJson(content)
-    if (!parsed) return null
+    if (!parsed) return fallbackIntent
 
     const toolName = typeof parsed.toolName === 'string' ? parsed.toolName : null
     const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0
     const input = parsed.input && typeof parsed.input === 'object' ? parsed.input : {}
     const reason = typeof parsed.reason === 'string' ? parsed.reason : ''
-    if (!toolName || confidence < 0.75) return null
-    if (!tools.some((tool) => tool.name === toolName)) return null
+    if (!toolName || confidence < 0.75) return fallbackIntent
+    if (!tools.some((tool) => tool.name === toolName)) return fallbackIntent
 
     return { toolName, input, confidence, reason }
   } catch {
-    return null
+    return fallbackIntent
   }
 }

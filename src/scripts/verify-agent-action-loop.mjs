@@ -80,6 +80,7 @@ function verifySharedRuntimeContracts() {
   const readHandlers = readProjectFile('src/lib/agent-tool-read-handlers.mjs')
   const writeHandlers = readProjectFile('src/lib/agent-tool-write-handlers.mjs')
   const executor = readProjectFile('src/lib/agent-tool-executor.mjs')
+  const agentRuntime = readProjectFile('src/lib/agent-runtime.ts')
   const webRuntime = readProjectFile('src/lib/agent-tools.ts')
   const qqWorker = readProjectFile('src/scripts/qq-bot-worker.mjs')
   const schedulerWorker = readProjectFile('src/scripts/scheduler-worker.mjs')
@@ -98,6 +99,18 @@ function verifySharedRuntimeContracts() {
     'read and write handler files scanned',
   )
   record(
+    'AAL-GOAL-DRAFT-CONTRACT',
+    'goal.create_draft persists the full goal scaffold, not only a reasoning card',
+    readHandlers.includes('keyResult.create') && readHandlers.includes('goalCondition.create') && readHandlers.includes('stagePlan.create') && readHandlers.includes('dailyAction.create') && readHandlers.includes('markdownDocument.create'),
+    'goal.create_draft creates KR, conditions, stages, today action and a Markdown goal document',
+  )
+  record(
+    'AAL-REVIEW-GENERATE-CONTRACT',
+    'review.generate shared tool writes Review, LogEntry and MarkdownDocument',
+    readHandlers.includes('review.create') && readHandlers.includes('logEntry.upsert') && readHandlers.includes('markdownDocument.upsert') && readHandlers.includes('buildSharedReviewMarkdown'),
+    'review.generate persists review evidence in shared runtime',
+  )
+  record(
     'AAL-SHARED-EXECUTOR',
     'shared executor centralizes confirmation, execution and audit writing',
     executor.includes('executeAgentToolWithPrisma') && executor.includes('recordAgentToolActionWithPrisma') && executor.includes('pending_confirmation') && executor.includes('agentToolAction.create'),
@@ -110,6 +123,12 @@ function verifySharedRuntimeContracts() {
     'src/lib/agent-tools.ts is a thin adapter',
   )
   record(
+    'AAL-TOOL-ROUTER-FALLBACK',
+    'Agent tool router has conservative local fallback for explicit commands when model JSON routing fails',
+    agentRuntime.includes('generateFallbackAgentToolIntent') && agentRuntime.includes('goal.create_draft') && agentRuntime.includes('review.generate') && agentRuntime.includes('log.write_daily') && agentRuntime.includes('return fallbackIntent'),
+    'src/lib/agent-runtime.ts scanned',
+  )
+  record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
@@ -120,6 +139,12 @@ function verifySharedRuntimeContracts() {
     'Scheduler reminder.send audit uses shared audit writer without exposing a user-callable tool',
     schedulerWorker.includes('recordAgentToolActionWithPrisma') && schedulerWorker.includes("toolName: 'reminder.send'") && !sharedCatalog.includes("name: 'reminder.send'"),
     'src/scripts/scheduler-worker.mjs and shared catalog scanned',
+  )
+  record(
+    'AAL-CHECKIN-DIAGNOSIS-CONTRACT',
+    'checkin.submit shared tool writes diagnosis and Markdown log evidence for partial/not-done feedback',
+    writeHandlers.includes('diagnosis.create') && writeHandlers.includes('logEntry.upsert') && writeHandlers.includes('markdownDocument.upsert') && writeHandlers.includes('inferSharedDiagnosis'),
+    'checkin.submit creates diagnosis, LogEntry and MarkdownDocument in shared runtime',
   )
 }
 
@@ -184,6 +209,99 @@ async function run() {
   )
 
   if (shouldWrite) {
+    const draft = await executeTool(
+      'goal.create_draft',
+      {
+        title: `闭环验收目标 ${todayText()}`,
+        rawInput: '我想验证 Agent 能不能把一个目标拆成 KR、条件、阶段和今日行动。',
+        interpretedGoal: '验证 Agent 目标创建闭环是否可用。',
+        horizonStart: todayText(),
+        horizonEnd: todayText(),
+        successSignals: ['目标草稿可以被确认', 'Today 可以接住下一步行动'],
+        keyResults: [
+          {
+            title: '目标草稿生成完整结构',
+            metricType: 'boolean',
+            currentValue: 'false',
+            targetValue: 'true',
+            progress: 0,
+            whyNecessary: '没有完整结构，目标页面无法表达推进关系。',
+          },
+          {
+            title: '确认后成为当前主目标',
+            metricType: 'boolean',
+            currentValue: 'false',
+            targetValue: 'true',
+            progress: 0,
+            whyNecessary: '不成为当前主目标，Today 无法围绕它安排行动。',
+          },
+        ],
+        necessaryConditions: [
+          {
+            title: '拥有可验证的目标结构',
+            conditionType: 'hard',
+            status: 'partial',
+            whyRequired: '这是 Agent 建目标闭环的最低数据条件。',
+          },
+        ],
+        dailyAction: {
+          title: '检查目标草稿是否完整',
+          doneWhen: '可以看到 KR、必要条件、阶段和今日行动。',
+          minimumStep: '读取创建结果里的结构化字段。',
+          fallbackAction: '只确认目标草稿是否存在。',
+          estimatedMinutes: 5,
+          checkinQuestion: '这个目标草稿是否完整？',
+        },
+      },
+      false,
+    )
+    const draftResult = draft.data?.result
+    record(
+      'AAL-GOAL-DRAFT-WRITE',
+      'goal.create_draft writes Goal, reasoning card, KR, conditions, stage plan, daily action and Markdown document',
+      Boolean(
+        draft.data?.needsConfirmation === false
+        && draftResult?.goal?.id
+        && draftResult?.reasoningCard?.id
+        && draftResult?.keyResults?.length >= 2
+        && draftResult?.conditions?.length >= 1
+        && draftResult?.stagePlans?.length >= 1
+        && draftResult?.dailyAction?.id
+        && draftResult?.markdownDocument?.path,
+      ),
+      `goal=${draftResult?.goal?.id}; kr=${draftResult?.keyResults?.length || 0}; conditions=${draftResult?.conditions?.length || 0}; stages=${draftResult?.stagePlans?.length || 0}; action=${draftResult?.dailyAction?.id}; md=${draftResult?.markdownDocument?.path}`,
+    )
+
+    const activatePending = await executeTool(
+      'goal.update',
+      {
+        goalId: draftResult?.goal?.id,
+        status: 'ACTIVE',
+        isCurrentFocus: true,
+      },
+      false,
+    )
+    record(
+      'AAL-GOAL-ACTIVATE-PENDING',
+      'activating a drafted goal requires confirmation',
+      Boolean(activatePending.data?.needsConfirmation === true && activatePending.data?.action?.status === 'pending_confirmation'),
+      `action=${activatePending.data?.action?.id}; status=${activatePending.data?.action?.status}`,
+    )
+
+    const activatedGoal = await confirmToolAction(activatePending.data?.action?.id)
+    const activationResult = activatedGoal.data?.execution?.result
+    record(
+      'AAL-GOAL-ACTIVATE-CONFIRMED',
+      'confirmed goal.update activates the goal and confirms its reasoning card',
+      Boolean(
+        activatedGoal.data?.confirmed === true
+        && activationResult?.goal?.status === 'ACTIVE'
+        && activationResult?.goal?.isCurrentFocus === true
+        && activationResult?.reasoningCard?.status === 'CONFIRMED',
+      ),
+      `goal=${activationResult?.goal?.id}; status=${activationResult?.goal?.status}; card=${activationResult?.reasoningCard?.status}`,
+    )
+
     const pending = await executeTool(
       'today.set_next_action',
       {
@@ -227,9 +345,9 @@ async function run() {
     )
     record(
       'AAL-CHECKIN-WRITE',
-      'checkin.submit can create Checkin and audit action',
-      Boolean(checkin.data?.action?.status === 'executed' && checkin.data?.result?.id),
-      `checkin=${checkin.data?.result?.id}; audit=${checkin.data?.action?.id}`,
+      'checkin.submit can create Checkin, diagnosis, log evidence and audit action',
+      Boolean(checkin.data?.action?.status === 'executed' && checkin.data?.result?.checkin?.id && checkin.data?.result?.diagnosis?.id && checkin.data?.result?.logEntry?.id && checkin.data?.result?.markdownDocument?.id),
+      `checkin=${checkin.data?.result?.checkin?.id}; diagnosis=${checkin.data?.result?.diagnosis?.category}; log=${checkin.data?.result?.logEntry?.path}; audit=${checkin.data?.action?.id}`,
     )
 
     const log = await executeTool(
@@ -246,6 +364,21 @@ async function run() {
       'log.write_daily can write Markdown document and audit action',
       Boolean(log.data?.action?.status === 'executed' && log.data?.result?.path),
       `path=${log.data?.result?.path}; audit=${log.data?.action?.id}`,
+    )
+
+    const review = await executeTool(
+      'review.generate',
+      {
+        goalId: activatedGoal.data?.execution?.result?.goal?.id,
+        type: 'weekly',
+      },
+      false,
+    )
+    record(
+      'AAL-REVIEW-GENERATE-WRITE',
+      'review.generate can create Review, LogEntry and MarkdownDocument from Agent runtime',
+      Boolean(review.data?.action?.status === 'drafted' && review.data?.result?.review?.id && review.data?.result?.logEntry?.id && review.data?.result?.markdownDocument?.id && review.data?.result?.markdown?.includes('## 下周期重点')),
+      `review=${review.data?.result?.review?.id}; log=${review.data?.result?.logEntry?.path}; audit=${review.data?.action?.id}`,
     )
 
     const reminders = await request('/api/settings/reminders', {

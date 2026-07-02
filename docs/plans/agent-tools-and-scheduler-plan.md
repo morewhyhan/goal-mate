@@ -198,6 +198,7 @@ P0 提醒类型：
 - 2026-07-02：Settings 页面改为 Control Center，接入真实模型配置、提醒规则、QQ 绑定、工具审计、调度记录和数据导出。
 - 2026-07-02：QQ Worker 接入 Scheduler 回复闭环；用户回复最近一次 QQ Scheduler 提醒后，系统会记录 check-in、追加今日日志，周复盘场景生成复盘草稿，并把 SchedulerEvent 标记为 `responded`。
 - 2026-07-02：新增 `docs/test-cases/agent-action-loop-v0.2-test-cases.md` 和 `src/scripts/verify-agent-action-loop.mjs`，提供 Agent 工具、Settings Control Center、提醒规则、导出和 DB 契约的自动化验收入口。
+- 2026-07-02：强化 `goal.create_draft`，现在会一次性生成 Goal、GoalReasoningCard、KR、必要条件、阶段计划、今日启动行动和目标 Markdown；`goal.update` 在确认成为当前主目标时会同步确认推理卡，避免 active goal 缺少 confirmed reasoning card。
 - 2026-07-02：Agent 页面新增工具确认卡片；新增工具动作确认/取消 API，用户可在 Web 里点击确认或取消，不再依赖输入“确认执行”。
 - 2026-07-02：发现 Web / QQ 工具逻辑重复风险；新增共享工具运行时重构计划和自部署 worker 运行事实文档。
 - 2026-07-02：新增 `deploy/systemd` 模板，覆盖 Web、QQ Worker、Scheduler Worker，并提供服务器安装、启动、日志查看和验证顺序说明。
@@ -213,3 +214,11 @@ P0 提醒类型：
 - 2026-07-02：新增仓库根 `README.md`，把产品定位、当前状态、常用命令、验收分层和安全边界作为项目总入口。
 - 2026-07-02：共享工具运行时重构推进第一步；Web 和 QQ 现在共享工具目录、确认语识别和工具回复文案，业务 handler 后续再抽。
 - 2026-07-02：共享工具运行时重构推进第二步；Web 和 QQ 现在共享参数读取、日期路径、状态归一化和工具意图 JSON 解析。
+
+- 2026-07-02：强化共享 `checkin.submit`，Agent/QQ 路径现在和 Today 页面一样会在 partial/not_done 时生成 Diagnosis，并把 Check-in、诊断问题和调整建议写入当天 LogEntry/MarkdownDocument。
+
+- 2026-07-02：统一 Agent 日志路径，`log.write_daily` 默认写入 `logs/<year>/Qx/<year-month>/Wx/<day>.md`，和 Today Check-in、Logs 文件树保持一致。
+
+- 2026-07-02：强化共享 `review.generate`，Agent/QQ 路径现在会生成 Review，并同步写入周期 LogEntry 与 MarkdownDocument；复盘不再只是返回一段临时 markdown。
+
+- 2026-07-02：强化 Agent 工具路由，`generateAgentToolIntent` 在模型缺失、JSON 解析失败或置信度不足时，会对明确的查看目标、查看今日行动、查看模型、创建目标草稿、写日志、生成复盘指令使用保守本地兜底；不自动猜测高风险操作。

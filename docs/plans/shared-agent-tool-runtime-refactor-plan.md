@@ -152,6 +152,7 @@ pnpm worker:qq
 - 2026-07-02：继续扩展 `src/lib/agent-tool-shared.mjs`，Web 和 QQ 已共享参数读取、日期路径、check-in 状态归一化和工具意图 JSON 解析。
 - 2026-07-02：新增 `src/lib/agent-tool-read-handlers.mjs`，Web 和 QQ 已共享 `goal.list`、`goal.get`、`goal.create_draft`、`today.get`、`review.generate`、`settings.model.get` 的业务 handler；下一步抽取执行类写入工具。
 - 2026-07-02：新增 `src/lib/agent-tool-write-handlers.mjs`，Web 和 QQ 已共享 `goal.update`、`today.set_next_action`、`checkin.submit`、`log.write_daily`、`reminder.schedule`、`settings.model.update` 的业务 handler。
+- 2026-07-02：`goal.create_draft` 从“只创建 Goal + 推理卡”升级为完整目标草稿 scaffold：KR、必要条件、阶段计划、今日启动行动、目标 Markdown 同步落库；`goal.update` 激活目标时同步确认最新推理卡。
 - 2026-07-02：删除 `src/scripts/qq-bot-worker.mjs` 中已经不可达的旧工具业务分支，QQ Worker 现在只通过 shared read/write handlers 执行业务动作。
 - 2026-07-02：更新 `src/scripts/verify-agent-action-loop.mjs`，新增 shared catalog、shared read/write handlers、Web runtime、QQ Worker 通道适配层的源码契约检查。
 - 2026-07-02：重写 `src/lib/agent-tools.ts` 为薄适配层，删除 Web 侧旧业务 handler body；业务动作统一由 shared read/write handlers 承载。
@@ -159,3 +160,9 @@ pnpm worker:qq
 - 2026-07-02：调整 Scheduler 回复路径的工具执行上下文，用户在 QQ 回复主动提醒时仍由 QQ 通道接收，但 `AgentToolAction.source` 记录为 `scheduler`。
 - 2026-07-02：扩展 `src/lib/agent-tool-executor.mjs`，新增 shared audit writer；Scheduler Worker 的内部 `reminder.send` 成功/失败审计改为共用该写入函数。
 - 2026-07-02：修正 `agent-tool-runtime.md` 和 `qq-bot-integration.md` 中过期的“handler 未共享、QQ 参数待获取”描述，文档事实已更新为 shared executor 和服务器常驻验证阶段。
+
+- 2026-07-02：`checkin.submit` 从“只记录反馈”升级为共享诊断闭环：部分完成/没做会生成 Diagnosis，并同步写入当天 LogEntry 与 MarkdownDocument，保证 Web Agent 和 QQ Agent 的反馈路径一致。
+
+- 2026-07-02：`review.generate` 从“只返回 markdown 草稿”升级为共享复盘闭环：生成 Review、周期 LogEntry 和 MarkdownDocument，和 `/api/reviews/generate` 的业务沉淀方式保持一致。
+
+- 2026-07-02：Agent runtime 增加保守本地工具路由 fallback，降低模型 JSON 路由失败导致 Agent 退化成普通聊天的风险；fallback 仅覆盖用户明确表达的 read/draft/log/review 指令。

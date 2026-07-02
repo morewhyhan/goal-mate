@@ -1,9 +1,312 @@
 import {
+  readAgentToolNumber,
   readAgentToolString,
 } from './agent-tool-shared.mjs'
 import {
   getSharedCurrentGoal,
 } from './agent-tool-business-helpers.mjs'
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const metricTypes = new Set(['BOOLEAN', 'COUNT', 'PERCENT', 'WEIGHT', 'TEXT'])
+const conditionTypes = new Set(['HARD', 'ASSUMED', 'SUPPORTING'])
+const conditionStatuses = new Set(['MISSING', 'PARTIAL', 'SATISFIED', 'INVALIDATED'])
+
+function isRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * DAY_MS)
+}
+
+function parseOptionalDate(value, fallback) {
+  if (!value) return fallback
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed
+}
+
+function readAnyString(input, keys, fallback = '') {
+  for (const key of keys) {
+    const value = readAgentToolString(input, key)
+    if (value) return value
+  }
+  return fallback
+}
+
+function normalizeEnum(value, allowed, fallback) {
+  const normalized = String(value || '').trim().replaceAll('-', '_').toUpperCase()
+  if (allowed.has(normalized)) return normalized
+  return fallback
+}
+
+function normalizeStringArray(value, fallback) {
+  const items = Array.isArray(value) ? value : []
+  const normalized = items.map((item) => {
+    if (typeof item === 'string') return item.trim()
+    if (isRecord(item)) return readAnyString(item, ['title', 'text', 'summary', 'value'])
+    return ''
+  }).filter(Boolean)
+  return normalized.length ? normalized : fallback
+}
+
+function normalizeKeyResults(input, title) {
+  const rawItems = Array.isArray(input.keyResults)
+    ? input.keyResults
+    : Array.isArray(input.key_results)
+      ? input.key_results
+      : []
+  const normalized = rawItems.map((item) => {
+    if (typeof item === 'string') {
+      return {
+        title: item.trim(),
+        metricType: 'TEXT',
+        currentValue: '未开始',
+        targetValue: '完成',
+        progress: 0,
+        whyNecessary: '这是判断目标是否推进的必要结果。',
+      }
+    }
+    if (!isRecord(item)) return null
+    const itemTitle = readAgentToolString(item, 'title')
+    if (!itemTitle) return null
+    return {
+      title: itemTitle,
+      metricType: normalizeEnum(readAnyString(item, ['metricType', 'metric_type'], 'TEXT'), metricTypes, 'TEXT'),
+      currentValue: readAnyString(item, ['currentValue', 'current_value'], '未开始'),
+      targetValue: readAnyString(item, ['targetValue', 'target_value'], '完成'),
+      progress: Math.min(1, Math.max(0, readAgentToolNumber(item, 'progress', 0))),
+      whyNecessary: readAnyString(item, ['whyNecessary', 'why_necessary'], '这是判断目标是否推进的必要结果。'),
+    }
+  }).filter(Boolean)
+
+  return normalized.length ? normalized : [
+    {
+      title: `确认「${title}」的可验收完成标准`,
+      metricType: 'TEXT',
+      currentValue: '未确认',
+      targetValue: '用户确认完成标准',
+      progress: 0,
+      whyNecessary: '没有可验收标准，目标无法判断是否真的推进。',
+    },
+    {
+      title: `完成「${title}」的第一次有效行动`,
+      metricType: 'BOOLEAN',
+      currentValue: 'false',
+      targetValue: 'true',
+      progress: 0,
+      whyNecessary: '目标必须落到具体行动，否则只停留在想法层面。',
+    },
+  ]
+}
+
+function normalizeConditions(input) {
+  const rawItems = Array.isArray(input.necessaryConditions)
+    ? input.necessaryConditions
+    : Array.isArray(input.necessary_conditions)
+      ? input.necessary_conditions
+      : Array.isArray(input.conditions)
+        ? input.conditions
+        : []
+  const normalized = rawItems.map((item) => {
+    if (typeof item === 'string') {
+      return {
+        title: item.trim(),
+        type: 'HARD',
+        status: 'MISSING',
+        whyRequired: '这是目标推进必须补齐的条件。',
+      }
+    }
+    if (!isRecord(item)) return null
+    const title = readAgentToolString(item, 'title')
+    if (!title) return null
+    return {
+      title,
+      type: normalizeEnum(readAnyString(item, ['type', 'conditionType', 'condition_type'], 'HARD'), conditionTypes, 'HARD'),
+      status: normalizeEnum(readAnyString(item, ['status'], 'MISSING'), conditionStatuses, 'MISSING'),
+      whyRequired: readAnyString(item, ['whyRequired', 'why_required'], '这是目标推进必须补齐的条件。'),
+    }
+  }).filter(Boolean)
+
+  return normalized.length ? normalized : [
+    {
+      title: '明确成功标准和时间边界',
+      type: 'HARD',
+      status: 'MISSING',
+      whyRequired: '没有成功标准和时间边界，系统无法拆出可靠 KR 和阶段计划。',
+    },
+    {
+      title: '确定今天能启动的最小行动',
+      type: 'HARD',
+      status: 'PARTIAL',
+      whyRequired: '目标需要立刻进入行动反馈，否则计划不会产生真实证据。',
+    },
+  ]
+}
+
+function buildStageInputs(input, horizonStart, horizonEnd, conditionIds) {
+  const rawItems = Array.isArray(input.stagePlans)
+    ? input.stagePlans
+    : Array.isArray(input.stage_plans)
+      ? input.stage_plans
+      : Array.isArray(input.stages)
+        ? input.stages
+        : []
+  const normalized = rawItems.map((item, index) => {
+    if (!isRecord(item)) return null
+    const title = readAgentToolString(item, 'title')
+    if (!title) return null
+    return {
+      title,
+      stageGoal: readAnyString(item, ['stageGoal', 'stage_goal'], title),
+      startDate: parseOptionalDate(readAnyString(item, ['startDate', 'start_date']), addDays(horizonStart, index * 7)),
+      endDate: parseOptionalDate(readAnyString(item, ['endDate', 'end_date']), index === rawItems.length - 1 ? horizonEnd : addDays(horizonStart, (index + 1) * 7 - 1)),
+      linkedConditionIds: conditionIds,
+      successSignals: normalizeStringArray(item.successSignals || item.success_signals, [title]),
+      sortOrder: index,
+    }
+  }).filter(Boolean)
+
+  if (normalized.length) return normalized
+
+  const middle = addDays(horizonStart, Math.max(1, Math.round((horizonEnd.getTime() - horizonStart.getTime()) / DAY_MS / 2)))
+  return [
+    {
+      title: '澄清和确认',
+      stageGoal: '把目标变成可验收、可执行、可追踪的计划。',
+      startDate: horizonStart,
+      endDate: middle,
+      linkedConditionIds: conditionIds,
+      successSignals: ['完成标准已确认', '今天的最小行动已生成'],
+      sortOrder: 0,
+    },
+    {
+      title: '执行和反馈',
+      stageGoal: '通过每日行动和复盘持续推进目标。',
+      startDate: addDays(middle, 1),
+      endDate: horizonEnd,
+      linkedConditionIds: conditionIds,
+      successSignals: ['每日行动有反馈', 'KR 进度可以被更新'],
+      sortOrder: 1,
+    },
+  ]
+}
+
+function buildDraftMarkdown({ goal, reasoningCard, keyResults, conditions, stagePlans, dailyAction }) {
+  return [
+    `# ${goal.title}`,
+    '',
+    `- 状态：${goal.status}`,
+    `- 时间：${goal.horizonStart?.toISOString().slice(0, 10) || '未定'} -> ${goal.horizonEnd?.toISOString().slice(0, 10) || '未定'}`,
+    '',
+    '## 目标理解',
+    '',
+    reasoningCard.purposeSummary,
+    '',
+    '## KR',
+    '',
+    ...keyResults.map((item) => `- ${item.title}：${item.currentValue || '未开始'} -> ${item.targetValue || '完成'}`),
+    '',
+    '## 必要条件',
+    '',
+    ...conditions.map((item) => `- ${item.title}：${item.status}。${item.whyRequired}`),
+    '',
+    '## 阶段',
+    '',
+    ...stagePlans.map((item) => `- ${item.title}：${item.stageGoal}`),
+    '',
+    '## 今天先做',
+    '',
+    `- 行动：${dailyAction.title}`,
+    `- 完成标准：${dailyAction.doneWhen}`,
+    `- 最小启动：${dailyAction.minimumStep}`,
+    '',
+  ].join('\n')
+}
+
+function normalizeReviewType(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'daily') return 'daily'
+  if (normalized === 'monthly') return 'monthly'
+  if (normalized === 'quarterly') return 'quarterly'
+  if (normalized === 'yearly') return 'yearly'
+  if (normalized === 'goal_cycle') return 'goal_cycle'
+  return 'weekly'
+}
+
+function getWeekNumber(date) {
+  const copied = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const day = copied.getUTCDay() || 7
+  copied.setUTCDate(copied.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(copied.getUTCFullYear(), 0, 1))
+  return Math.ceil((((copied.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+}
+
+function padDatePart(value) {
+  return String(value).padStart(2, '0')
+}
+
+function buildSharedReviewLogPath(type, date = new Date()) {
+  const year = date.getFullYear()
+  const quarter = `Q${Math.floor(date.getMonth() / 3) + 1}`
+  const month = `${year}-${padDatePart(date.getMonth() + 1)}`
+  const week = `W${padDatePart(getWeekNumber(date))}`
+
+  if (type === 'yearly') return `logs/${year}/${year}.md`
+  if (type === 'quarterly') return `logs/${year}/${quarter}/${year}-${quarter}.md`
+  if (type === 'monthly') return `logs/${year}/${quarter}/${month}/${month}.md`
+  return `logs/${year}/${quarter}/${month}/${week}/${year}-${week}.md`
+}
+
+function reviewTypeToPeriodType(type) {
+  if (type === 'yearly') return 'YEAR'
+  if (type === 'quarterly') return 'QUARTER'
+  if (type === 'monthly') return 'MONTH'
+  return 'WEEK'
+}
+
+function reviewTypeToPrismaType(type) {
+  if (type === 'daily') return 'DAILY'
+  if (type === 'monthly') return 'MONTHLY'
+  if (type === 'quarterly') return 'QUARTERLY'
+  if (type === 'yearly') return 'YEARLY'
+  if (type === 'goal_cycle') return 'GOAL_CYCLE'
+  return 'WEEKLY'
+}
+
+function buildSharedReviewMarkdown(input) {
+  const doneCount = input.checkins.filter((item) => item.result === 'DONE').length
+  const partialCount = input.checkins.filter((item) => item.result === 'PARTIAL').length
+  const notDoneCount = input.checkins.filter((item) => item.result === 'NOT_DONE').length
+  const missingConditions = input.conditions.filter((item) => item.status === 'MISSING' || item.status === 'PARTIAL')
+  const nextCondition = missingConditions[0]?.title || input.conditions[0]?.title || '继续确认当前关键条件'
+
+  return [
+    `# ${input.goalTitle} ${input.type} review`,
+    '',
+    '## 本周期实际推进',
+    '',
+    `- 完成：${doneCount}`,
+    `- 部分完成：${partialCount}`,
+    `- 未完成：${notDoneCount}`,
+    '',
+    '## KR 变化',
+    '',
+    ...input.keyResults.map((kr) => `- ${kr.title}：${Math.round((kr.progress || 0) * 100)}%（${kr.currentValue || '当前值待记录'} / ${kr.targetValue || '目标值待记录'}）`),
+    '',
+    '## 条件变化',
+    '',
+    ...input.conditions.map((condition) => `- ${condition.title}：${condition.status || 'unknown'}`),
+    '',
+    '## 未完成诊断',
+    '',
+    ...(input.diagnoses.length ? input.diagnoses.map((diagnosis) => `- ${diagnosis.category}：${diagnosis.nextQuestion}`) : ['- 暂无明确诊断。']),
+    '',
+    '## 下周期重点',
+    '',
+    `继续补齐「${nextCondition}」。`,
+    '',
+  ].join('\n')
+}
 
 export const sharedReadDraftToolNames = [
   'goal.list',
@@ -55,33 +358,145 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
   }
 
   if (toolName === 'goal.create_draft') {
-    const title = readAgentToolString(input, 'title')
+    const objective = isRecord(input.objective) ? input.objective : {}
+    const horizon = isRecord(input.horizon) ? input.horizon : {}
+    const title = readAgentToolString(input, 'title') || readAgentToolString(objective, 'title')
     if (!title) throw new Error('缺少目标标题。')
 
     const rawInput = readAgentToolString(input, 'rawInput', title)
-    const goal = await prisma.goal.create({
-      data: {
-        userId,
-        title,
-        rawInput,
-        interpretedGoal: readAgentToolString(input, 'interpretedGoal', rawInput),
-        status: 'DRAFT',
-        isCurrentFocus: false,
-      },
+    const horizonStart = parseOptionalDate(readAnyString(input, ['horizonStart', 'startDate']) || readAnyString(horizon, ['start_date', 'startDate']), new Date())
+    const horizonEnd = parseOptionalDate(readAnyString(input, ['horizonEnd', 'endDate']) || readAnyString(horizon, ['end_date', 'endDate']), addDays(horizonStart, 30))
+    const interpretedGoal = readAgentToolString(input, 'interpretedGoal')
+      || readAgentToolString(objective, 'plain_language_summary')
+      || rawInput
+    const keyResultsInput = normalizeKeyResults(input, title)
+    const conditionInputs = normalizeConditions(input)
+    const successSignals = normalizeStringArray(input.successSignals || input.success_signals, keyResultsInput.map((item) => item.title))
+    const currentGap = isRecord(input.currentGap) ? input.currentGap : isRecord(input.current_gap) ? input.current_gap : {}
+
+    const result = await prisma.$transaction(async (tx) => {
+      const goal = await tx.goal.create({
+        data: {
+          userId,
+          title,
+          rawInput,
+          interpretedGoal,
+          horizonStart,
+          horizonEnd,
+          status: 'DRAFT',
+          isCurrentFocus: false,
+        },
+      })
+
+      const conditions = []
+      for (const condition of conditionInputs) {
+        conditions.push(await tx.goalCondition.create({
+          data: {
+            userId,
+            goalId: goal.id,
+            title: condition.title,
+            type: condition.type,
+            status: condition.status,
+            whyRequired: condition.whyRequired,
+            evidence: { source: 'goal.create_draft' },
+          },
+        }))
+      }
+
+      const gapTitle = readAnyString(currentGap, ['conditionTitle', 'condition_title'], conditionInputs[0]?.title || '')
+      const currentGapCondition = conditions.find((condition) => condition.title === gapTitle) || conditions[0]
+
+      const keyResults = []
+      for (const keyResult of keyResultsInput) {
+        keyResults.push(await tx.keyResult.create({
+          data: {
+            userId,
+            goalId: goal.id,
+            title: keyResult.title,
+            metricType: keyResult.metricType,
+            currentValue: keyResult.currentValue,
+            targetValue: keyResult.targetValue,
+            progress: keyResult.progress,
+            whyNecessary: keyResult.whyNecessary,
+          },
+        }))
+      }
+
+      const stageInputs = buildStageInputs(input, horizonStart, horizonEnd, conditions.map((condition) => condition.id))
+      const stagePlans = []
+      for (const stage of stageInputs) {
+        stagePlans.push(await tx.stagePlan.create({
+          data: {
+            userId,
+            goalId: goal.id,
+            title: stage.title,
+            stageGoal: stage.stageGoal,
+            startDate: stage.startDate,
+            endDate: stage.endDate,
+            linkedConditionIds: stage.linkedConditionIds,
+            successSignals: stage.successSignals,
+            status: stage.sortOrder === 0 ? 'ACTIVE' : 'DRAFT',
+            sortOrder: stage.sortOrder,
+          },
+        }))
+      }
+
+      const reasoningCard = await tx.goalReasoningCard.create({
+        data: {
+          userId,
+          goalId: goal.id,
+          purposeSummary: readAnyString(input, ['purposeSummary', 'purpose_summary'], interpretedGoal),
+          successSignals,
+          sufficientConditionSet: readAnyString(input, ['sufficientConditionSet', 'sufficient_condition_set'], conditions.map((condition) => condition.title).join(' + ')),
+          currentGapConditionId: currentGapCondition?.id,
+          recommendedFocus: readAnyString(input, ['recommendedFocus', 'recommended_focus'], currentGapCondition ? `先补齐：${currentGapCondition.title}` : '先确认目标成功标准。'),
+          confidenceScore: Math.min(1, Math.max(0, readAgentToolNumber(input, 'confidenceScore', readAgentToolNumber(input, 'confidence_score', 0.65)))),
+          evidence: input.evidence || ['用户在 Agent 对话中表达了目标意图。'],
+          status: 'PENDING_USER_CONFIRMATION',
+        },
+      })
+
+      const dailyActionInput = isRecord(input.dailyAction) ? input.dailyAction : isRecord(input.daily_action) ? input.daily_action : {}
+      const dailyAction = await tx.dailyAction.create({
+        data: {
+          userId,
+          goalId: goal.id,
+          stagePlanId: stagePlans[0]?.id,
+          conditionId: currentGapCondition.id,
+          actionDate: new Date(),
+          title: readAgentToolString(dailyActionInput, 'title', `补齐「${currentGapCondition.title}」`),
+          reason: readAgentToolString(dailyActionInput, 'reason', '目标草稿创建后，先补齐当前最大缺口。'),
+          doneWhen: readAnyString(dailyActionInput, ['doneWhen', 'done_when'], '写下目标的时间边界和至少一个可验收结果。'),
+          minimumStep: readAnyString(dailyActionInput, ['minimumStep', 'minimum_step'], '先用一句话说明：到什么时候，看到什么变化，算这件事真的推进了。'),
+          estimatedMinutes: Math.round(readAgentToolNumber(dailyActionInput, 'estimatedMinutes', readAgentToolNumber(dailyActionInput, 'estimated_minutes', 10))),
+          fallbackAction: readAnyString(dailyActionInput, ['fallbackAction', 'fallback_action'], '如果暂时说不清，只回复一个最想改变的结果。'),
+          checkinQuestion: readAnyString(dailyActionInput, ['checkinQuestion', 'checkin_question'], '这个目标的成功标准和时间边界是什么？'),
+          status: 'PLANNED',
+        },
+      })
+
+      const updatedGoal = await tx.goal.update({
+        where: { id: goal.id },
+        data: { currentReasoningCardId: reasoningCard.id },
+      })
+
+      const markdownDocument = await tx.markdownDocument.create({
+        data: {
+          userId,
+          type: 'GOAL',
+          title: goal.title,
+          path: `goals/${goal.id}.md`,
+          content: buildDraftMarkdown({ goal: updatedGoal, reasoningCard, keyResults, conditions, stagePlans, dailyAction }),
+          linkedGoalIds: [goal.id],
+          linkedActionIds: [dailyAction.id],
+          source: 'AGENT',
+        },
+      })
+
+      return { goal: updatedGoal, reasoningCard, keyResults, conditions, stagePlans, dailyAction, markdownDocument }
     })
-    const card = await prisma.goalReasoningCard.create({
-      data: {
-        userId,
-        goalId: goal.id,
-        purposeSummary: readAgentToolString(input, 'purposeSummary', rawInput),
-        successSignals: input.successSignals || [],
-        sufficientConditionSet: readAgentToolString(input, 'sufficientConditionSet', '待 Agent 与用户继续确认。'),
-        recommendedFocus: readAgentToolString(input, 'recommendedFocus', '先确认这个目标怎么算真正有进展。'),
-        evidence: input.evidence || {},
-        status: 'DRAFT',
-      },
-    })
-    return { targetId: goal.id, result: { goal, reasoningCard: card } }
+
+    return { targetId: result.goal.id, result }
   }
 
   if (toolName === 'today.get') {
@@ -100,24 +515,99 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
 
   if (toolName === 'review.generate') {
     const goal = await getSharedCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
-    const recentActions = await prisma.dailyAction.findMany({
-      where: { userId, goalId: goal.id },
-      orderBy: { actionDate: 'desc' },
-      take: 7,
-      include: { checkins: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    const type = normalizeReviewType(readAgentToolString(input, 'type', 'weekly'))
+    const periodEnd = parseOptionalDate(readAgentToolString(input, 'periodEnd'), new Date())
+    const periodStart = parseOptionalDate(readAgentToolString(input, 'periodStart'), addDays(periodEnd, -7))
+    const detail = await prisma.goal.findFirst({
+      where: { id: goal.id, userId },
+      include: {
+        keyResults: true,
+        conditions: true,
+        checkins: { orderBy: { createdAt: 'desc' }, take: 50 },
+        diagnoses: { orderBy: { createdAt: 'desc' }, take: 20 },
+      },
     })
-    const lines = [
-      `# ${readAgentToolString(input, 'type', 'daily')} review draft`,
-      '',
-      `目标：${goal.title}`,
-      '',
-      '## 最近行动',
-      ...recentActions.map((action) => `- ${action.title}：${action.status}`),
-      '',
-      '## 下一步',
-      readAgentToolString(input, 'nextFocus', '继续围绕当前最关键条件推进一个最小行动。'),
-    ]
-    return { targetId: goal.id, result: { markdown: lines.join('\n') } }
+    if (!detail) throw new Error('目标不存在。')
+
+    const markdown = buildSharedReviewMarkdown({
+      type,
+      goalTitle: detail.title,
+      keyResults: detail.keyResults,
+      conditions: detail.conditions,
+      checkins: detail.checkins,
+      diagnoses: detail.diagnoses,
+    })
+    const logPath = buildSharedReviewLogPath(type, periodEnd)
+    const logTitle = logPath.split('/').pop() || logPath
+
+    const result = await prisma.$transaction(async (tx) => {
+      const existingLog = await tx.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
+      const logEntry = await tx.logEntry.upsert({
+        where: { userId_path: { userId, path: logPath } },
+        update: {
+          title: logTitle,
+          content: existingLog ? `${existingLog.content}\n\n${markdown}` : markdown,
+          linkedGoalIds: [detail.id],
+          linkedActionIds: [],
+        },
+        create: {
+          userId,
+          periodType: reviewTypeToPeriodType(type),
+          title: logTitle,
+          path: logPath,
+          content: markdown,
+          linkedGoalIds: [detail.id],
+          linkedActionIds: [],
+        },
+      })
+      const markdownDocument = await tx.markdownDocument.upsert({
+        where: { userId_path: { userId, path: logPath } },
+        update: {
+          title: logTitle,
+          content: logEntry.content,
+          linkedGoalIds: [detail.id],
+          linkedActionIds: [],
+          source: 'AGENT',
+          frontmatter: {
+            kind: 'review',
+            reviewType: type,
+            goalTitle: detail.title,
+          },
+        },
+        create: {
+          userId,
+          type: reviewTypeToPeriodType(type),
+          title: logTitle,
+          path: logPath,
+          content: logEntry.content,
+          linkedGoalIds: [detail.id],
+          linkedActionIds: [],
+          source: 'AGENT',
+          frontmatter: {
+            kind: 'review',
+            reviewType: type,
+            goalTitle: detail.title,
+          },
+        },
+      })
+      const review = await tx.review.create({
+        data: {
+          userId,
+          goalId: detail.id,
+          type: reviewTypeToPrismaType(type),
+          periodStart,
+          periodEnd,
+          progressSummary: `本周期围绕「${detail.title}」生成复盘草案。`,
+          conditionChanges: detail.conditions.map((condition) => ({ title: condition.title, status: condition.status })),
+          blockerSummary: detail.diagnoses[0]?.nextQuestion || '暂无明确阻塞。',
+          nextFocus: detail.conditions.find((condition) => condition.status !== 'SATISFIED')?.title || '继续保持当前节奏。',
+          logEntryId: logEntry.id,
+        },
+      })
+
+      return { review, logEntry, markdownDocument, markdown }
+    })
+    return { targetId: result.review.id, result }
   }
 
   if (toolName === 'settings.model.get') {

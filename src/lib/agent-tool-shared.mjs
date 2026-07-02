@@ -51,13 +51,29 @@ export function toAgentToolDateInput(value) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed
 }
 
+function padAgentToolDate(value) {
+  return String(value).padStart(2, '0')
+}
+
+function getAgentToolWeekNumber(date) {
+  const copied = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const day = copied.getUTCDay() || 7
+  copied.setUTCDate(copied.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(copied.getUTCFullYear(), 0, 1))
+  return Math.ceil((((copied.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+}
+
 export function formatAgentToolDatePath(date) {
   const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+  const monthNumber = padAgentToolDate(date.getMonth() + 1)
+  const dayNumber = padAgentToolDate(date.getDate())
+  const month = `${year}-${monthNumber}`
+  const quarter = `Q${Math.floor(date.getMonth() / 3) + 1}`
+  const week = `W${padAgentToolDate(getAgentToolWeekNumber(date))}`
+  const day = `${year}-${monthNumber}-${dayNumber}`
   return {
-    title: `${year}-${month}-${day}`,
-    path: `Logs/${year}/${month}/${year}-${month}-${day}.md`,
+    title: day,
+    path: `logs/${year}/${quarter}/${month}/${week}/${day}.md`,
   }
 }
 
@@ -118,11 +134,39 @@ export function formatAgentToolReply(toolName, execution) {
       `状态：${actionResult.status}`,
     ].join('\n')
   }
-  if (toolName === 'goal.create_draft') return '目标草案已经生成。下一步应该确认：这个目标怎么算真正有进展。'
+  if (toolName === 'goal.create_draft') {
+    const counts = [
+      `${result?.keyResults?.length || 0} 条 KR`,
+      `${result?.conditions?.length || 0} 个必要条件`,
+      `${result?.stagePlans?.length || 0} 个阶段`,
+      result?.dailyAction ? '1 个今日启动动作' : '0 个今日启动动作',
+    ].join('、')
+    return [
+      `目标草案已经生成：${result?.goal?.title || '新目标'}`,
+      `已拆出 ${counts}。`,
+      '下一步请确认这个目标是否作为当前主目标；确认后我会把它接入 Today 的推进节奏。',
+    ].join('\n')
+  }
+  if (toolName === 'goal.update') return `目标已经更新：${result?.goal?.title || result?.title || '当前目标'}`
   if (toolName === 'today.set_next_action') return `今日下一步已经设置：${result?.title || '新的行动'}`
-  if (toolName === 'checkin.submit') return '完成情况已经记录。'
+  if (toolName === 'checkin.submit') {
+    const diagnosisLine = result?.diagnosis
+      ? `诊断：${result.diagnosis.category}，下一问：${result.diagnosis.nextQuestion}`
+      : '这次反馈没有触发诊断。'
+    return [
+      '完成情况已经记录。',
+      diagnosisLine,
+      `日志：${result?.logEntry?.path || result?.markdownDocument?.path || '今日日志'}`,
+    ].join('\n')
+  }
   if (toolName === 'log.write_daily') return `日志已经写入：${result?.path || '今日日志'}`
-  if (toolName === 'review.generate') return result?.markdown || '复盘草稿已经生成。'
+  if (toolName === 'review.generate') {
+    return [
+      '复盘草稿已经生成并写入日志。',
+      `日志：${result?.logEntry?.path || result?.markdownDocument?.path || '复盘日志'}`,
+      result?.markdown || '',
+    ].filter(Boolean).join('\n')
+  }
   if (toolName === 'reminder.schedule') return `提醒规则已经设置：${result?.reminderType || 'reminder'} ${result?.schedule || ''}`
   if (toolName === 'settings.model.get') return result ? `当前默认模型：${result.provider} / ${result.model}` : '当前还没有默认模型配置。'
   if (toolName === 'settings.model.update') return `默认模型已经更新为：${result?.provider || 'provider'} / ${result?.model || 'model'}`
