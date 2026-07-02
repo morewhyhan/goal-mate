@@ -69,7 +69,8 @@ Scheduler Worker
 | Todo | 启动 QQ Worker systemd service | 日志出现 Gateway 连接或心跳 |
 | Todo | 启动 Scheduler Worker systemd service | 日志出现 tick started |
 | Todo | QQ 发一条普通消息 | AgentThread / AgentMessage 有新增 |
-| Todo | 触发一次提醒规则 | SchedulerEvent 出现 `sent` 或 `failed` |
+| Todo | 执行一次性 Scheduler 验证 | `pnpm worker:scheduler:once` 创建 SchedulerEvent，状态为 `sent` 或 `failed` 且失败有原因 |
+| Todo | 触发一次真实提醒规则 | SchedulerEvent 出现 `sent` 或 `failed` |
 | Todo | 回复 Scheduler 提醒 | SchedulerEvent 变为 `responded`，AgentToolAction source 为 `scheduler` |
 | Todo | 打开 Settings | runtime status 能解释 Web、模型、QQ、Scheduler、Tools 状态 |
 | Todo | 停止再重启 worker | systemd 自动恢复，日志可追踪 |
@@ -81,6 +82,7 @@ Scheduler Worker
 - 三个 systemd service 都能启动。
 - QQ Worker 不因 token、intent、网络或 Gateway 鉴权立即退出。
 - Scheduler Worker 能创建 `SchedulerEvent`。
+- `pnpm worker:scheduler:once` 能立即创建一条 `SchedulerEvent`，不用等待真实提醒时间。
 - 至少一次主动提醒能成功发送，或失败原因被写入 `SchedulerEvent.errorMessage`。
 - 至少一次 Scheduler 回复能进入 shared executor，并写入 `AgentToolAction.source = scheduler`。
 - Settings 能看到最近的工具动作和调度记录。

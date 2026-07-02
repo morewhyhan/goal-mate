@@ -80,9 +80,9 @@ const packageScripts = packageJson.scripts || {}
 
 record(
   'DEPLOY-PACKAGE',
-  'package scripts expose web, QQ worker and scheduler commands',
-  Boolean(packageScripts.start && packageScripts['worker:qq'] && packageScripts['worker:scheduler']),
-  `start=${packageScripts.start || 'missing'}; worker:qq=${packageScripts['worker:qq'] || 'missing'}; worker:scheduler=${packageScripts['worker:scheduler'] || 'missing'}`,
+  'package scripts expose web, QQ worker, scheduler and one-shot scheduler commands',
+  Boolean(packageScripts.start && packageScripts['worker:qq'] && packageScripts['worker:scheduler'] && packageScripts['worker:scheduler:once']),
+  `start=${packageScripts.start || 'missing'}; worker:qq=${packageScripts['worker:qq'] || 'missing'}; worker:scheduler=${packageScripts['worker:scheduler'] || 'missing'}; worker:scheduler:once=${packageScripts['worker:scheduler:once'] || 'missing'}`,
 )
 
 for (const service of serviceFiles) {

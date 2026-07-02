@@ -28,6 +28,9 @@ const appId = process.env.QQ_BOT_APP_ID || ''
 const token = process.env.QQ_BOT_TOKEN || ''
 const tickSeconds = Number(process.env.SCHEDULER_TICK_SECONDS || '60')
 const defaultTimezone = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
+const runOnce = process.argv.includes('--once') || process.env.SCHEDULER_RUN_ONCE === '1'
+const forceReminderArg = process.argv.find((arg) => arg.startsWith('--force-reminder='))
+const forcedReminderType = forceReminderArg?.split('=')[1] || process.env.SCHEDULER_FORCE_REMINDER || ''
 const defaultRules = [
   { reminderType: 'morning_planning', schedule: process.env.SCHEDULER_MORNING_TIME || '08:30', maxPerDay: 1 },
   { reminderType: 'midday_check', schedule: process.env.SCHEDULER_MIDDAY_TIME || '12:30', maxPerDay: 1 },
@@ -51,6 +54,10 @@ function assertConfig() {
   if (!appId || !token) {
     throw new Error('QQ_BOT_APP_ID and QQ_BOT_TOKEN are required')
   }
+}
+
+function hasQqConfig() {
+  return Boolean(appId && token)
 }
 
 async function getAppAccessToken() {
@@ -143,7 +150,7 @@ function localParts(date, timezone) {
   return Object.fromEntries(parts.map((part) => [part.type, part.value]))
 }
 
-function dueInfo(rule, now = new Date()) {
+function dueInfo(rule, now = new Date(), forceReminderType = '') {
   const timezone = rule.timezone || defaultTimezone
   const parts = localParts(now, timezone)
   const schedule = String(rule.schedule || '').trim().toUpperCase()
@@ -157,6 +164,15 @@ function dueInfo(rule, now = new Date()) {
     String(parts.hour).padStart(2, '0') === String(hour).padStart(2, '0') &&
     String(parts.minute).padStart(2, '0') === String(minute).padStart(2, '0')
   const dateKey = `${parts.year}-${parts.month}-${parts.day}`
+  if (forceReminderType && forceReminderType === rule.reminderType) {
+    return {
+      due: true,
+      dueKey: `${dateKey}:${rule.reminderType}:forced:${Date.now()}`,
+      localDate: dateKey,
+      timezone,
+      forced: true,
+    }
+  }
   return {
     due,
     dueKey: `${dateKey}:${rule.reminderType}`,
@@ -309,8 +325,8 @@ async function createPendingEvent(rule, info) {
   }
 }
 
-async function processRule(rule) {
-  const info = dueInfo(rule)
+async function processRule(rule, options = {}) {
+  const info = dueInfo(rule, new Date(), options.forceReminderType || '')
   if (!info.due) return
 
   const event = await createPendingEvent(rule, info)
@@ -402,20 +418,29 @@ async function processRule(rule) {
   }
 }
 
-async function tick() {
+async function tick(options = {}) {
   await ensureDefaultRulesForBoundUsers()
   const rules = await prisma.reminderRule.findMany({
     where: { enabled: true, channel: 'qq' },
     orderBy: { createdAt: 'asc' },
   })
   for (const rule of rules) {
-    await processRule(rule)
+    await processRule(rule, options)
   }
 }
 
 async function main() {
-  assertConfig()
-  console.log(`[scheduler] started; tick=${tickSeconds}s timezone=${defaultTimezone}`)
+  if (!runOnce || !forcedReminderType) {
+    assertConfig()
+  } else if (!hasQqConfig()) {
+    console.warn('[scheduler] QQ config missing; forced one-shot run can still record no-binding failures, but send attempts will fail.')
+  }
+  console.log(`[scheduler] started; tick=${tickSeconds}s timezone=${defaultTimezone}${runOnce ? ' mode=once' : ''}${forcedReminderType ? ` force=${forcedReminderType}` : ''}`)
+  if (runOnce) {
+    await tick({ forceReminderType: forcedReminderType })
+    await prisma.$disconnect()
+    return
+  }
   while (!stopping) {
     try {
       await tick()

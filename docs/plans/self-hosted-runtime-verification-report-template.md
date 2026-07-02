@@ -53,7 +53,8 @@
 | RUNTIME-WEB | Web 可访问 | 返回 Goal Mate 页面/API | 待填写 | URL / status |
 | RUNTIME-QQ-IN | QQ 普通消息 | 写入 AgentThread / AgentMessage | 待填写 | 数据库脱敏记录 |
 | RUNTIME-QQ-TOOL | QQ 工具确认 | pending 后确认执行 | 待填写 | AgentToolAction 脱敏记录 |
-| RUNTIME-SCHEDULER-TICK | Scheduler tick | 创建 SchedulerEvent | 待填写 | SchedulerEvent 脱敏记录 |
+| RUNTIME-SCHEDULER-ONCE | Scheduler 一次性验证 | `pnpm worker:scheduler:once` 创建 SchedulerEvent | 待填写 | SchedulerEvent 脱敏记录 |
+| RUNTIME-SCHEDULER-TICK | Scheduler tick | 持续运行时创建 SchedulerEvent | 待填写 | SchedulerEvent 脱敏记录 |
 | RUNTIME-SCHEDULER-SEND | 主动提醒发送 | sent 或 failed 且有原因 | 待填写 | SchedulerEvent / errorMessage |
 | RUNTIME-SCHEDULER-REPLY | 回复主动提醒 | responded 且 source=scheduler | 待填写 | AgentToolAction 脱敏记录 |
 | RUNTIME-SETTINGS | Settings 可观察 | runtime status 可解释状态 | 待填写 | 页面截图或 API 摘要 |

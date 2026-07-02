@@ -96,8 +96,17 @@ sudo systemctl restart goal-mate-scheduler-worker.service
 2. Web API `/api/health` 返回 Goal Mate。
 3. `goal-mate-qq-worker.service` 日志出现 QQ Gateway 连接信息。
 4. 给 QQ Bot 发消息，Settings 里出现 QQ 绑定。
-5. `goal-mate-scheduler-worker.service` 按提醒规则创建 `SchedulerEvent`。
-6. Settings Control Center 能看到工具审计和调度记录。
+5. 先执行一次性 Scheduler 验证：
+
+```bash
+cd /opt/goal-mate/src
+pnpm worker:scheduler:once
+```
+
+该命令会强制触发 `morning_planning`，不用等待真实整点。期望结果是出现一条 `SchedulerEvent`：有 QQ 绑定时为 `sent`，没有绑定或平台拒绝时为 `failed` 且包含 `errorMessage`。
+
+6. `goal-mate-scheduler-worker.service` 按提醒规则持续创建 `SchedulerEvent`。
+7. Settings Control Center 能看到工具审计和调度记录。
 
 ## 8. 常见问题
 
@@ -108,4 +117,3 @@ sudo systemctl restart goal-mate-scheduler-worker.service
 | QQ 无回复 | 检查 QQ token、Gateway 权限、worker 日志 |
 | Scheduler 不发 | 检查提醒规则、时区、QQ 绑定和 `SchedulerEvent.errorMessage` |
 | DeepSeek 失败 | 检查 `DEEPSEEK_API_KEY` 和 Settings 模型测试 |
-

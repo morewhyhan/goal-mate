@@ -25,7 +25,8 @@
     "verify:secrets": "node scripts/verify-secret-hygiene.mjs",
     "verify:static": "pnpm verify:secrets && pnpm verify:deployment-config",
     "worker:qq": "node scripts/qq-bot-worker.mjs",
-    "worker:scheduler": "node scripts/scheduler-worker.mjs"
+    "worker:scheduler": "node scripts/scheduler-worker.mjs",
+    "worker:scheduler:once": "node scripts/scheduler-worker.mjs --once --force-reminder=morning_planning"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.4.1",

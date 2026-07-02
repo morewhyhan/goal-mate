@@ -16,6 +16,7 @@
 - 本轮已执行本地运行时验证：`pnpm exec prisma migrate deploy`、`pnpm db:seed`、`pnpm verify:v01:api`、登录态 API smoke、`pnpm verify:v01:business`、`pnpm verify:agent-loop:write`、`pnpm build`、Dashboard 页面 HTTP smoke，均通过。
 - 本轮已执行 Dashboard 截图 smoke，发现并修复 Today 热力图横向滚动/灰条问题；修复后 `pnpm typecheck` 和 `pnpm build` 均通过。
 - 本轮发现并修复 QQ Worker 语法失败问题；`pnpm verify:static` 已新增 QQ Worker / Scheduler Worker `node --check` 防回归检查并通过。
+- 本轮新增并验证 `pnpm worker:scheduler:once`，可在服务器上立即触发 Scheduler 验证；本地无 QQ 绑定场景已产生 `SchedulerEvent.status=failed` 和明确失败原因。
 
 ## 2. 验收层级
 
@@ -32,6 +33,7 @@
 | Next 生产构建 | `pnpm build` | 否 | 否 | 2026-07-02 已通过 |
 | Dashboard 页面 HTTP smoke | `/dashboard/today` 等页面路由 | 是 | 否 | 2026-07-02 五个页面均返回 200 |
 | Dashboard 截图 smoke | Edge headless screenshots | 是 | 否 | 2026-07-02 已执行，Today heatmap 问题已修复 |
+| Scheduler 一次性验证 | `pnpm worker:scheduler:once` | 否 | 仅发送时需要 | 2026-07-02 本地已通过无绑定失败记录场景 |
 | 服务器长期运行验收 | `docs/plans/self-hosted-runtime-verification-plan.md` | 是 | 是 | 已规划，未执行 |
 
 ## 3. 当前推荐顺序
