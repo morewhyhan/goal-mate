@@ -20,6 +20,10 @@ import {
   canHandleSharedReadDraftTool,
   runSharedReadDraftToolHandler,
 } from '../lib/agent-tool-read-handlers.mjs'
+import {
+  canHandleSharedWriteTool,
+  runSharedWriteToolHandler,
+} from '../lib/agent-tool-write-handlers.mjs'
 
 const prisma = new PrismaClient()
 
@@ -333,6 +337,9 @@ async function generateToolIntent(userId, latestUserContent) {
 async function runQqToolHandler(userId, toolName, input) {
   if (canHandleSharedReadDraftTool(toolName)) {
     return runSharedReadDraftToolHandler(prisma, userId, toolName, input)
+  }
+  if (canHandleSharedWriteTool(toolName)) {
+    return runSharedWriteToolHandler(prisma, userId, toolName, input)
   }
 
   if (toolName === 'goal.list') {

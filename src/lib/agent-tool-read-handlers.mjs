@@ -1,6 +1,9 @@
 import {
   readAgentToolString,
 } from './agent-tool-shared.mjs'
+import {
+  getSharedCurrentGoal,
+} from './agent-tool-business-helpers.mjs'
 
 export const sharedReadDraftToolNames = [
   'goal.list',
@@ -13,18 +16,6 @@ export const sharedReadDraftToolNames = [
 
 export function canHandleSharedReadDraftTool(toolName) {
   return sharedReadDraftToolNames.includes(toolName)
-}
-
-async function getCurrentGoal(prisma, userId, goalId) {
-  if (goalId) {
-    const goal = await prisma.goal.findFirst({ where: { id: goalId, userId } })
-    if (!goal) throw new Error('目标不存在。')
-    return goal
-  }
-
-  const goal = await prisma.goal.findFirst({ where: { userId, isCurrentFocus: true } })
-  if (!goal) throw new Error('当前没有主目标。')
-  return goal
 }
 
 export async function runSharedReadDraftToolHandler(prisma, userId, toolName, input = {}) {
@@ -49,7 +40,7 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
   }
 
   if (toolName === 'goal.get') {
-    const goal = await getCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
+    const goal = await getSharedCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
     const detail = await prisma.goal.findFirst({
       where: { id: goal.id, userId },
       include: {
@@ -94,7 +85,7 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
   }
 
   if (toolName === 'today.get') {
-    const goal = await getCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
+    const goal = await getSharedCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
     const actions = await prisma.dailyAction.findMany({
       where: { userId, goalId: goal.id },
       orderBy: { actionDate: 'desc' },
@@ -108,7 +99,7 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
   }
 
   if (toolName === 'review.generate') {
-    const goal = await getCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
+    const goal = await getSharedCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
     const recentActions = await prisma.dailyAction.findMany({
       where: { userId, goalId: goal.id },
       orderBy: { actionDate: 'desc' },

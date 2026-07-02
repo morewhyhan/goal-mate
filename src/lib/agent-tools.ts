@@ -15,6 +15,10 @@ import {
   canHandleSharedReadDraftTool,
   runSharedReadDraftToolHandler,
 } from '@/lib/agent-tool-read-handlers.mjs'
+import {
+  canHandleSharedWriteTool,
+  runSharedWriteToolHandler,
+} from '@/lib/agent-tool-write-handlers.mjs'
 
 export type AgentToolPermission = 'read' | 'draft' | 'execute'
 export type AgentToolSource = 'web' | 'qq' | 'scheduler'
@@ -445,9 +449,14 @@ export async function executeAgentTool(
   }
 
   try {
-    const output = canHandleSharedReadDraftTool(definition.name)
-      ? await runSharedReadDraftToolHandler(prisma, context.userId, definition.name, input)
-      : await definition.handler(context, input)
+    let output: AgentToolHandlerResult
+    if (canHandleSharedReadDraftTool(definition.name)) {
+      output = await runSharedReadDraftToolHandler(prisma, context.userId, definition.name, input)
+    } else if (canHandleSharedWriteTool(definition.name)) {
+      output = await runSharedWriteToolHandler(prisma, context.userId, definition.name, input)
+    } else {
+      output = await definition.handler(context, input)
+    }
     const action = await prisma.agentToolAction.create({
       data: {
         userId: context.userId,
