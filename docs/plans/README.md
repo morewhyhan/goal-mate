@@ -5,3 +5,7 @@
 Plan 是追加型文档，不是长期事实来源。任务完成后，需要把最终事实同步到 `docs/designs`。
 
 当前 v0.1 推进计划：`docs/plans/v0.1-implementation-plan.md`。
+
+当前 Agent Action Loop 增量计划：`docs/plans/agent-tools-and-scheduler-plan.md`。
+
+当前共享工具运行时重构计划：`docs/plans/shared-agent-tool-runtime-refactor-plan.md`。

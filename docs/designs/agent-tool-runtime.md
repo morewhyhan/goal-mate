@@ -150,3 +150,9 @@ tool_result
 当前 Web Agent 使用 `src/lib/agent-tools.ts`，QQ Worker 在 `src/scripts/qq-bot-worker.mjs` 中实现了同等工具逻辑。
 
 这是为了让 QQ 常驻 worker 不依赖 Next.js TypeScript alias 启动链路。后续应抽出 runtime-neutral 的工具服务，避免 Web 和 QQ 两套工具逻辑长期分叉。
+
+对应重构计划：
+
+```text
+docs/plans/shared-agent-tool-runtime-refactor-plan.md
+```
