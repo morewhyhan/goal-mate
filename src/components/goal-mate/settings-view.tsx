@@ -241,6 +241,10 @@ export function SettingsView() {
         ...behaviorDraft.today,
         generate_time: '08:30',
       },
+      dataPrivacy: {
+        ...behaviorDraft.dataPrivacy,
+        redact_secrets: true,
+      },
     })
   }
 
@@ -399,7 +403,15 @@ export function SettingsView() {
               <h3 className="font-semibold text-stone-950">Data & Privacy</h3>
               <p className="mt-1 text-xs leading-5 text-stone-500">决定导出和隐私边界。</p>
               <div className="mt-4 grid gap-3">
-                <ToggleRow label="导出时隐藏密钥" description="导出模型配置时不包含明文 API Key。" checked={behaviorDraft.dataPrivacy.redact_secrets} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, redact_secrets: checked } }))} />
+                <div className="rounded-2xl bg-stone-50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-stone-900">导出时隐藏密钥</span>
+                      <span className="mt-1 block text-xs leading-5 text-stone-500">安全边界，始终开启；导出模型配置时不会包含明文 API Key。</span>
+                    </span>
+                    <input type="checkbox" checked readOnly disabled className="mt-1 h-5 w-5 shrink-0 accent-stone-950 disabled:opacity-70" />
+                  </div>
+                </div>
                 <ToggleRow label="导出 Markdown" description="导出目标、日志和 Agent 沉淀的 Markdown 文档。" checked={behaviorDraft.dataPrivacy.export_markdown} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, export_markdown: checked } }))} />
                 <ToggleRow label="本地优先模式" description="预留给后续自部署/本地优先数据策略；当前只保存偏好。" checked={behaviorDraft.dataPrivacy.local_first_mode} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, local_first_mode: checked } }))} />
               </div>

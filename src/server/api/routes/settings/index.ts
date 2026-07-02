@@ -260,7 +260,7 @@ const app = new Hono()
       today: { ...defaultUserSettings.today, ...(input.today || {}), generate_time: defaultUserSettings.today.generate_time },
       agent: { ...defaultUserSettings.agent, ...(input.agent || {}) },
       notifications: { ...defaultUserSettings.notifications, ...(input.notifications || {}) },
-      dataPrivacy: { ...defaultUserSettings.dataPrivacy, ...(input.dataPrivacy || {}) },
+      dataPrivacy: { ...defaultUserSettings.dataPrivacy, ...(input.dataPrivacy || {}), redact_secrets: true },
     }
 
     const settings = await prisma.userSetting.upsert({ where: { userId }, update: merged, create: { userId, ...merged } })

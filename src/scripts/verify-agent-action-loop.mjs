@@ -160,6 +160,7 @@ function verifySharedRuntimeContracts() {
       && settingsRoute.includes('markdownDocument.findMany')
       && settingsRoute.includes('Promise.resolve([])')
       && settingsRoute.includes('models.map(redactModel)')
+      && settingsRoute.includes('redact_secrets: true')
       && settingsRoute.includes('redactSecrets: true'),
     'src/server/api/routes/settings/index.ts scanned',
   )
