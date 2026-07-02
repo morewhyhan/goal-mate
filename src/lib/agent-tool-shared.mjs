@@ -21,6 +21,73 @@ export function detectConfirmToolMessage(content = '') {
   return /^(确认执行|确认|执行|同意|可以|就这么做|开始执行)$/i.test(String(content).trim())
 }
 
+export function asAgentToolRecord(input) {
+  return input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+}
+
+export function readAgentToolString(input, key, fallback = '') {
+  const value = input[key]
+  return typeof value === 'string' ? value.trim() : fallback
+}
+
+export function readAgentToolNumber(input, key, fallback) {
+  const value = input[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+export function readAgentToolBoolean(input, key) {
+  const value = input[key]
+  return typeof value === 'boolean' ? value : undefined
+}
+
+export function compactAgentToolSummary(input) {
+  const text = JSON.stringify(input)
+  return text.length > 500 ? `${text.slice(0, 500)}...` : text
+}
+
+export function toAgentToolDateInput(value) {
+  if (!value) return new Date()
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
+}
+
+export function formatAgentToolDatePath(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return {
+    title: `${year}-${month}-${day}`,
+    path: `Logs/${year}/${month}/${year}-${month}-${day}.md`,
+  }
+}
+
+export function normalizeAgentToolCheckinResult(value) {
+  const normalized = String(value || '').toLowerCase()
+  if (normalized === 'done') return 'DONE'
+  if (normalized === 'partial') return 'PARTIAL'
+  if (normalized === 'not_done') return 'NOT_DONE'
+  return 'NO_RESPONSE'
+}
+
+export function normalizeAgentToolActionStatus(value) {
+  const normalized = normalizeAgentToolCheckinResult(value)
+  if (normalized === 'DONE') return 'DONE'
+  if (normalized === 'PARTIAL') return 'PARTIAL'
+  if (normalized === 'NOT_DONE') return 'NOT_DONE'
+  return 'PLANNED'
+}
+
+export function parseAgentToolIntentJson(value) {
+  const match = String(value || '').match(/\{[\s\S]*\}/)
+  if (!match) return null
+  try {
+    const parsed = JSON.parse(match[0])
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export function formatAgentToolReply(toolName, execution) {
   const action = execution?.action
   if (action?.status === 'failed') return `这个操作没有执行成功：${action.errorMessage || '未知错误'}`

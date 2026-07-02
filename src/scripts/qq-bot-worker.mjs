@@ -1,7 +1,21 @@
 import WebSocket from 'ws'
 import { PrismaClient } from '@prisma/client'
 import { existsSync, readFileSync } from 'node:fs'
-import { detectConfirmToolMessage, formatAgentToolReply, sharedAgentToolCatalog } from '../lib/agent-tool-shared.mjs'
+import {
+  asAgentToolRecord,
+  compactAgentToolSummary,
+  detectConfirmToolMessage,
+  formatAgentToolDatePath,
+  formatAgentToolReply,
+  normalizeAgentToolActionStatus,
+  normalizeAgentToolCheckinResult,
+  parseAgentToolIntentJson,
+  readAgentToolBoolean,
+  readAgentToolNumber,
+  readAgentToolString,
+  sharedAgentToolCatalog,
+  toAgentToolDateInput,
+} from '../lib/agent-tool-shared.mjs'
 
 const prisma = new PrismaClient()
 
@@ -53,76 +67,9 @@ function trimForPrompt(value, max = 900) {
   return value.length > max ? `${value.slice(0, max)}...` : value
 }
 
-function asRecord(input) {
-  return input && typeof input === 'object' && !Array.isArray(input) ? input : {}
-}
-
-function readString(input, key, fallback = '') {
-  const value = input[key]
-  return typeof value === 'string' ? value.trim() : fallback
-}
-
-function readNumber(input, key, fallback) {
-  const value = input[key]
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
-}
-
-function readBoolean(input, key) {
-  const value = input[key]
-  return typeof value === 'boolean' ? value : undefined
-}
-
-function compactSummary(input) {
-  const text = JSON.stringify(input)
-  return text.length > 500 ? `${text.slice(0, 500)}...` : text
-}
-
-function toDateInput(value) {
-  if (!value) return new Date()
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
-}
-
-function formatDatePath(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return {
-    title: `${year}-${month}-${day}`,
-    path: `Logs/${year}/${month}/${year}-${month}-${day}.md`,
-  }
-}
-
 const isConfirmToolMessage = detectConfirmToolMessage
 
-function normalizeCheckinResult(value) {
-  const normalized = String(value || '').toLowerCase()
-  if (normalized === 'done') return 'DONE'
-  if (normalized === 'partial') return 'PARTIAL'
-  if (normalized === 'not_done') return 'NOT_DONE'
-  return 'NO_RESPONSE'
-}
-
-function normalizeActionStatus(value) {
-  const normalized = normalizeCheckinResult(value)
-  if (normalized === 'DONE') return 'DONE'
-  if (normalized === 'PARTIAL') return 'PARTIAL'
-  if (normalized === 'NOT_DONE') return 'NOT_DONE'
-  return 'PLANNED'
-}
-
 const qqToolCatalog = sharedAgentToolCatalog
-
-function parseToolIntentJson(value) {
-  const match = String(value || '').match(/\{[\s\S]*\}/)
-  if (!match) return null
-  try {
-    const parsed = JSON.parse(match[0])
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch {
-    return null
-  }
-}
 
 async function getCurrentGoal(userId, goalId) {
   if (goalId) {
@@ -136,7 +83,7 @@ async function getCurrentGoal(userId, goalId) {
 }
 
 async function getOrCreateCondition(userId, goalId, input) {
-  const conditionId = readString(input, 'conditionId')
+  const conditionId = readAgentToolString(input, 'conditionId')
   if (conditionId) {
     const condition = await prisma.goalCondition.findFirst({ where: { id: conditionId, userId, goalId } })
     if (!condition) throw new Error('目标条件不存在。')
@@ -150,10 +97,10 @@ async function getOrCreateCondition(userId, goalId, input) {
     data: {
       userId,
       goalId,
-      title: readString(input, 'conditionTitle', '当前关键条件'),
+      title: readAgentToolString(input, 'conditionTitle', '当前关键条件'),
       type: 'ASSUMED',
       status: 'PARTIAL',
-      whyRequired: readString(input, 'conditionReason', '用于承接 QQ Agent 设置今日行动时缺失的关键条件。'),
+      whyRequired: readAgentToolString(input, 'conditionReason', '用于承接 QQ Agent 设置今日行动时缺失的关键条件。'),
     },
   })
 }
@@ -364,7 +311,7 @@ async function generateToolIntent(userId, latestUserContent) {
     const data = await response.json()
     const content = data?.choices?.[0]?.message?.content
     if (typeof content !== 'string') return null
-    const parsed = parseToolIntentJson(content)
+    const parsed = parseAgentToolIntentJson(content)
     if (!parsed) return null
 
     const toolName = typeof parsed.toolName === 'string' ? parsed.toolName : null
@@ -400,7 +347,7 @@ async function runQqToolHandler(userId, toolName, input) {
   }
 
   if (toolName === 'goal.get') {
-    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const goal = await getCurrentGoal(userId, readAgentToolString(input, 'goalId'))
     const detail = await prisma.goal.findFirst({
       where: { id: goal.id, userId },
       include: {
@@ -415,15 +362,15 @@ async function runQqToolHandler(userId, toolName, input) {
   }
 
   if (toolName === 'goal.create_draft') {
-    const title = readString(input, 'title')
+    const title = readAgentToolString(input, 'title')
     if (!title) throw new Error('缺少目标标题。')
-    const rawInput = readString(input, 'rawInput', title)
+    const rawInput = readAgentToolString(input, 'rawInput', title)
     const goal = await prisma.goal.create({
       data: {
         userId,
         title,
         rawInput,
-        interpretedGoal: readString(input, 'interpretedGoal', rawInput),
+        interpretedGoal: readAgentToolString(input, 'interpretedGoal', rawInput),
         status: 'DRAFT',
         isCurrentFocus: false,
       },
@@ -432,10 +379,10 @@ async function runQqToolHandler(userId, toolName, input) {
       data: {
         userId,
         goalId: goal.id,
-        purposeSummary: readString(input, 'purposeSummary', rawInput),
+        purposeSummary: readAgentToolString(input, 'purposeSummary', rawInput),
         successSignals: input.successSignals || [],
-        sufficientConditionSet: readString(input, 'sufficientConditionSet', '待 Agent 与用户继续确认。'),
-        recommendedFocus: readString(input, 'recommendedFocus', '先确认这个目标怎么算真正有进展。'),
+        sufficientConditionSet: readAgentToolString(input, 'sufficientConditionSet', '待 Agent 与用户继续确认。'),
+        recommendedFocus: readAgentToolString(input, 'recommendedFocus', '先确认这个目标怎么算真正有进展。'),
         evidence: input.evidence || {},
         status: 'DRAFT',
       },
@@ -444,17 +391,17 @@ async function runQqToolHandler(userId, toolName, input) {
   }
 
   if (toolName === 'goal.update') {
-    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
-    const isCurrentFocus = readBoolean(input, 'isCurrentFocus')
+    const goal = await getCurrentGoal(userId, readAgentToolString(input, 'goalId'))
+    const isCurrentFocus = readAgentToolBoolean(input, 'isCurrentFocus')
     if (isCurrentFocus) {
       await prisma.goal.updateMany({ where: { userId }, data: { isCurrentFocus: false } })
     }
     const updated = await prisma.goal.update({
       where: { id: goal.id },
       data: {
-        title: readString(input, 'title', goal.title),
-        interpretedGoal: readString(input, 'interpretedGoal', goal.interpretedGoal || '') || goal.interpretedGoal,
-        status: readString(input, 'status', goal.status),
+        title: readAgentToolString(input, 'title', goal.title),
+        interpretedGoal: readAgentToolString(input, 'interpretedGoal', goal.interpretedGoal || '') || goal.interpretedGoal,
+        status: readAgentToolString(input, 'status', goal.status),
         isCurrentFocus: typeof isCurrentFocus === 'boolean' ? isCurrentFocus : goal.isCurrentFocus,
       },
     })
@@ -462,7 +409,7 @@ async function runQqToolHandler(userId, toolName, input) {
   }
 
   if (toolName === 'today.get') {
-    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const goal = await getCurrentGoal(userId, readAgentToolString(input, 'goalId'))
     const actions = await prisma.dailyAction.findMany({
       where: { userId, goalId: goal.id },
       orderBy: { actionDate: 'desc' },
@@ -473,23 +420,23 @@ async function runQqToolHandler(userId, toolName, input) {
   }
 
   if (toolName === 'today.set_next_action') {
-    const title = readString(input, 'title')
+    const title = readAgentToolString(input, 'title')
     if (!title) throw new Error('缺少行动标题。')
-    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const goal = await getCurrentGoal(userId, readAgentToolString(input, 'goalId'))
     const condition = await getOrCreateCondition(userId, goal.id, input)
     const action = await prisma.dailyAction.create({
       data: {
         userId,
         goalId: goal.id,
         conditionId: condition.id,
-        actionDate: toDateInput(readString(input, 'actionDate')),
+        actionDate: toAgentToolDateInput(readAgentToolString(input, 'actionDate')),
         title,
-        reason: readString(input, 'reason', '由 QQ Agent 根据当前推进状态设置。'),
-        doneWhen: readString(input, 'doneWhen', '用户明确回复已完成，并说明完成结果。'),
-        minimumStep: readString(input, 'minimumStep', title),
-        estimatedMinutes: Math.round(readNumber(input, 'estimatedMinutes', 20)),
-        fallbackAction: readString(input, 'fallbackAction', '如果今天状态很差，只完成最小启动动作。'),
-        checkinQuestion: readString(input, 'checkinQuestion', '这一步现在能开始吗？'),
+        reason: readAgentToolString(input, 'reason', '由 QQ Agent 根据当前推进状态设置。'),
+        doneWhen: readAgentToolString(input, 'doneWhen', '用户明确回复已完成，并说明完成结果。'),
+        minimumStep: readAgentToolString(input, 'minimumStep', title),
+        estimatedMinutes: Math.round(readAgentToolNumber(input, 'estimatedMinutes', 20)),
+        fallbackAction: readAgentToolString(input, 'fallbackAction', '如果今天状态很差，只完成最小启动动作。'),
+        checkinQuestion: readAgentToolString(input, 'checkinQuestion', '这一步现在能开始吗？'),
         status: 'PLANNED',
       },
     })
@@ -497,33 +444,33 @@ async function runQqToolHandler(userId, toolName, input) {
   }
 
   if (toolName === 'checkin.submit') {
-    const actionId = readString(input, 'actionId')
+    const actionId = readAgentToolString(input, 'actionId')
     const action = actionId
       ? await prisma.dailyAction.findFirst({ where: { id: actionId, userId } })
       : await prisma.dailyAction.findFirst({ where: { userId }, orderBy: { actionDate: 'desc' } })
     if (!action) throw new Error('没有找到可提交的今日行动。')
-    const result = normalizeCheckinResult(readString(input, 'result', 'no_response'))
+    const result = normalizeAgentToolCheckinResult(readAgentToolString(input, 'result', 'no_response'))
     const checkin = await prisma.checkin.create({
       data: {
         userId,
         goalId: action.goalId,
         actionId: action.id,
         result,
-        reasonCategory: readString(input, 'reasonCategory') || undefined,
-        userFeedback: readString(input, 'userFeedback'),
-        adjustment: readString(input, 'adjustment'),
+        reasonCategory: readAgentToolString(input, 'reasonCategory') || undefined,
+        userFeedback: readAgentToolString(input, 'userFeedback'),
+        adjustment: readAgentToolString(input, 'adjustment'),
       },
     })
-    await prisma.dailyAction.update({ where: { id: action.id }, data: { status: normalizeActionStatus(result) } })
+    await prisma.dailyAction.update({ where: { id: action.id }, data: { status: normalizeAgentToolActionStatus(result) } })
     return { targetId: checkin.id, result: checkin }
   }
 
   if (toolName === 'log.write_daily') {
-    const content = readString(input, 'content')
+    const content = readAgentToolString(input, 'content')
     if (!content) throw new Error('缺少日志内容。')
-    const date = toDateInput(readString(input, 'date'))
-    const dateInfo = formatDatePath(date)
-    const title = readString(input, 'title', dateInfo.title)
+    const date = toAgentToolDateInput(readAgentToolString(input, 'date'))
+    const dateInfo = formatAgentToolDatePath(date)
+    const title = readAgentToolString(input, 'title', dateInfo.title)
     const linkedGoalIds = input.linkedGoalIds || []
     const linkedActionIds = input.linkedActionIds || []
     const document = await prisma.markdownDocument.upsert({
@@ -563,7 +510,7 @@ async function runQqToolHandler(userId, toolName, input) {
   }
 
   if (toolName === 'review.generate') {
-    const goal = await getCurrentGoal(userId, readString(input, 'goalId'))
+    const goal = await getCurrentGoal(userId, readAgentToolString(input, 'goalId'))
     const recentActions = await prisma.dailyAction.findMany({
       where: { userId, goalId: goal.id },
       orderBy: { actionDate: 'desc' },
@@ -571,7 +518,7 @@ async function runQqToolHandler(userId, toolName, input) {
       include: { checkins: { orderBy: { createdAt: 'desc' }, take: 1 } },
     })
     const lines = [
-      `# ${readString(input, 'type', 'daily')} review draft`,
+      `# ${readAgentToolString(input, 'type', 'daily')} review draft`,
       '',
       `目标：${goal.title}`,
       '',
@@ -579,24 +526,24 @@ async function runQqToolHandler(userId, toolName, input) {
       ...recentActions.map((action) => `- ${action.title}：${action.status}`),
       '',
       '## 下一步',
-      readString(input, 'nextFocus', '继续围绕当前最关键条件推进一个最小行动。'),
+      readAgentToolString(input, 'nextFocus', '继续围绕当前最关键条件推进一个最小行动。'),
     ]
     return { targetId: goal.id, result: { markdown: lines.join('\n') } }
   }
 
   if (toolName === 'reminder.schedule') {
-    const reminderType = readString(input, 'reminderType', 'morning_planning')
-    const schedule = readString(input, 'schedule', '08:30')
-    const ruleId = readString(input, 'ruleId')
+    const reminderType = readAgentToolString(input, 'reminderType', 'morning_planning')
+    const schedule = readAgentToolString(input, 'schedule', '08:30')
+    const ruleId = readAgentToolString(input, 'ruleId')
     const data = {
-      goalId: readString(input, 'goalId') || null,
+      goalId: readAgentToolString(input, 'goalId') || null,
       reminderType,
-      channel: readString(input, 'channel', 'qq'),
+      channel: readAgentToolString(input, 'channel', 'qq'),
       schedule,
-      timezone: readString(input, 'timezone', 'Asia/Shanghai'),
-      maxPerDay: Math.round(readNumber(input, 'maxPerDay', 2)),
+      timezone: readAgentToolString(input, 'timezone', 'Asia/Shanghai'),
+      maxPerDay: Math.round(readAgentToolNumber(input, 'maxPerDay', 2)),
       quietHours: input.quietHours || undefined,
-      enabled: readBoolean(input, 'enabled') ?? true,
+      enabled: readAgentToolBoolean(input, 'enabled') ?? true,
       metadata: input.metadata || undefined,
     }
     const rule = ruleId
@@ -613,14 +560,14 @@ async function runQqToolHandler(userId, toolName, input) {
   if (toolName === 'settings.model.update') {
     const existing = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
     const data = {
-      provider: readString(input, 'provider', existing?.provider || 'deepseek'),
-      model: readString(input, 'model', existing?.model || 'deepseek-v4-flash'),
-      reasoningModel: readString(input, 'reasoningModel', existing?.reasoningModel || ''),
-      apiBase: readString(input, 'apiBase', existing?.apiBase || 'https://api.deepseek.com'),
-      apiKeyRef: readString(input, 'apiKeyRef', existing?.apiKeyRef || 'DEEPSEEK_API_KEY'),
+      provider: readAgentToolString(input, 'provider', existing?.provider || 'deepseek'),
+      model: readAgentToolString(input, 'model', existing?.model || 'deepseek-v4-flash'),
+      reasoningModel: readAgentToolString(input, 'reasoningModel', existing?.reasoningModel || ''),
+      apiBase: readAgentToolString(input, 'apiBase', existing?.apiBase || 'https://api.deepseek.com'),
+      apiKeyRef: readAgentToolString(input, 'apiKeyRef', existing?.apiKeyRef || 'DEEPSEEK_API_KEY'),
       usage: 'CHAT',
       isDefault: true,
-      temperature: readNumber(input, 'temperature', existing?.temperature ?? 0.3),
+      temperature: readAgentToolNumber(input, 'temperature', existing?.temperature ?? 0.3),
     }
     const modelConfig = existing
       ? await prisma.modelConfig.update({ where: { id: existing.id }, data })
@@ -634,7 +581,7 @@ async function runQqToolHandler(userId, toolName, input) {
 async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessageId }, toolName, rawInput) {
   const definition = qqToolCatalog.find((item) => item.name === toolName)
   if (!definition) throw new Error(`未知 Agent 工具：${toolName}`)
-  const input = asRecord(rawInput)
+  const input = asAgentToolRecord(rawInput)
   const requiresConfirmation = definition.permission === 'execute' && !confirmed
 
   if (requiresConfirmation) {
@@ -644,7 +591,7 @@ async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessa
         source: 'qq',
         toolName: definition.name,
         permission: definition.permission,
-        inputSummary: compactSummary(input),
+        inputSummary: compactAgentToolSummary(input),
         input,
         targetType: definition.targetType,
         riskLevel: definition.riskLevel,
@@ -665,7 +612,7 @@ async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessa
         source: 'qq',
         toolName: definition.name,
         permission: definition.permission,
-        inputSummary: compactSummary(input),
+        inputSummary: compactAgentToolSummary(input),
         input,
         result: output.result || {},
         targetType: definition.targetType,
@@ -685,7 +632,7 @@ async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessa
         source: 'qq',
         toolName: definition.name,
         permission: definition.permission,
-        inputSummary: compactSummary(input),
+        inputSummary: compactAgentToolSummary(input),
         input,
         targetType: definition.targetType,
         riskLevel: definition.riskLevel,
@@ -759,7 +706,7 @@ async function findRecentSchedulerEvent(userId) {
 }
 
 async function buildSchedulerDailyLogContent(userId, schedulerEvent, feedback) {
-  const dateInfo = formatDatePath(new Date())
+  const dateInfo = formatAgentToolDatePath(new Date())
   const existing = await prisma.markdownDocument.findUnique({ where: { userId_path: { userId, path: dateInfo.path } } })
   const section = [
     `## ${formatReminderType(schedulerEvent.eventType)}反馈`,
@@ -800,7 +747,7 @@ async function processSchedulerReply(userId, thread, userMessage, context) {
     { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
     'log.write_daily',
     {
-      title: formatDatePath(new Date()).title,
+      title: formatAgentToolDatePath(new Date()).title,
       content: logContent,
     },
   )

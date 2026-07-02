@@ -158,6 +158,10 @@ src/lib/agent-tool-shared.mjs
 - 工具目录。
 - “确认执行”文本识别。
 - 工具结果回复文案。
+- 参数读取辅助函数。
+- 日期路径生成。
+- check-in / action 状态归一化。
+- 工具意图 JSON 解析。
 
 仍未共享：
 

@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import { defaultDeepSeekModel } from '@/server/api/context'
 import { listAgentTools } from '@/lib/agent-tools'
+import { parseAgentToolIntentJson } from '@/lib/agent-tool-shared.mjs'
 
 function toChatRole(role: string) {
   const normalized = role.toLowerCase()
@@ -162,18 +163,6 @@ export async function generateAssistantReply(userId: string, threadId: string, l
   }
 }
 
-function parseToolIntentJson(value: string) {
-  const match = value.match(/\{[\s\S]*\}/)
-  if (!match) return null
-  try {
-    const parsed = JSON.parse(match[0])
-    if (!parsed || typeof parsed !== 'object') return null
-    return parsed as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
-
 export async function generateAgentToolIntent(userId: string, latestUserContent: string) {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) return null
@@ -222,7 +211,7 @@ export async function generateAgentToolIntent(userId: string, latestUserContent:
     const data = await response.json()
     const content = data?.choices?.[0]?.message?.content
     if (typeof content !== 'string') return null
-    const parsed = parseToolIntentJson(content)
+    const parsed = parseAgentToolIntentJson(content)
     if (!parsed) return null
 
     const toolName = typeof parsed.toolName === 'string' ? parsed.toolName : null
