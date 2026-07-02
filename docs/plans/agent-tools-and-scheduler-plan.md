@@ -236,3 +236,5 @@ P0 提醒类型：
 - 2026-07-02：强化 Logs 自动写入设置闭环，`auto_write_checkin` 现在控制 Today Check-in 和 Agent/QQ Check-in 是否写入 LogEntry/MarkdownDocument；`auto_write_review` 现在控制 API/Agent 复盘是否写入周期日志。关闭后仍保留 Checkin/Diagnosis/Review 结构化记录。
 
 - 2026-07-02：强化 Today 设置闭环，Today 页面现在读取 `/api/settings` 的 `today.heatmap_scope` 作为 Momentum 默认范围，并用 `today.low_energy_mode` 控制是否展示备用动作卡。
+
+- 2026-07-02：强化 Agent 确认边界设置闭环，`executeAgentToolWithPrisma` 现在读取 `require_confirm_goal_changes`、`require_confirm_setting_changes`、`require_confirm_external_actions`；目标变更、模型/提醒设置、外部提醒相关工具不再使用固定确认规则。

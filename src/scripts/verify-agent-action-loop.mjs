@@ -113,8 +113,19 @@ function verifySharedRuntimeContracts() {
   record(
     'AAL-SHARED-EXECUTOR',
     'shared executor centralizes confirmation, execution and audit writing',
-    executor.includes('executeAgentToolWithPrisma') && executor.includes('recordAgentToolActionWithPrisma') && executor.includes('pending_confirmation') && executor.includes('agentToolAction.create'),
+    executor.includes('executeAgentToolWithPrisma') && executor.includes('recordAgentToolActionWithPrisma') && executor.includes('pending_confirmation') && executor.includes('agentToolAction.create') && executor.includes('loadAgentConfirmationPolicy'),
     'src/lib/agent-tool-executor.mjs scanned',
+  )
+  record(
+    'AAL-CONFIRMATION-POLICY',
+    'shared executor respects Settings confirmation boundaries for goal, setting and external actions',
+    executor.includes('require_confirm_goal_changes')
+      && executor.includes('require_confirm_setting_changes')
+      && executor.includes('require_confirm_external_actions')
+      && executor.includes("definition.name === 'goal.update'")
+      && executor.includes("definition.name === 'settings.model.update'")
+      && executor.includes("definition.name === 'reminder.schedule'"),
+    'confirmation policy is read from UserSetting.agent',
   )
   record(
     'AAL-WEB-SHARED-RUNTIME',

@@ -52,19 +52,57 @@ async function runSharedAgentTool(prisma, userId, toolName, input) {
   throw new Error(`未知 Agent 工具：${toolName}`)
 }
 
+function asRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function readPolicyBoolean(value, fallback) {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+async function loadAgentConfirmationPolicy(prisma, userId) {
+  const settings = await prisma.userSetting.findUnique({ where: { userId } })
+  const agent = asRecord(settings?.agent)
+  return {
+    requireConfirmGoalChanges: readPolicyBoolean(agent.require_confirm_goal_changes, true),
+    requireConfirmSettingChanges: readPolicyBoolean(agent.require_confirm_setting_changes, true),
+    requireConfirmExternalActions: readPolicyBoolean(agent.require_confirm_external_actions, true),
+  }
+}
+
+function shouldRequireConfirmation(definition, policy) {
+  if (definition.permission !== 'execute') return false
+  if (definition.riskLevel === 'high') return true
+
+  if (definition.name === 'goal.update' || definition.name === 'today.set_next_action') {
+    return policy.requireConfirmGoalChanges
+  }
+
+  if (definition.name === 'settings.model.update') {
+    return policy.requireConfirmSettingChanges
+  }
+
+  if (definition.name === 'reminder.schedule') {
+    return policy.requireConfirmSettingChanges || policy.requireConfirmExternalActions
+  }
+
+  return true
+}
+
 export async function executeAgentToolWithPrisma(prisma, context, toolName, rawInput) {
   const definition = sharedToolDefinitions.find((item) => item.name === toolName)
   if (!definition) throw new Error(`未知 Agent 工具：${toolName}`)
 
   const input = asAgentToolRecord(rawInput)
-  const requiresConfirmation = definition.permission === 'execute' && !context.confirmed
+  const confirmationPolicy = await loadAgentConfirmationPolicy(prisma, context.userId)
+  const requiresConfirmation = !context.confirmed && shouldRequireConfirmation(definition, confirmationPolicy)
 
   if (requiresConfirmation) {
     const action = await recordAgentToolActionWithPrisma(prisma, {
       context,
       toolName: definition.name,
       permission: definition.permission,
-        input,
+      input,
       targetType: definition.targetType,
       riskLevel: definition.riskLevel,
       requiresConfirmation: true,
