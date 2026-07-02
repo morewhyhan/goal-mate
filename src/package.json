@@ -23,6 +23,7 @@
     "verify:deployment-config": "node scripts/verify-deployment-config.mjs",
     "verify:deployment-config:write": "node scripts/verify-deployment-config.mjs --write",
     "verify:secrets": "node scripts/verify-secret-hygiene.mjs",
+    "verify:static": "pnpm verify:secrets && pnpm verify:deployment-config",
     "verify:telegram:webhook": "node scripts/verify-telegram-webhook-smoke.mjs",
     "worker:qq": "node scripts/qq-bot-worker.mjs",
     "worker:scheduler": "node scripts/scheduler-worker.mjs"

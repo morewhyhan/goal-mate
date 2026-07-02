@@ -208,5 +208,6 @@ P0 提醒类型：
 - 2026-07-02：修正 `src/.env.example` 中容易误判为真实密钥的占位符，并在部署静态检查中增加 token-shaped placeholder 扫描。
 - 2026-07-02：补齐部署建议变量说明，明确 `QQ_ALLOWED_CONTEXT_IDS` 和 `QQ_SCHEDULER_REPLY_WINDOW_HOURS` 分别用于限制 QQ 会话范围和 Scheduler 回复识别窗口。
 - 2026-07-02：新增 `verify:secrets` 仓库密钥卫生静态检查，扫描模型 API Key、Bot Token、Bearer Token 形状的误提交风险。
+- 2026-07-02：新增 `verify:static` 轻量静态门禁，组合 `verify:secrets` 和 `verify:deployment-config`，并在 `docs/plans/static-verification-gates.md` 记录它与运行时验收的边界。
 - 2026-07-02：共享工具运行时重构推进第一步；Web 和 QQ 现在共享工具目录、确认语识别和工具回复文案，业务 handler 后续再抽。
 - 2026-07-02：共享工具运行时重构推进第二步；Web 和 QQ 现在共享参数读取、日期路径、状态归一化和工具意图 JSON 解析。
