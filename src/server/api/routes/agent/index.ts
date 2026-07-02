@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { getCurrentUserId, notFound, unauthorized } from '../../context'
 import { generateAgentToolIntent, generateAssistantReply } from '@/lib/agent-runtime'
 import { executeAgentTool, listAgentTools } from '@/lib/agent-tools'
+import { detectConfirmToolMessage, formatAgentToolReply } from '@/lib/agent-tool-shared.mjs'
 
 const createThreadSchema = z.object({ title: z.string().min(1), goalId: z.string().uuid().optional() })
 const createMessageSchema = z.object({
@@ -26,55 +27,6 @@ const executeToolSchema = z.object({
 const rejectToolActionSchema = z.object({
   reason: z.string().optional(),
 })
-
-function isConfirmToolMessage(content: string) {
-  return /^(确认执行|确认|执行|同意|可以|就这么做|开始执行)$/i.test(content.trim())
-}
-
-function formatToolReply(toolName: string, execution: any) {
-  const action = execution?.action
-  if (action?.status === 'failed') {
-    return `这个操作没有执行成功：${action.errorMessage || '未知错误'}`
-  }
-  if (execution?.needsConfirmation) {
-    return [
-      '我理解你要改动系统数据。',
-      `动作：${toolName}`,
-      '我已经生成待确认动作。你回复“确认执行”后，我再真正执行。',
-    ].join('\n')
-  }
-
-  const result = execution?.result
-  if (toolName === 'goal.list' && Array.isArray(result)) {
-    if (!result.length) return '当前还没有目标。你可以直接告诉我你想推进什么，我会先帮你生成目标草案。'
-    return [
-      `当前共有 ${result.length} 个目标：`,
-      ...result.map((goal: any) => `- ${goal.title}${goal.isCurrentFocus ? '（当前主目标）' : ''}：${goal.status}`),
-    ].join('\n')
-  }
-  if (toolName === 'today.get') {
-    const actions = Array.isArray(result?.actions) ? result.actions : []
-    if (!actions.length) return '当前还没有今日行动。你可以让我基于当前目标设置下一步。'
-    const action = actions[0]
-    return [
-      `当前下一步：${action.title}`,
-      `完成标准：${action.doneWhen}`,
-      `最小启动：${action.minimumStep}`,
-      `状态：${action.status}`,
-    ].join('\n')
-  }
-  if (toolName === 'goal.create_draft') return '目标草案已经生成。下一步应该确认：这个目标怎么算真正有进展。'
-  if (toolName === 'today.set_next_action') return `今日下一步已经设置：${result?.title || '新的行动'}`
-  if (toolName === 'checkin.submit') return '完成情况已经记录。'
-  if (toolName === 'log.write_daily') return `日志已经写入：${result?.path || '今日日志'}`
-  if (toolName === 'review.generate') return result?.markdown || '复盘草稿已经生成。'
-  if (toolName === 'reminder.schedule') return `提醒规则已经设置：${result?.reminderType || 'reminder'} ${result?.schedule || ''}`
-  if (toolName === 'settings.model.get') {
-    return result ? `当前默认模型：${result.provider} / ${result.model}` : '当前还没有默认模型配置。'
-  }
-  if (toolName === 'settings.model.update') return `默认模型已经更新为：${result?.provider || 'provider'} / ${result?.model || 'model'}`
-  return `已处理：${toolName}`
-}
 
 const app = new Hono()
   .basePath('/agent')
@@ -125,7 +77,7 @@ const app = new Hono()
           userId,
           threadId: action.agentThreadId,
           role: 'ASSISTANT',
-          content: formatToolReply(action.toolName, execution),
+          content: formatAgentToolReply(action.toolName, execution),
           structuredOutputType: 'agent_tool_result',
           structuredOutput: {
             confirmedActionId: action.id,
@@ -239,7 +191,7 @@ const app = new Hono()
     let structuredOutputType = input.structuredOutputType
     let structuredOutput = input.structuredOutput as any
 
-    const pendingAction = isConfirmToolMessage(input.content)
+    const pendingAction = detectConfirmToolMessage(input.content)
       ? await prisma.agentToolAction.findFirst({
           where: { userId, status: 'pending_confirmation' },
           orderBy: { createdAt: 'desc' },
@@ -253,7 +205,7 @@ const app = new Hono()
         pendingAction.toolName,
         pendingAction.input,
       )
-      assistantContent = formatToolReply(pendingAction.toolName, execution)
+      assistantContent = formatAgentToolReply(pendingAction.toolName, execution)
       structuredOutputType = 'agent_tool_result'
       structuredOutput = {
         confirmedActionId: pendingAction.id,
@@ -269,7 +221,7 @@ const app = new Hono()
           toolIntent.toolName,
           toolIntent.input,
         )
-        assistantContent = formatToolReply(toolIntent.toolName, execution)
+        assistantContent = formatAgentToolReply(toolIntent.toolName, execution)
         structuredOutputType = 'agent_tool_result'
         structuredOutput = {
           toolIntent,

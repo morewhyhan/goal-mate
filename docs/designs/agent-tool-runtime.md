@@ -147,7 +147,24 @@ tool_result
 
 ## 11. 技术债务
 
-当前 Web Agent 使用 `src/lib/agent-tools.ts`，QQ Worker 在 `src/scripts/qq-bot-worker.mjs` 中实现了同等工具逻辑。
+当前 Web Agent 和 QQ Worker 已共享：
+
+```text
+src/lib/agent-tool-shared.mjs
+```
+
+已共享内容：
+
+- 工具目录。
+- “确认执行”文本识别。
+- 工具结果回复文案。
+
+仍未共享：
+
+- 具体业务 handler。
+- 工具审计写入封装。
+
+Web Agent 仍使用 `src/lib/agent-tools.ts`，QQ Worker 仍在 `src/scripts/qq-bot-worker.mjs` 中保留业务 handler。
 
 这是为了让 QQ 常驻 worker 不依赖 Next.js TypeScript alias 启动链路。后续应抽出 runtime-neutral 的工具服务，避免 Web 和 QQ 两套工具逻辑长期分叉。
 

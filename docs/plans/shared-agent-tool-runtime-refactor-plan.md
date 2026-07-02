@@ -112,11 +112,11 @@ detectConfirmToolMessage(text)
 
 | 状态 | 任务 | 验收方式 |
 | --- | --- | --- |
-| Todo | 抽出 shared tool catalog | Web 和 QQ 读取同一个工具列表 |
+| Done | 抽出 shared tool catalog | Web 和 QQ 读取同一个工具列表 |
 | Todo | 抽出 shared handlers | Web 和 QQ 执行同一个业务 handler |
-| Todo | 抽出 shared reply formatter | Web 和 QQ 对工具结果的描述一致 |
-| Todo | Web API 迁移到 shared runtime | `/api/agent/tools/execute` 行为不变 |
-| Todo | QQ Worker 迁移到 shared runtime | QQ 工具确认和 Scheduler 回复行为不变 |
+| Done | 抽出 shared reply formatter | Web 和 QQ 对工具结果的描述一致 |
+| Partial | Web API 迁移到 shared runtime | Web 已复用 shared catalog、confirm detector、reply formatter；handler 待迁移 |
+| Partial | QQ Worker 迁移到 shared runtime | QQ 已复用 shared catalog、confirm detector、reply formatter；handler 待迁移 |
 | Todo | 更新 `verify:agent-loop` | 验证共享 runtime 后的 read/write/confirm |
 | Todo | 删除重复代码 | `qq-bot-worker.mjs` 只保留 QQ 通道逻辑 |
 
@@ -143,4 +143,4 @@ pnpm worker:qq
 ## 9. 执行记录
 
 - 2026-07-02：确认 Web / QQ 工具逻辑存在重复；新增本重构计划，暂不直接拆 worker。
-
+- 2026-07-02：新增 `src/lib/agent-tool-shared.mjs`，Web 和 QQ 已共享工具目录、确认语识别和工具结果文案；业务 handler 仍待后续抽取。

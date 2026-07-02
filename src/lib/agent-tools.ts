@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { listSharedAgentTools } from '@/lib/agent-tool-shared.mjs'
 
 export type AgentToolPermission = 'read' | 'draft' | 'execute'
 export type AgentToolSource = 'web' | 'qq' | 'scheduler'
@@ -450,13 +451,7 @@ const toolDefinitions: AgentToolDefinition[] = [
 ]
 
 export function listAgentTools() {
-  return toolDefinitions.map(({ name, description, permission, targetType, riskLevel }) => ({
-    name,
-    description,
-    permission,
-    targetType,
-    riskLevel,
-  }))
+  return listSharedAgentTools()
 }
 
 export async function executeAgentTool(
