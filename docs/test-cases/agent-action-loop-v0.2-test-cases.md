@@ -39,7 +39,7 @@
 | AAL-8 | 提醒规则配置 | `PUT /api/settings/reminders` 可保存早中晚和周复盘规则 |
 | AAL-9 | 数据导出 | export 包含 reminderRules、toolActions、schedulerEvents、qqChatBindings |
 | AAL-10 | QQ 工具确认 | QQ execute 工具必须先 pending，再由“确认执行”触发执行 |
-| AAL-11 | Scheduler 回复闭环 | 最近 sent 事件收到 QQ 回复后写 check-in、log，并标记 `responded` |
+| AAL-11 | Scheduler 回复闭环 | 最近 sent 事件收到 QQ 回复后通过 shared executor 写 check-in、log，并标记 `responded`；对应工具审计来源为 `scheduler` |
 | AAL-12 | 安全边界 | API Key 不以明文出现在 settings、models、export 响应中 |
 | AAL-13 | Web 确认 UI | Agent 消息出现待确认动作卡片，可点击确认或取消 |
 | AAL-14 | 共享工具运行时 | Web Agent 和 QQ Agent 都通过 shared catalog、shared executor、shared read/write handlers 执行业务工具 |

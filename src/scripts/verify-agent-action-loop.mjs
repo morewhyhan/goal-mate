@@ -107,8 +107,8 @@ function verifySharedRuntimeContracts() {
   record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
-    qqWorker.includes('executeAgentToolWithPrisma') && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
-    'src/scripts/qq-bot-worker.mjs is channel adapter only',
+    qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
+    'src/scripts/qq-bot-worker.mjs is channel adapter and scheduler reply adapter',
   )
 }
 

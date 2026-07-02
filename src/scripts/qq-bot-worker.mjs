@@ -288,10 +288,10 @@ async function generateToolIntent(userId, latestUserContent) {
   }
 }
 
-async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessageId }, toolName, rawInput) {
+async function executeQqAgentTool({ userId, confirmed, agentThreadId, agentMessageId, source = 'qq' }, toolName, rawInput) {
   return executeAgentToolWithPrisma(
     prisma,
-    { userId, source: 'qq', confirmed, agentThreadId, agentMessageId },
+    { userId, source, confirmed, agentThreadId, agentMessageId },
     toolName,
     rawInput,
   )
@@ -448,7 +448,7 @@ async function processSchedulerReply(userId, thread, userMessage, context) {
 
   if (schedulerEvent.eventType !== 'morning_planning' && schedulerEvent.eventType !== 'weekly_review') {
     const checkinExecution = await executeQqAgentTool(
-      { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+      { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
       'checkin.submit',
       {
         result: feedback.result.toLowerCase(),
@@ -462,7 +462,7 @@ async function processSchedulerReply(userId, thread, userMessage, context) {
 
   const logContent = await buildSchedulerDailyLogContent(userId, schedulerEvent, feedback)
   const logExecution = await executeQqAgentTool(
-    { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+    { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
     'log.write_daily',
     {
       title: formatAgentToolDatePath(new Date()).title,
@@ -473,7 +473,7 @@ async function processSchedulerReply(userId, thread, userMessage, context) {
 
   if (schedulerEvent.eventType === 'weekly_review') {
     const reviewExecution = await executeQqAgentTool(
-      { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+      { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
       'review.generate',
       { type: 'weekly', nextFocus: feedback.adjustment },
     )
