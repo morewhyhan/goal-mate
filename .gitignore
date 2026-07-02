@@ -17,6 +17,8 @@ coverage/
 # environment and local files
 .env
 .env.*
+!.env.example
+!src/.env.example
 *.local
 .DS_Store
 Thumbs.db

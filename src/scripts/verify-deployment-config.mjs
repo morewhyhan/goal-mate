@@ -117,6 +117,12 @@ record(
   envCheck.ok,
   envCheck.ok ? 'all required variables present' : `missing=${envCheck.missing.join(', ')}`,
 )
+record(
+  'DEPLOY-ENV-PLACEHOLDERS',
+  '.env.example does not use token-shaped placeholders',
+  Boolean(envExample && !/sk-[A-Za-z0-9_-]{12,}/.test(envExample) && !/[0-9]{6,12}:[A-Za-z0-9_-]{20,}/.test(envExample)),
+  'token-shaped placeholder scan completed',
+)
 
 const doc = readText(resolve(projectRoot, 'docs/designs/self-hosted-worker-deployment.md'))
 record(
