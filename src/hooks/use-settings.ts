@@ -23,6 +23,12 @@ type TestModelResponse = any
 const $export = client.api.settings.export.$get
 type ExportResponse = any
 
+const $deleteAgentMemory = client.api.settings['agent-memory'].$delete
+type DeleteAgentMemoryResponse = any
+
+const $deleteWorkspaceData = client.api.settings['workspace-data'].$delete
+type DeleteWorkspaceDataResponse = any
+
 export function useSettings() {
   return useQuery<SettingsResponse, Error>({
     queryKey: ['settings'],
@@ -75,5 +81,30 @@ export function useExportUserData() {
     mutationFn: async () => (await $export()).json(),
     onSuccess: () => toast.success('导出数据已生成，密钥已脱敏'),
     onError: (error) => toast.error(error.message || '数据导出失败'),
+  })
+}
+
+export function useDeleteAgentMemory() {
+  const queryClient = useQueryClient()
+  return useMutation<DeleteAgentMemoryResponse, Error>({
+    mutationFn: async () => (await $deleteAgentMemory()).json(),
+    onSuccess: (response: any) => {
+      queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
+      queryClient.invalidateQueries({ queryKey: ['agent', 'messages'] })
+      toast.success(`Agent 记忆已清除：${response?.data?.deletedMessages || 0} 条消息`)
+    },
+    onError: (error) => toast.error(error.message || 'Agent 记忆清除失败'),
+  })
+}
+
+export function useDeleteWorkspaceData() {
+  const queryClient = useQueryClient()
+  return useMutation<DeleteWorkspaceDataResponse, Error>({
+    mutationFn: async () => (await $deleteWorkspaceData()).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries()
+      toast.success('工作区数据已清除，登录账号已保留')
+    },
+    onError: (error) => toast.error(error.message || '工作区数据清除失败'),
   })
 }

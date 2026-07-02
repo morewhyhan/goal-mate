@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { defaultUserSettings, getCurrentUserId, notFound, unauthorized } from '../../context'
 import { buildReviewLogPath, buildReviewMarkdown, reviewTypeToPeriodType, reviewTypeToPrismaType } from '@/lib/goal-mate-review-format'
 import { upsertMarkdownDocument } from '@/lib/markdown-document-store'
+import { ensureLogPeriodRollups } from '@/lib/log-period-rollup.mjs'
 
 const generateReviewSchema = z.object({
   goalId: z.string().uuid().optional(),
@@ -107,6 +108,18 @@ const app = new Hono()
           reviewType,
           goalTitle: goal.title,
         },
+      })
+
+      await ensureLogPeriodRollups(prisma, {
+        userId,
+        date: periodEnd,
+        sourcePath: logPath,
+        sourceKind: `${reviewType}_review`,
+        goalId: goal.id,
+        goalTitle: goal.title,
+        resultLabel: '复盘已生成',
+        conditionTitle: goal.conditions.find((condition) => condition.status !== 'SATISFIED')?.title,
+        diagnosisQuestion: goal.diagnoses[0]?.nextQuestion,
       })
     }
 

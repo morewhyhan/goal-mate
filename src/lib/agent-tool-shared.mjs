@@ -2,7 +2,7 @@ export const sharedAgentToolCatalog = [
   { name: 'goal.list', description: '列出当前用户的目标摘要。', permission: 'read', targetType: 'goal', riskLevel: 'low' },
   { name: 'goal.get', description: '读取目标详情、KR、条件、阶段计划和近期行动。', permission: 'read', targetType: 'goal', riskLevel: 'low' },
   { name: 'goal.create_draft', description: '根据对话创建目标草案和目标推理卡。', permission: 'draft', targetType: 'goal', riskLevel: 'medium' },
-  { name: 'goal.update', description: '更新目标基础字段或当前焦点。', permission: 'execute', targetType: 'goal', riskLevel: 'medium' },
+  { name: 'goal.update', description: '更新目标基础字段、当前焦点、KR、条件或阶段计划。', permission: 'execute', targetType: 'goal', riskLevel: 'medium' },
   { name: 'today.get', description: '读取今天或最近的下一步行动。', permission: 'read', targetType: 'today', riskLevel: 'low' },
   { name: 'today.set_next_action', description: '设置今天下一步行动。', permission: 'execute', targetType: 'today', riskLevel: 'medium' },
   { name: 'checkin.submit', description: '提交今日行动的完成情况和阻塞原因。', permission: 'execute', targetType: 'checkin', riskLevel: 'low' },

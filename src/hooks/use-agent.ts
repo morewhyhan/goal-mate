@@ -17,10 +17,6 @@ const $sendMessage = client.api.agent.threads[':id'].messages.$post
 type SendMessageRequest = InferRequestType<typeof $sendMessage>['json'] & { threadId: string }
 type SendMessageResponse = any
 
-const $confirm = client.api.agent['structured-output'].confirm.$post
-type ConfirmStructuredOutputRequest = InferRequestType<typeof $confirm>['json']
-type ConfirmStructuredOutputResponse = any
-
 const $toolActions = client.api.agent.tools.actions.$get
 type AgentToolActionsResponse = any
 
@@ -101,13 +97,5 @@ export function useRejectAgentToolAction(threadId?: string) {
       toast.success('工具动作已取消')
     },
     onError: (error) => toast.error(error.message || '工具动作取消失败'),
-  })
-}
-
-export function useConfirmStructuredOutput() {
-  return useMutation<ConfirmStructuredOutputResponse, Error, ConfirmStructuredOutputRequest>({
-    mutationFn: async (json) => (await $confirm({ json })).json(),
-    onSuccess: () => toast.success('结构化输出已确认'),
-    onError: (error) => toast.error(error.message || '确认失败'),
   })
 }

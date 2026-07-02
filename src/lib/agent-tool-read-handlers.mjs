@@ -5,6 +5,7 @@ import {
 import {
   getSharedCurrentGoal,
 } from './agent-tool-business-helpers.mjs'
+import { ensureLogPeriodRollups } from './log-period-rollup.mjs'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const metricTypes = new Set(['BOOLEAN', 'COUNT', 'PERCENT', 'WEIGHT', 'TEXT'])
@@ -512,7 +513,9 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
   }
 
   if (toolName === 'today.get') {
-    const goal = await getSharedCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
+    const { ensureTodayAction } = await import('./today-action-planner.mjs')
+    const ensured = await ensureTodayAction(prisma, userId, { goalId: readAgentToolString(input, 'goalId') })
+    const goal = ensured.goal || await getSharedCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
     const actions = await prisma.dailyAction.findMany({
       where: { userId, goalId: goal.id },
       orderBy: { actionDate: 'desc' },
@@ -522,7 +525,7 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
         checkins: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
     })
-    return { targetId: actions[0]?.id || goal.id, result: { goal, actions } }
+    return { targetId: ensured.action?.id || actions[0]?.id || goal.id, result: { goal, action: ensured.action, actions, generated: ensured.generated, todayLocked: ensured.todayLocked } }
   }
 
   if (toolName === 'review.generate') {
@@ -606,6 +609,17 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
               goalTitle: detail.title,
             },
           },
+        })
+        await ensureLogPeriodRollups(tx, {
+          userId,
+          date: periodEnd,
+          sourcePath: logPath,
+          sourceKind: `${type}_review`,
+          goalId: detail.id,
+          goalTitle: detail.title,
+          resultLabel: '复盘已生成',
+          conditionTitle: detail.conditions.find((condition) => condition.status !== 'SATISFIED')?.title,
+          diagnosisQuestion: detail.diagnoses[0]?.nextQuestion,
         })
       }
       const review = await tx.review.create({

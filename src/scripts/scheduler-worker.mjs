@@ -32,10 +32,10 @@ const runOnce = process.argv.includes('--once') || process.env.SCHEDULER_RUN_ONC
 const forceReminderArg = process.argv.find((arg) => arg.startsWith('--force-reminder='))
 const forcedReminderType = forceReminderArg?.split('=')[1] || process.env.SCHEDULER_FORCE_REMINDER || ''
 const defaultRules = [
-  { reminderType: 'morning_planning', schedule: process.env.SCHEDULER_MORNING_TIME || '08:30', maxPerDay: 1 },
-  { reminderType: 'midday_check', schedule: process.env.SCHEDULER_MIDDAY_TIME || '12:30', maxPerDay: 1 },
-  { reminderType: 'evening_review', schedule: process.env.SCHEDULER_EVENING_TIME || '21:30', maxPerDay: 1 },
-  { reminderType: 'weekly_review', schedule: process.env.SCHEDULER_WEEKLY_TIME || 'SUN 21:00', maxPerDay: 1 },
+  { reminderType: 'morning_planning', schedule: process.env.SCHEDULER_MORNING_TIME || '08:30', maxPerDay: 1, quietHours: '23:00-07:30' },
+  { reminderType: 'midday_check', schedule: process.env.SCHEDULER_MIDDAY_TIME || '12:30', maxPerDay: 1, quietHours: '23:00-07:30' },
+  { reminderType: 'evening_review', schedule: process.env.SCHEDULER_EVENING_TIME || '21:30', maxPerDay: 1, quietHours: '23:00-07:30' },
+  { reminderType: 'weekly_review', schedule: process.env.SCHEDULER_WEEKLY_TIME || 'SUN 21:00', maxPerDay: 1, quietHours: '23:00-07:30' },
 ]
 
 let cachedAccessToken = ''
@@ -164,6 +164,7 @@ function dueInfo(rule, now = new Date(), forceReminderType = '') {
     String(parts.hour).padStart(2, '0') === String(hour).padStart(2, '0') &&
     String(parts.minute).padStart(2, '0') === String(minute).padStart(2, '0')
   const dateKey = `${parts.year}-${parts.month}-${parts.day}`
+  const quiet = isInQuietHours(rule.quietHours, parts)
   if (forceReminderType && forceReminderType === rule.reminderType) {
     return {
       due: true,
@@ -171,6 +172,7 @@ function dueInfo(rule, now = new Date(), forceReminderType = '') {
       localDate: dateKey,
       timezone,
       forced: true,
+      quiet,
     }
   }
   return {
@@ -178,7 +180,31 @@ function dueInfo(rule, now = new Date(), forceReminderType = '') {
     dueKey: `${dateKey}:${rule.reminderType}`,
     localDate: dateKey,
     timezone,
+    quiet,
   }
+}
+
+function minutesFromTime(value) {
+  const [hour, minute] = String(value || '').split(':').map((part) => Number(part))
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+  return Math.max(0, Math.min(1439, hour * 60 + minute))
+}
+
+function quietHoursRange(value) {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object' && typeof value.range === 'string') return value.range
+  return ''
+}
+
+function isInQuietHours(quietHours, parts) {
+  const range = quietHoursRange(quietHours)
+  const [startRaw, endRaw] = range.split('-')
+  const start = minutesFromTime(startRaw)
+  const end = minutesFromTime(endRaw)
+  const current = minutesFromTime(`${parts.hour}:${parts.minute}`)
+  if (start === null || end === null || current === null || start === end) return false
+  if (start < end) return current >= start && current < end
+  return current >= start || current < end
 }
 
 async function ensureDefaultRulesForBoundUsers() {
@@ -202,6 +228,7 @@ async function ensureDefaultRulesForBoundUsers() {
           schedule: rule.schedule,
           timezone: defaultTimezone,
           maxPerDay: rule.maxPerDay,
+          quietHours: { range: rule.quietHours },
           metadata: { source: 'scheduler_default' },
         },
       })
@@ -328,6 +355,25 @@ async function createPendingEvent(rule, info) {
 async function processRule(rule, options = {}) {
   const info = dueInfo(rule, new Date(), options.forceReminderType || '')
   if (!info.due) return
+  if (info.quiet && !info.forced) {
+    console.log(`[scheduler] skipped ${rule.reminderType}; quietHours=${quietHoursRange(rule.quietHours)}`)
+    return
+  }
+
+  const sentSince = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const sentCount = await prisma.schedulerEvent.count({
+    where: {
+      userId: rule.userId,
+      reminderRuleId: rule.id,
+      channel: rule.channel,
+      status: 'sent',
+      sentAt: { gte: sentSince },
+    },
+  })
+  if (sentCount >= Math.max(1, rule.maxPerDay || 1) && !info.forced) {
+    console.log(`[scheduler] skipped ${rule.reminderType}; maxPerDay=${rule.maxPerDay}`)
+    return
+  }
 
   const event = await createPendingEvent(rule, info)
   if (!event) return

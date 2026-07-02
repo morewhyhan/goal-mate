@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useUpdateModel } from '@/hooks/use-models'
-import { useExportUserData, useSettingsControlCenter, useTestModelConnection, useUpdateReminderRules, useUpdateSettings } from '@/hooks/use-settings'
+import { useDeleteAgentMemory, useDeleteWorkspaceData, useExportUserData, useSettingsControlCenter, useTestModelConnection, useUpdateReminderRules, useUpdateSettings } from '@/hooks/use-settings'
 
 type ReminderDraft = {
   id?: string
@@ -11,6 +11,7 @@ type ReminderDraft = {
   schedule: string
   timezone: string
   maxPerDay: number
+  quietHours: string
   enabled: boolean
 }
 
@@ -59,10 +60,10 @@ const reminderMeta = [
 ]
 
 const defaultReminderDrafts: ReminderDraft[] = [
-  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
-  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
-  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
-  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
+  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
 ]
 
 const defaultBehaviorDraft: BehaviorDraft = {
@@ -95,6 +96,12 @@ function statusClass(status?: string) {
   if (normalized.includes('pending') || normalized.includes('approved')) return 'bg-amber-100 text-amber-800'
   if (normalized.includes('failed') || normalized.includes('error')) return 'bg-red-100 text-red-800'
   return 'bg-stone-100 text-stone-700'
+}
+
+function quietHoursText(value: any, fallback = '23:00-07:30') {
+  if (typeof value === 'string' && value.trim()) return value
+  if (value && typeof value === 'object' && typeof value.range === 'string' && value.range.trim()) return value.range
+  return fallback
 }
 
 function formatDate(value?: string) {
@@ -137,6 +144,8 @@ export function SettingsView() {
   const updateReminderRules = useUpdateReminderRules()
   const testModel = useTestModelConnection()
   const exportUserData = useExportUserData()
+  const deleteAgentMemory = useDeleteAgentMemory()
+  const deleteWorkspaceData = useDeleteWorkspaceData()
 
   const data = controlCenter.data?.data
   const model = data?.model
@@ -178,6 +187,7 @@ export function SettingsView() {
         schedule: rule?.schedule || fallback.schedule,
         timezone: rule?.timezone || fallback.timezone,
         maxPerDay: rule?.maxPerDay || fallback.maxPerDay,
+        quietHours: quietHoursText(rule?.quietHours, fallback.quietHours),
         enabled: typeof rule?.enabled === 'boolean' ? rule.enabled : fallback.enabled,
       }
     }))
@@ -220,6 +230,7 @@ export function SettingsView() {
         schedule: rule.schedule,
         timezone: rule.timezone,
         maxPerDay: Number(rule.maxPerDay) || 1,
+        quietHours: rule.quietHours,
         enabled: rule.enabled,
       })),
     })
@@ -228,6 +239,11 @@ export function SettingsView() {
   function saveBehaviorSettings() {
     updateSettings.mutate({
       ...behaviorDraft,
+      general: {
+        locale: 'zh-CN',
+        timezone: 'Asia/Shanghai',
+        week_start: 'monday',
+      },
       goals: {
         ...behaviorDraft.goals,
         max_active_goals: 1,
@@ -245,8 +261,20 @@ export function SettingsView() {
       dataPrivacy: {
         ...behaviorDraft.dataPrivacy,
         redact_secrets: true,
+        local_first_mode: false,
       },
     })
+  }
+
+  function handleDeleteAgentMemory() {
+    if (!window.confirm('确认清除 Agent 对话记忆？这会删除对话历史和消息，但保留工具审计记录。')) return
+    deleteAgentMemory.mutate()
+  }
+
+  function handleDeleteWorkspaceData() {
+    const confirmation = window.prompt('这会清除目标、日志、Agent 对话、提醒、绑定、模型配置和设置，但保留登录账号。输入 DELETE 确认。')
+    if (confirmation !== 'DELETE') return
+    deleteWorkspaceData.mutate()
   }
 
   function updateReminder(index: number, patch: Partial<ReminderDraft>) {
@@ -312,23 +340,20 @@ export function SettingsView() {
           <div className="grid gap-4 xl:grid-cols-3">
             <div className="rounded-3xl border border-stone-100 p-4">
               <h3 className="font-semibold text-stone-950">General</h3>
-              <p className="mt-1 text-xs leading-5 text-stone-500">影响日期、周起点和默认显示语言。</p>
+              <p className="mt-1 text-xs leading-5 text-stone-500">v0.1 固定中文、中国时区和周一开始，避免出现未完整生效的区域设置。</p>
               <div className="mt-4 grid gap-3">
-                <label>
+                <div className="rounded-2xl bg-stone-50 px-3 py-2">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Locale</span>
-                  <input value={behaviorDraft.general.locale} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, general: { ...draft.general, locale: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
-                </label>
-                <label>
+                  <p className="mt-1 text-sm font-semibold text-stone-900">zh-CN</p>
+                </div>
+                <div className="rounded-2xl bg-stone-50 px-3 py-2">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Timezone</span>
-                  <input value={behaviorDraft.general.timezone} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, general: { ...draft.general, timezone: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
-                </label>
-                <label>
+                  <p className="mt-1 text-sm font-semibold text-stone-900">Asia/Shanghai</p>
+                </div>
+                <div className="rounded-2xl bg-stone-50 px-3 py-2">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Week Start</span>
-                  <select value={behaviorDraft.general.week_start} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, general: { ...draft.general, week_start: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900">
-                    <option value="monday">Monday</option>
-                    <option value="sunday">Sunday</option>
-                  </select>
-                </label>
+                  <p className="mt-1 text-sm font-semibold text-stone-900">Monday</p>
+                </div>
               </div>
             </div>
 
@@ -422,7 +447,20 @@ export function SettingsView() {
                   </div>
                 </div>
                 <ToggleRow label="导出 Markdown" description="导出目标、日志和 Agent 沉淀的 Markdown 文档。" checked={behaviorDraft.dataPrivacy.export_markdown} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, export_markdown: checked } }))} />
-                <ToggleRow label="本地优先模式" description="预留给后续自部署/本地优先数据策略；当前只保存偏好。" checked={behaviorDraft.dataPrivacy.local_first_mode} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, local_first_mode: checked } }))} />
+                <div className="flex items-start justify-between gap-3 rounded-3xl border border-stone-200 bg-stone-50 p-4">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-stone-900">本地优先模式</span>
+                    <span className="mt-1 block text-xs leading-5 text-stone-500">后续自部署/本地优先版本再启用；当前 Web v0.1 不保存不会改变运行方式的假开关。</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-stone-200 px-3 py-1 text-xs font-semibold text-stone-600">后续版本</span>
+                </div>
+                <div className="flex items-start justify-between gap-3 rounded-3xl border border-stone-200 bg-stone-50 p-4">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-stone-900">自动备份位置</span>
+                    <span className="mt-1 block text-xs leading-5 text-stone-500">当前 Web v0.1 用导出数据完成备份；文件系统备份位置属于后续自部署能力，不保存假路径。</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-stone-200 px-3 py-1 text-xs font-semibold text-stone-600">使用导出</span>
+                </div>
               </div>
             </div>
           </div>
@@ -526,6 +564,10 @@ export function SettingsView() {
                       <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Max / Day</span>
                       <input type="number" min={1} max={8} value={rule.maxPerDay} onChange={(event) => updateReminder(index, { maxPerDay: Math.max(1, Number(event.target.value) || 1) })} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
                     </label>
+                    <label>
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Quiet Hours</span>
+                      <input value={rule.quietHours} onChange={(event) => updateReminder(index, { quietHours: event.target.value })} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                    </label>
                   </div>
                 </div>
               )
@@ -584,13 +626,29 @@ export function SettingsView() {
             <p className="mt-2 text-sm leading-6 text-stone-500">
               导出目标、日志、Agent 对话、提醒、调度、工具审计和设置。密钥不会以明文导出。
             </p>
-            <button
-              disabled={exportUserData.isPending}
-              onClick={() => exportUserData.mutate()}
-              className="mt-5 w-full rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              导出数据
-            </button>
+            <div className="mt-5 grid gap-3">
+              <button
+                disabled={exportUserData.isPending}
+                onClick={() => exportUserData.mutate()}
+                className="w-full rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                导出数据
+              </button>
+              <button
+                disabled={deleteAgentMemory.isPending}
+                onClick={handleDeleteAgentMemory}
+                className="w-full rounded-full bg-stone-100 px-5 py-3 text-sm font-semibold text-stone-700 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                清除 Agent 记忆
+              </button>
+              <button
+                disabled={deleteWorkspaceData.isPending}
+                onClick={handleDeleteWorkspaceData}
+                className="w-full rounded-full bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                清除工作区数据
+              </button>
+            </div>
           </section>
         </div>
       </div>

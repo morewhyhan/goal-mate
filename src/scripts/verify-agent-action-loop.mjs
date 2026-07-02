@@ -8,6 +8,7 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const baseUrl = process.env.GOAL_MATE_BASE_URL || 'http://127.0.0.1:3000'
 const cookie = process.env.GOAL_MATE_COOKIE || ''
 const shouldWrite = process.argv.includes('--write')
+const staticOnly = process.argv.includes('--static-only')
 const shouldWriteReport = process.argv.includes('--write-report') || shouldWrite
 
 const requiredTools = [
@@ -85,6 +86,11 @@ function verifySharedRuntimeContracts() {
   const qqWorker = readProjectFile('src/scripts/qq-bot-worker.mjs')
   const schedulerWorker = readProjectFile('src/scripts/scheduler-worker.mjs')
   const settingsRoute = readProjectFile('src/server/api/routes/settings/index.ts')
+  const todayRoute = readProjectFile('src/server/api/routes/today/index.ts')
+  const todayPlanner = readProjectFile('src/lib/today-action-planner.mjs')
+  const logRollup = readProjectFile('src/lib/log-period-rollup.mjs')
+  const momentumHeatmap = readProjectFile('src/components/goal-mate/momentum-heatmap.tsx')
+  const reviewRoute = readProjectFile('src/server/api/routes/reviews/index.ts')
   const combinedHandlers = `${readHandlers}\n${writeHandlers}`
 
   record(
@@ -118,6 +124,12 @@ function verifySharedRuntimeContracts() {
     'src/lib/agent-tool-executor.mjs scanned',
   )
   record(
+    'AAL-NO-FAKE-STRUCTURED-CONFIRM',
+    'Agent no longer exposes a fake structured-output confirmation endpoint; real changes must go through Agent tools',
+    !agentRuntime.includes('structured-output/confirm') && !readProjectFile('src/server/api/routes/agent/index.ts').includes('structured-output/confirm'),
+    'Agent structured confirmations are handled by tool actions, not a no-op endpoint',
+  )
+  record(
     'AAL-CONFIRMATION-POLICY',
     'shared executor respects Settings confirmation boundaries for goal, setting and external actions',
     executor.includes('require_confirm_goal_changes')
@@ -129,6 +141,20 @@ function verifySharedRuntimeContracts() {
     'confirmation policy is read from UserSetting.agent',
   )
   record(
+    'AAL-GOAL-UPDATE-PATH-CONTRACT',
+    'goal.update can adjust KR, necessary conditions and stage plans after diagnosis instead of only changing goal title/status',
+    writeHandlers.includes('upsertGoalKeyResults')
+      && writeHandlers.includes('keyResult.update')
+      && writeHandlers.includes('keyResult.create')
+      && writeHandlers.includes('upsertGoalConditions')
+      && writeHandlers.includes('goalCondition.update')
+      && writeHandlers.includes('goalCondition.create')
+      && writeHandlers.includes('upsertGoalStagePlans')
+      && writeHandlers.includes('stagePlan.update')
+      && writeHandlers.includes('stagePlan.create'),
+    'goal.update supports path-level structure changes through the shared write handler',
+  )
+  record(
     'AAL-WEB-SHARED-RUNTIME',
     'Web Agent executes through shared executor',
     webRuntime.includes('executeAgentToolWithPrisma') && !webRuntime.includes('agentToolAction.create'),
@@ -137,7 +163,7 @@ function verifySharedRuntimeContracts() {
   record(
     'AAL-TOOL-ROUTER-FALLBACK',
     'Agent tool router has conservative local fallback for explicit commands when model JSON routing fails',
-    agentRuntime.includes('generateFallbackAgentToolIntent') && agentRuntime.includes('goal.create_draft') && agentRuntime.includes('review.generate') && agentRuntime.includes('log.write_daily') && agentRuntime.includes('return fallbackIntent'),
+    agentRuntime.includes('generateFallbackAgentToolIntent') && agentRuntime.includes('goal.create_draft') && agentRuntime.includes('review.generate') && agentRuntime.includes('log.write_daily') && agentRuntime.includes('return allowedFallbackIntent'),
     'src/lib/agent-runtime.ts scanned',
   )
   record(
@@ -162,6 +188,47 @@ function verifySharedRuntimeContracts() {
       && settingsRoute.includes('models.map(redactModel)')
       && settingsRoute.includes('redact_secrets: true')
       && settingsRoute.includes('redactSecrets: true'),
+    'src/server/api/routes/settings/index.ts scanned',
+  )
+  record(
+    'AAL-DELETE-AGENT-MEMORY-CONTRACT',
+    'settings API can clear Agent conversation memory so future replies cannot use deleted history',
+    settingsRoute.includes(".delete('/agent-memory'")
+      && settingsRoute.includes('agentMessage.deleteMany')
+      && settingsRoute.includes('agentThread.deleteMany')
+      && settingsRoute.includes('retainedAudit: true'),
+    'Agent memory deletion removes threads/messages while retaining audit records',
+  )
+  record(
+    'AAL-DELETE-WORKSPACE-DATA-CONTRACT',
+    'settings API can clear workspace data while retaining the login account',
+    settingsRoute.includes(".delete('/workspace-data'")
+      && settingsRoute.includes('deleteWorkspaceData')
+      && settingsRoute.includes('goal.deleteMany')
+      && settingsRoute.includes('markdownDocument.deleteMany')
+      && settingsRoute.includes('agentThread.deleteMany')
+      && settingsRoute.includes('reminderRule.deleteMany')
+      && settingsRoute.includes('retainedAccount: true'),
+    'Workspace deletion removes product data but keeps auth account/session separate',
+  )
+  record(
+    'AAL-LOCAL-FIRST-FUTURE-BOUNDARY',
+    'settings API keeps local_first_mode disabled in v0.1 because self-hosted/local-first runtime is a later boundary',
+    settingsRoute.includes('local_first_mode: false'),
+    'src/server/api/routes/settings/index.ts scanned',
+  )
+  record(
+    'AAL-BACKUP-LOCATION-BOUNDARY',
+    'settings API keeps backup_location as export-only until self-hosted filesystem backup exists',
+    settingsRoute.includes("backup_location: 'export'"),
+    'src/server/api/routes/settings/index.ts scanned',
+  )
+  record(
+    'AAL-GENERAL-SETTING-BOUNDARY',
+    'settings API keeps locale, timezone and week_start fixed until full multi-locale/timezone behavior exists',
+    settingsRoute.includes('locale: defaultUserSettings.general.locale')
+      && settingsRoute.includes('timezone: defaultUserSettings.general.timezone')
+      && settingsRoute.includes('week_start: defaultUserSettings.general.week_start'),
     'src/server/api/routes/settings/index.ts scanned',
   )
   record(
@@ -194,6 +261,16 @@ function verifySharedRuntimeContracts() {
     'src/server/api/routes/settings/index.ts scanned',
   )
   record(
+    'AAL-REMINDER-QUIET-HOURS-RATE-LIMIT',
+    'Reminder settings expose quietHours and scheduler enforces quiet hours plus maxPerDay before sending',
+    settingsRoute.includes('quietHours')
+      && schedulerWorker.includes('isInQuietHours')
+      && schedulerWorker.includes('quietHoursRange')
+      && schedulerWorker.includes('maxPerDay')
+      && schedulerWorker.includes('schedulerEvent.count'),
+    'Settings reminder rules and scheduler worker scanned',
+  )
+  record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
@@ -211,6 +288,58 @@ function verifySharedRuntimeContracts() {
     writeHandlers.includes('diagnosis.create') && writeHandlers.includes('auto_write_checkin') && writeHandlers.includes('logEntry.upsert') && writeHandlers.includes('markdownDocument.upsert') && writeHandlers.includes('inferSharedDiagnosis'),
     'checkin.submit creates diagnosis and gates log writing by Settings',
   )
+  record(
+    'AAL-CHECKIN-PROGRESS-CONTRACT',
+    'Today and Agent check-in feedback updates condition, KR and stage progress instead of only writing history',
+    writeHandlers.includes('applySharedCheckinProgress')
+      && writeHandlers.includes('goalCondition.update')
+      && writeHandlers.includes('keyResult.update')
+      && writeHandlers.includes('stagePlan.update')
+      && todayRoute.includes('applyCheckinProgress')
+      && todayRoute.includes('goalCondition.update')
+      && todayRoute.includes('keyResult.update')
+      && todayRoute.includes('stagePlan.update'),
+    'Today /checkin and shared checkin.submit both propagate progress evidence',
+  )
+  record(
+    'AAL-TODAY-AUTO-ACTION-CONTRACT',
+    'Today and Agent today.get automatically ensure one current daily action without creating a second action after check-in',
+    todayRoute.includes('ensureTodayAction')
+      && readHandlers.includes('ensureTodayAction')
+      && todayPlanner.includes("status: 'REPLACED'")
+      && todayPlanner.includes("action.status === 'PLANNED'")
+      && todayPlanner.includes('todayLocked: true')
+      && todayPlanner.includes('pickCurrentCondition')
+      && todayPlanner.includes('dailyAction.create'),
+    'Today /api/today and Agent today.get share the same planner',
+  )
+  record(
+    'AAL-MOMENTUM-HEATMAP-CONTRACT',
+    'Today Momentum heatmap is driven by real Check-in data instead of empty static cells',
+    todayRoute.includes('buildMomentumDays')
+      && todayRoute.includes('prisma.checkin.findMany')
+      && todayRoute.includes('momentum')
+      && momentumHeatmap.includes('entries')
+      && momentumHeatmap.includes('来自真实 Check-in')
+      && !momentumHeatmap.includes('等待真实打卡记录'),
+    'Today API returns momentum data and MomentumHeatmap renders it by scope',
+  )
+  record(
+    'AAL-LOG-PERIOD-ROLLUP-CONTRACT',
+    'Check-in, manual daily logs and reviews automatically maintain week/month/quarter/year Markdown rollups without overwriting user text',
+    logRollup.includes('buildLogPeriodRollupTargets')
+      && logRollup.includes('WEEK')
+      && logRollup.includes('MONTH')
+      && logRollup.includes('QUARTER')
+      && logRollup.includes('YEAR')
+      && logRollup.includes('goal-mate:rollup:start')
+      && logRollup.includes('LOG_PARENT')
+      && todayRoute.includes('ensureLogPeriodRollups')
+      && writeHandlers.includes('ensureLogPeriodRollups')
+      && readHandlers.includes('ensureLogPeriodRollups')
+      && reviewRoute.includes('ensureLogPeriodRollups'),
+    'rollup helper is shared by Today check-in, Agent daily log/check-in and Review generation',
+  )
 }
 
 async function executeTool(toolName, input = {}, confirmed = false) {
@@ -226,6 +355,16 @@ async function confirmToolAction(id) {
 
 async function run() {
   verifySharedRuntimeContracts()
+
+  if (staticOnly) {
+    record(
+      'AAL-STATIC-ONLY',
+      'static-only mode checks shared contracts without requiring a running Web/API server',
+      true,
+      'runtime API, auth cookie and mutating checks intentionally skipped',
+    )
+    return
+  }
 
   assert(cookie, 'GOAL_MATE_COOKIE is required for Agent Action Loop verification')
 
@@ -507,6 +646,7 @@ const lines = [
   `- Time: ${new Date().toISOString()}`,
   `- Authenticated: ${cookie ? 'yes' : 'no'}`,
   `- Mutating checks: ${shouldWrite ? 'yes' : 'no'}`,
+  `- Static only: ${staticOnly ? 'yes' : 'no'}`,
   '',
   '| ID | Purpose | Result | Evidence |',
   '| --- | --- | --- | --- |',

@@ -21,6 +21,7 @@ const reminderRuleInputSchema = z.object({
   schedule: z.string().min(1),
   timezone: z.string().min(1).default('Asia/Shanghai'),
   maxPerDay: z.number().int().min(1).max(8).default(1),
+  quietHours: z.string().min(1).default('23:00-07:30'),
   enabled: z.boolean().default(true),
 })
 
@@ -29,10 +30,10 @@ const reminderRulesSchema = z.object({
 })
 
 const defaultReminderRules = [
-  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
-  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
-  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
-  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
+  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
 ]
 
 function redactModel(config: any) {
@@ -73,7 +74,7 @@ async function ensureDefaultReminderRules(userId: string) {
     const existing = await prisma.reminderRule.findFirst({
       where: { userId, reminderType: rule.reminderType, channel: rule.channel },
     })
-    if (!existing) await prisma.reminderRule.create({ data: { userId, ...rule, metadata: { source: 'settings_default' } } })
+    if (!existing) await prisma.reminderRule.create({ data: { userId, ...rule, quietHours: { range: rule.quietHours }, metadata: { source: 'settings_default' } } })
   }
 }
 
@@ -130,6 +131,90 @@ async function probeModelConnection(model: any) {
       model: modelName,
       message: error instanceof Error ? error.message : String(error),
     }
+  }
+}
+
+async function deleteWorkspaceData(userId: string) {
+  const [
+    externalActionRequests,
+    schedulerEvents,
+    reminderRules,
+    agentToolActions,
+    qqMessageEvents,
+    qqChatBindings,
+    telegramUpdateEvents,
+    telegramChatBindings,
+    integrationAccounts,
+    userSetting,
+    modelConfigs,
+    markdownDocumentLinks,
+    markdownDocuments,
+    agentMessages,
+    agentThreads,
+    reviews,
+    diagnoses,
+    checkins,
+    dailyActions,
+    stagePlans,
+    conditions,
+    keyResults,
+    reasoningCards,
+    logEntries,
+    goals,
+  ] = await prisma.$transaction([
+    prisma.externalActionRequest.deleteMany({ where: { userId } }),
+    prisma.schedulerEvent.deleteMany({ where: { userId } }),
+    prisma.reminderRule.deleteMany({ where: { userId } }),
+    prisma.agentToolAction.deleteMany({ where: { userId } }),
+    prisma.qqMessageEvent.deleteMany({ where: { userId } }),
+    prisma.qqChatBinding.deleteMany({ where: { userId } }),
+    prisma.telegramUpdateEvent.deleteMany({ where: { userId } }),
+    prisma.telegramChatBinding.deleteMany({ where: { userId } }),
+    prisma.integrationAccount.deleteMany({ where: { userId } }),
+    prisma.userSetting.deleteMany({ where: { userId } }),
+    prisma.modelConfig.deleteMany({ where: { userId } }),
+    prisma.markdownDocumentLink.deleteMany({ where: { userId } }),
+    prisma.markdownDocument.deleteMany({ where: { userId } }),
+    prisma.agentMessage.deleteMany({ where: { userId } }),
+    prisma.agentThread.deleteMany({ where: { userId } }),
+    prisma.review.deleteMany({ where: { userId } }),
+    prisma.diagnosis.deleteMany({ where: { userId } }),
+    prisma.checkin.deleteMany({ where: { userId } }),
+    prisma.dailyAction.deleteMany({ where: { userId } }),
+    prisma.stagePlan.deleteMany({ where: { userId } }),
+    prisma.goalCondition.deleteMany({ where: { userId } }),
+    prisma.keyResult.deleteMany({ where: { userId } }),
+    prisma.goalReasoningCard.deleteMany({ where: { userId } }),
+    prisma.logEntry.deleteMany({ where: { userId } }),
+    prisma.goal.deleteMany({ where: { userId } }),
+  ])
+
+  return {
+    externalActionRequests: externalActionRequests.count,
+    schedulerEvents: schedulerEvents.count,
+    reminderRules: reminderRules.count,
+    agentToolActions: agentToolActions.count,
+    qqMessageEvents: qqMessageEvents.count,
+    qqChatBindings: qqChatBindings.count,
+    telegramUpdateEvents: telegramUpdateEvents.count,
+    telegramChatBindings: telegramChatBindings.count,
+    integrationAccounts: integrationAccounts.count,
+    userSettings: userSetting.count,
+    modelConfigs: modelConfigs.count,
+    markdownDocumentLinks: markdownDocumentLinks.count,
+    markdownDocuments: markdownDocuments.count,
+    agentMessages: agentMessages.count,
+    agentThreads: agentThreads.count,
+    reviews: reviews.count,
+    diagnoses: diagnoses.count,
+    checkins: checkins.count,
+    dailyActions: dailyActions.count,
+    stagePlans: stagePlans.count,
+    conditions: conditions.count,
+    keyResults: keyResults.count,
+    reasoningCards: reasoningCards.count,
+    logEntries: logEntries.count,
+    goals: goals.count,
   }
 }
 
@@ -224,6 +309,7 @@ const app = new Hono()
         schedule: rule.schedule,
         timezone: rule.timezone,
         maxPerDay: rule.maxPerDay,
+        quietHours: { range: rule.quietHours },
         enabled: rule.enabled,
         metadata: { source: 'settings_ui' },
       }
@@ -249,7 +335,13 @@ const app = new Hono()
 
     const input = c.req.valid('json')
     const merged = {
-      general: { ...defaultUserSettings.general, ...(input.general || {}) },
+      general: {
+        ...defaultUserSettings.general,
+        ...(input.general || {}),
+        locale: defaultUserSettings.general.locale,
+        timezone: defaultUserSettings.general.timezone,
+        week_start: defaultUserSettings.general.week_start,
+      },
       goals: { ...defaultUserSettings.goals, ...(input.goals || {}), max_active_goals: 1 },
       logs: {
         ...defaultUserSettings.logs,
@@ -268,7 +360,13 @@ const app = new Hono()
         morning_checkin_time: defaultUserSettings.notifications.morning_checkin_time,
         evening_review_time: defaultUserSettings.notifications.evening_review_time,
       },
-      dataPrivacy: { ...defaultUserSettings.dataPrivacy, ...(input.dataPrivacy || {}), redact_secrets: true },
+      dataPrivacy: {
+        ...defaultUserSettings.dataPrivacy,
+        ...(input.dataPrivacy || {}),
+        redact_secrets: true,
+        local_first_mode: false,
+        backup_location: 'export',
+      },
     }
 
     const settings = await prisma.userSetting.upsert({ where: { userId }, update: merged, create: { userId, ...merged } })
@@ -279,6 +377,34 @@ const app = new Hono()
     if (!userId) return unauthorized(c)
     const model = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
     return c.json({ data: await probeModelConnection(model) })
+  })
+  .delete('/agent-memory', async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    const [messages, threads] = await prisma.$transaction([
+      prisma.agentMessage.deleteMany({ where: { userId } }),
+      prisma.agentThread.deleteMany({ where: { userId } }),
+    ])
+
+    return c.json({
+      data: {
+        deletedMessages: messages.count,
+        deletedThreads: threads.count,
+        retainedAudit: true,
+      },
+    })
+  })
+  .delete('/workspace-data', async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    return c.json({
+      data: {
+        deleted: await deleteWorkspaceData(userId),
+        retainedAccount: true,
+      },
+    })
   })
   .get('/export', async (c) => {
     const userId = await getCurrentUserId(c)

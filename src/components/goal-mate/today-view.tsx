@@ -18,6 +18,7 @@ export function TodayView() {
   const apiData = today.data?.data
   const apiGoal = apiData?.goal
   const apiAction = apiData?.action
+  const actionLocked = Boolean(apiData?.todayLocked || (apiAction && apiAction.status !== 'PLANNED'))
   const todaySettings = settings.data?.data?.today || {}
   const lowEnergyMode = todaySettings.low_energy_mode !== false
   const heatmapScope = typeof todaySettings.heatmap_scope === 'string' ? todaySettings.heatmap_scope : 'year'
@@ -32,6 +33,7 @@ export function TodayView() {
         fallbackAction: apiAction.fallbackAction,
         estimatedMinutes: apiAction.estimatedMinutes,
         checkinQuestion: apiAction.checkinQuestion || '完成后告诉 Agent：做完了、部分完成，或没做。',
+        status: apiAction.status,
       }
     : null
 
@@ -52,6 +54,8 @@ export function TodayView() {
           <span className="rounded-full bg-white/10 px-3 py-1">Current focus</span>
           <span>{horizon}</span>
           {today.isLoading && <span className="rounded-full bg-white/10 px-3 py-1">加载中</span>}
+          {apiData?.generated && <span className="rounded-full bg-amber-200 px-3 py-1 text-stone-950">自动生成</span>}
+          {actionLocked && <span className="rounded-full bg-white/10 px-3 py-1">今日已反馈</span>}
           {lowEnergyMode && <span className="rounded-full bg-emerald-300 px-3 py-1 text-stone-950">低精力模式</span>}
         </div>
 
@@ -84,7 +88,7 @@ export function TodayView() {
           {feedbackOptions.map((item, index) => (
             <button
               key={item.value}
-              disabled={!action?.id || submitCheckin.isPending}
+              disabled={!action?.id || actionLocked || submitCheckin.isPending}
               onClick={() => handleFeedback(item.value)}
               className={`rounded-full px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${index === 0 ? 'bg-emerald-300 text-stone-950' : 'bg-white/10 text-white hover:bg-white/15'}`}
             >
@@ -92,7 +96,8 @@ export function TodayView() {
             </button>
           ))}
         </div>
-        {!action?.id && <p className="mt-4 text-sm text-stone-400">当前没有可反馈的真实行动。先让 Agent 帮你生成 Today。</p>}
+        {!action?.id && <p className="mt-4 text-sm text-stone-400">当前没有可反馈的真实行动。先让 Agent 帮你确认当前主目标。</p>}
+        {actionLocked && <p className="mt-4 text-sm text-stone-400">今天这一步已经记录反馈，系统不会继续追加第二个主行动。</p>}
       </main>
 
       <aside className="flex flex-col gap-6">
@@ -107,7 +112,7 @@ export function TodayView() {
           </p>
           <p className="mt-4 text-xs text-stone-400">目标：{goalTitle}</p>
         </section>
-        <MomentumHeatmap defaultScope={heatmapScope} />
+        <MomentumHeatmap defaultScope={heatmapScope} entries={apiData?.momentum || []} />
       </aside>
     </div>
   )

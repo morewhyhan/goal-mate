@@ -156,9 +156,13 @@ P0 提醒类型：
 | Done | 接入 Web Agent 工具确认 UI | Agent 页面显示待确认动作卡片，可点击确认或取消 |
 | Done | 实现 `goal.list`、`goal.get` | 显式工具 API 可读取目标结构 |
 | Done | 实现 `today.get`、`today.set_next_action` | 显式工具 API 可读取和设置今日行动 |
+| Done | 强化 `goal.update` 路径调整 | Agent 确认后可更新/新增 KR、必要条件和阶段计划 |
+| Done | Today 自动生成唯一下一步 | 打开 Today 或 Agent 查询今日行动时，如果今天还没有行动，会基于当前缺口生成一条；当天已反馈后不追加第二条 |
 | Done | 实现 `checkin.submit` | 显式工具 API 可提交完成情况 |
+| Done | Check-in 反向推进目标状态 | Today/Agent Check-in 会根据完成/部分完成更新绑定条件、KR 进度和阶段状态 |
 | Done | 实现 `log.write_daily` | 显式工具 API 可写入 Markdown 日志 |
 | Done | 实现 `review.generate` | 显式工具 API 可生成日/周复盘草稿 |
+| Done | Logs 周/月/季/年汇总 | Check-in、手写日记和复盘会自动维护周期 Markdown，并通过 `LOG_PARENT` 链接到下级记录 |
 | Done | 实现 `reminder.schedule` | 显式工具 API 可创建或调整提醒规则 |
 | Done | 新增 Scheduler Worker | `worker:scheduler` 已添加，按规则生成主动推进消息 |
 | Done | 接入 QQ 主动发送 | Scheduler 已复用 QQ OpenAPI 发送提醒；长期稳定性待验证 |
@@ -254,3 +258,31 @@ P0 提醒类型：
 - 2026-07-02：强化复盘节奏设置闭环，`goals.review_cadence` 现在作为 `/api/reviews/generate` 和 Agent `review.generate` 的默认复盘类型；用户明确指定日报/周报/月报等时仍优先尊重显式输入。
 
 - 2026-07-02：修正 Notifications 设置边界，通知渠道、早晚提醒时间和每日最大提醒次数以 ReminderRule 为真实来源；`/api/settings` 保存时固定 `notifications.channel/max_daily_prompts/morning_checkin_time/evening_review_time`，避免形成第二套不会被调度器执行的假配置。
+
+- 2026-07-02：补齐 Check-in 反向推进闭环，Today `/checkin` 和 Agent `checkin.submit` 现在会把完成/部分完成反馈同步到绑定条件、目标 KR 进度和关联阶段状态；没做/跳过只记录历史与诊断，不虚增进度。
+
+- 2026-07-02：补齐 Today 自动下一步闭环，新增共享 Today action planner；Web Today 和 Agent `today.get` 都会在当天缺少行动时按当前未满足条件生成唯一主行动，过期未反馈行动会被替换为 `REPLACED`，当天已反馈后不再生成第二条。
+
+- 2026-07-02：补齐 Logs 周/月/季/年周期汇总闭环，新增共享 log period rollup；Today Check-in、Agent `checkin.submit`、`log.write_daily` 和 `review.generate` 会自动维护 WEEK/MONTH/QUARTER/YEAR Markdown 父级记录，并用 `LOG_PARENT` 链接到下级记录。系统只替换 `goal-mate:rollup` 区块，不覆盖用户在周期日志中的自由编辑内容。
+
+- 2026-07-02：修正 Data & Privacy 本地优先边界，`local_first_mode` 属于后续自部署/本地优先版本；Settings 页面只读展示为后续版本，`/api/settings` 保存时强制 `local_first_mode=false`，避免当前 Web v0.1 出现不会改变运行方式的假开关。
+
+- 2026-07-02：修正 General 设置边界，语言、时区和周起点在 v0.1 固定为 `zh-CN`、`Asia/Shanghai`、`monday`；Settings 页面只读展示，`/api/settings` 保存时强制默认，避免出现日期/语言配置没有全链路生效的假配置。
+
+- 2026-07-02：移除旧的 `structured-output/confirm` 假确认接口；结构化输出如果要改变系统状态，必须走 Agent Tool Action 的草稿、确认、执行和审计链路，不能只返回一个没有业务效果的 `confirmed=true`。
+
+- 2026-07-02：强化 `goal.update` 路径调整能力；Agent 工具确认后现在可以更新或新增 Key Result、必要条件和阶段计划，支持诊断后的真实路径重建，而不再只改目标标题、状态和当前焦点。
+
+- 2026-07-02：修正 Today Momentum 热力图闭环，Today API 现在返回最近一年真实 Check-in 聚合数据；MomentumHeatmap 按 Year/Quarter/Month/Week 渲染真实活跃天数，不再展示静态空格子和“等待真实打卡记录”。
+
+- 2026-07-02：补齐 Agent 记忆删除闭环，Settings 新增“清除 Agent 记忆”；`DELETE /api/settings/agent-memory` 会删除 AgentThread/AgentMessage，使后续 Agent 不再引用旧对话历史，同时保留 AgentToolAction 审计记录。
+
+- 2026-07-02：补齐提醒免打扰和频率闭环，Settings 的每条 ReminderRule 现在可配置 `quietHours`；Scheduler 在免打扰窗口内跳过非强制提醒，并按 `maxPerDay` 检查最近 24 小时已发送次数，避免提醒设置只保存不生效。
+
+- 2026-07-02：补齐 Scheduler 默认提醒规则一致性，Worker 自动为已绑定用户创建默认 ReminderRule 时也会写入 `quietHours={ range: "23:00-07:30" }`，避免绕过 Settings 默认免打扰边界。
+
+- 2026-07-02：补齐 Data & Privacy 删除数据闭环，Settings 新增“清除工作区数据”；`DELETE /api/settings/workspace-data` 会删除目标、KR、条件、阶段、行动、Check-in、诊断、复盘、日志、Markdown、Agent 对话、模型配置、提醒规则、集成绑定、调度事件和工具审计，保留登录账号本身。
+
+- 2026-07-02：修正 Data & Privacy 备份位置边界，当前 Web v0.1 只提供数据导出作为备份方式；Settings 只读说明“自动备份位置”属于后续自部署文件系统能力，`/api/settings` 保存时固定 `backup_location='export'`，不保存假路径。
+
+- 2026-07-02：新增 `verify:agent-loop:static`，在不启动 Web 服务、不需要 cookie、不写数据库的情况下执行 Agent Action Loop 静态契约检查，作为非服务器阶段的轻量验收证据。

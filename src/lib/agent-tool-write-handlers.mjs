@@ -11,8 +11,14 @@ import {
   getOrCreateSharedCondition,
   getSharedCurrentGoal,
 } from './agent-tool-business-helpers.mjs'
+import { ensureLogPeriodRollups } from './log-period-rollup.mjs'
 
 const goalStatuses = new Set(['DRAFT', 'CLARIFYING', 'CONFIRMED', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ABANDONED', 'ARCHIVED'])
+const keyResultStatuses = new Set(['ACTIVE', 'ACHIEVED', 'AT_RISK', 'ABANDONED'])
+const metricTypes = new Set(['BOOLEAN', 'COUNT', 'PERCENT', 'WEIGHT', 'TEXT'])
+const conditionTypes = new Set(['HARD', 'ASSUMED', 'SUPPORTING'])
+const conditionStatuses = new Set(['MISSING', 'PARTIAL', 'SATISFIED', 'INVALIDATED'])
+const stageStatuses = new Set(['DRAFT', 'ACTIVE', 'COMPLETED', 'ADJUSTED', 'CANCELLED'])
 const DAY_MS = 24 * 60 * 60 * 1000
 
 function normalizeGoalStatus(value, fallback) {
@@ -20,14 +26,153 @@ function normalizeGoalStatus(value, fallback) {
   return goalStatuses.has(normalized) ? normalized : fallback
 }
 
+function normalizeEnum(value, allowed, fallback) {
+  const normalized = String(value || '').trim().toUpperCase()
+  return allowed.has(normalized) ? normalized : fallback
+}
+
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : []
+}
+
+function readOptionalNumber(input, key) {
+  const value = input?.[key]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  return undefined
 }
 
 async function readSharedLogBooleanSetting(prisma, userId, key, fallback) {
   const settings = await prisma.userSetting.findUnique({ where: { userId } })
   const logs = asObject(settings?.logs)
   return typeof logs[key] === 'boolean' ? logs[key] : fallback
+}
+
+async function upsertGoalKeyResults(tx, userId, goalId, inputItems) {
+  const updated = []
+  for (const rawItem of asArray(inputItems)) {
+    const item = asObject(rawItem)
+    const id = readAgentToolString(item, 'id')
+    const title = readAgentToolString(item, 'title')
+    const existing = id
+      ? await tx.keyResult.findFirst({ where: { id, userId, goalId } })
+      : title
+        ? await tx.keyResult.findFirst({ where: { userId, goalId, title } })
+        : null
+    const progress = readOptionalNumber(item, 'progress')
+    const data = {
+      ...(title ? { title } : {}),
+      ...(readAgentToolString(item, 'metricType') ? { metricType: normalizeEnum(readAgentToolString(item, 'metricType'), metricTypes, existing?.metricType || 'TEXT') } : {}),
+      ...(readAgentToolString(item, 'currentValue') ? { currentValue: readAgentToolString(item, 'currentValue') } : {}),
+      ...(readAgentToolString(item, 'targetValue') ? { targetValue: readAgentToolString(item, 'targetValue') } : {}),
+      ...(progress !== undefined ? { progress: Math.max(0, Math.min(1, progress)) } : {}),
+      ...(readAgentToolString(item, 'status') ? { status: normalizeEnum(readAgentToolString(item, 'status'), keyResultStatuses, existing?.status || 'ACTIVE') } : {}),
+      ...(readAgentToolString(item, 'whyNecessary') ? { whyNecessary: readAgentToolString(item, 'whyNecessary') } : {}),
+    }
+    if (existing) {
+      updated.push(await tx.keyResult.update({ where: { id: existing.id }, data }))
+    } else if (title) {
+      updated.push(await tx.keyResult.create({
+        data: {
+          userId,
+          goalId,
+          title,
+          metricType: normalizeEnum(readAgentToolString(item, 'metricType'), metricTypes, 'TEXT'),
+          currentValue: readAgentToolString(item, 'currentValue') || null,
+          targetValue: readAgentToolString(item, 'targetValue') || null,
+          progress: Math.max(0, Math.min(1, progress ?? 0)),
+          status: normalizeEnum(readAgentToolString(item, 'status'), keyResultStatuses, 'ACTIVE'),
+          whyNecessary: readAgentToolString(item, 'whyNecessary') || null,
+        },
+      }))
+    }
+  }
+  return updated
+}
+
+async function upsertGoalConditions(tx, userId, goalId, inputItems) {
+  const updated = []
+  for (const rawItem of asArray(inputItems)) {
+    const item = asObject(rawItem)
+    const id = readAgentToolString(item, 'id')
+    const title = readAgentToolString(item, 'title')
+    const existing = id
+      ? await tx.goalCondition.findFirst({ where: { id, userId, goalId } })
+      : title
+        ? await tx.goalCondition.findFirst({ where: { userId, goalId, title } })
+        : null
+    const data = {
+      ...(title ? { title } : {}),
+      ...(readAgentToolString(item, 'type') ? { type: normalizeEnum(readAgentToolString(item, 'type'), conditionTypes, existing?.type || 'ASSUMED') } : {}),
+      ...(readAgentToolString(item, 'status') ? { status: normalizeEnum(readAgentToolString(item, 'status'), conditionStatuses, existing?.status || 'MISSING') } : {}),
+      ...(readAgentToolString(item, 'whyRequired') ? { whyRequired: readAgentToolString(item, 'whyRequired') } : {}),
+      ...(Object.prototype.hasOwnProperty.call(item, 'evidence') ? { evidence: item.evidence } : {}),
+    }
+    if (existing) {
+      updated.push(await tx.goalCondition.update({ where: { id: existing.id }, data }))
+    } else if (title) {
+      updated.push(await tx.goalCondition.create({
+        data: {
+          userId,
+          goalId,
+          title,
+          type: normalizeEnum(readAgentToolString(item, 'type'), conditionTypes, 'ASSUMED'),
+          status: normalizeEnum(readAgentToolString(item, 'status'), conditionStatuses, 'MISSING'),
+          whyRequired: readAgentToolString(item, 'whyRequired', '由 Agent 根据路径调整补充的目标条件。'),
+          evidence: item.evidence || { source: 'goal.update' },
+        },
+      }))
+    }
+  }
+  return updated
+}
+
+async function upsertGoalStagePlans(tx, userId, goalId, inputItems) {
+  const updated = []
+  for (const rawItem of asArray(inputItems)) {
+    const item = asObject(rawItem)
+    const id = readAgentToolString(item, 'id')
+    const title = readAgentToolString(item, 'title')
+    const existing = id
+      ? await tx.stagePlan.findFirst({ where: { id, userId, goalId } })
+      : title
+        ? await tx.stagePlan.findFirst({ where: { userId, goalId, title } })
+        : null
+    const sortOrder = readOptionalNumber(item, 'sortOrder')
+    const data = {
+      ...(title ? { title } : {}),
+      ...(readAgentToolString(item, 'stageGoal') ? { stageGoal: readAgentToolString(item, 'stageGoal') } : {}),
+      ...(readAgentToolString(item, 'startDate') ? { startDate: toAgentToolDateInput(readAgentToolString(item, 'startDate')) } : {}),
+      ...(readAgentToolString(item, 'endDate') ? { endDate: toAgentToolDateInput(readAgentToolString(item, 'endDate')) } : {}),
+      ...(asStringArray(item.linkedConditionIds).length ? { linkedConditionIds: asStringArray(item.linkedConditionIds) } : {}),
+      ...(asStringArray(item.successSignals).length ? { successSignals: asStringArray(item.successSignals) } : {}),
+      ...(readAgentToolString(item, 'status') ? { status: normalizeEnum(readAgentToolString(item, 'status'), stageStatuses, existing?.status || 'DRAFT') } : {}),
+      ...(sortOrder !== undefined ? { sortOrder: Math.round(sortOrder) } : {}),
+    }
+    if (existing) {
+      updated.push(await tx.stagePlan.update({ where: { id: existing.id }, data }))
+    } else if (title) {
+      updated.push(await tx.stagePlan.create({
+        data: {
+          userId,
+          goalId,
+          title,
+          stageGoal: readAgentToolString(item, 'stageGoal', title),
+          startDate: readAgentToolString(item, 'startDate') ? toAgentToolDateInput(readAgentToolString(item, 'startDate')) : new Date(),
+          endDate: readAgentToolString(item, 'endDate') ? toAgentToolDateInput(readAgentToolString(item, 'endDate')) : null,
+          linkedConditionIds: asStringArray(item.linkedConditionIds),
+          successSignals: asStringArray(item.successSignals),
+          status: normalizeEnum(readAgentToolString(item, 'status'), stageStatuses, 'DRAFT'),
+          sortOrder: Math.round(sortOrder ?? 0),
+        },
+      }))
+    }
+  }
+  return updated
 }
 
 function pad(value) {
@@ -132,6 +277,91 @@ function buildSharedCheckinLogBlock(input) {
   ].filter(Boolean).join('\n')
 }
 
+function progressSignalFromSharedResult(result) {
+  if (result === 'DONE') return 1
+  if (result === 'PARTIAL') return 0.5
+  return null
+}
+
+function scoreSharedConditionStatus(status) {
+  if (status === 'SATISFIED') return 1
+  if (status === 'PARTIAL') return 0.5
+  return 0
+}
+
+function nextSharedConditionStatus(currentStatus, signal) {
+  if (signal === 1) return 'SATISFIED'
+  if (signal === 0.5 && currentStatus !== 'SATISFIED') return 'PARTIAL'
+  return currentStatus
+}
+
+function asStringArray(value) {
+  if (Array.isArray(value)) return value.filter((item) => typeof item === 'string')
+  return []
+}
+
+async function applySharedCheckinProgress(tx, action, result) {
+  const signal = progressSignalFromSharedResult(result)
+  const condition = await tx.goalCondition.findFirst({
+    where: { id: action.conditionId, userId: action.userId, goalId: action.goalId },
+  })
+  const nextStatus = condition ? nextSharedConditionStatus(condition.status, signal) : null
+  const updatedCondition = condition && nextStatus !== condition.status
+    ? await tx.goalCondition.update({ where: { id: condition.id }, data: { status: nextStatus } })
+    : condition
+
+  const conditions = await tx.goalCondition.findMany({ where: { userId: action.userId, goalId: action.goalId } })
+  const effectiveConditions = conditions.map((item) => item.id === updatedCondition?.id ? updatedCondition : item)
+  const conditionProgress = effectiveConditions.length
+    ? effectiveConditions.reduce((total, item) => total + scoreSharedConditionStatus(item.status), 0) / effectiveConditions.length
+    : 0
+
+  const keyResults = signal === null ? [] : await tx.keyResult.findMany({
+    where: { userId: action.userId, goalId: action.goalId },
+  })
+  const updatedKeyResults = []
+  for (const keyResult of keyResults) {
+    const currentProgress = typeof keyResult.progress === 'number' ? keyResult.progress : 0
+    const nextProgress = Math.max(currentProgress, Math.min(1, conditionProgress))
+    const nextKrStatus = nextProgress >= 1 ? 'ACHIEVED' : keyResult.status === 'ACHIEVED' ? 'ACHIEVED' : 'ACTIVE'
+    if (nextProgress !== currentProgress || nextKrStatus !== keyResult.status) {
+      updatedKeyResults.push(await tx.keyResult.update({
+        where: { id: keyResult.id },
+        data: { progress: nextProgress, status: nextKrStatus },
+      }))
+    }
+  }
+
+  let updatedStagePlan = null
+  if (action.stagePlanId) {
+    const stagePlan = await tx.stagePlan.findFirst({
+      where: { id: action.stagePlanId, userId: action.userId, goalId: action.goalId },
+    })
+    if (stagePlan) {
+      const linkedConditionIds = asStringArray(stagePlan.linkedConditionIds)
+      const stageConditions = effectiveConditions.filter((item) => {
+        return linkedConditionIds.length ? linkedConditionIds.includes(item.id) : item.id === action.conditionId
+      })
+      const hasProgress = stageConditions.some((item) => ['PARTIAL', 'SATISFIED'].includes(item.status))
+      const isComplete = stageConditions.length > 0 && stageConditions.every((item) => item.status === 'SATISFIED')
+      const nextStageStatus = isComplete ? 'COMPLETED' : hasProgress && stagePlan.status === 'DRAFT' ? 'ACTIVE' : stagePlan.status
+      if (nextStageStatus !== stagePlan.status) {
+        updatedStagePlan = await tx.stagePlan.update({
+          where: { id: stagePlan.id },
+          data: { status: nextStageStatus },
+        })
+      }
+    }
+  }
+
+  return {
+    condition: updatedCondition,
+    keyResults: updatedKeyResults,
+    stagePlan: updatedStagePlan,
+    conditionProgress,
+  }
+}
+
 export const sharedWriteToolNames = [
   'goal.update',
   'today.set_next_action',
@@ -179,6 +409,10 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
         await tx.stagePlan.update({ where: { id: firstStage.id }, data: { status: 'ACTIVE' } })
       }
 
+      const updatedKeyResults = await upsertGoalKeyResults(tx, userId, goal.id, input.keyResults || input.key_results)
+      const updatedConditions = await upsertGoalConditions(tx, userId, goal.id, input.conditions)
+      const updatedStagePlans = await upsertGoalStagePlans(tx, userId, goal.id, input.stagePlans || input.stage_plans || input.stages)
+
       const updated = await tx.goal.update({
         where: { id: goal.id },
         data: {
@@ -194,6 +428,9 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
         goal: updated,
         reasoningCard: confirmedCard,
         activatedStagePlanId: firstStage?.id || null,
+        keyResults: updatedKeyResults,
+        conditions: updatedConditions,
+        stagePlans: updatedStagePlans,
       }
     })
     return { targetId: result.goal.id, result }
@@ -249,6 +486,7 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
         },
       })
       const updatedAction = await tx.dailyAction.update({ where: { id: action.id }, data: { status: normalizeAgentToolActionStatus(result) } })
+      const progressUpdate = await applySharedCheckinProgress(tx, action, result)
 
       let diagnosis = null
       if (result === 'NOT_DONE' || result === 'PARTIAL') {
@@ -349,9 +587,23 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
             },
           },
         })
+
+        await ensureLogPeriodRollups(tx, {
+          userId,
+          date: action.actionDate,
+          sourcePath: logPath,
+          sourceKind: 'checkin',
+          goalId: action.goalId,
+          actionId: action.id,
+          goalTitle: action.goal.title,
+          actionTitle: action.title,
+          resultLabel,
+          conditionTitle: action.condition.title,
+          diagnosisQuestion: diagnosis?.nextQuestion,
+        })
       }
 
-      return { action: updatedAction, checkin, diagnosis, logEntry, markdownDocument, autoWriteCheckin }
+      return { action: updatedAction, checkin, diagnosis, progressUpdate, logEntry, markdownDocument, autoWriteCheckin }
     })
 
     return { targetId: output.checkin.id, result: output }
@@ -403,6 +655,15 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
         linkedGoalIds,
         linkedActionIds,
       },
+    })
+    await ensureLogPeriodRollups(prisma, {
+      userId,
+      date,
+      sourcePath: dateInfo.path,
+      sourceKind: 'manual_daily_log',
+      goalId: Array.isArray(linkedGoalIds) ? linkedGoalIds[0] : undefined,
+      actionId: Array.isArray(linkedActionIds) ? linkedActionIds[0] : undefined,
+      resultLabel: '日志已写入',
     })
     return { targetId: document.id, result: document }
   }

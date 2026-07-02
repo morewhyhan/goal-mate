@@ -6,6 +6,8 @@ import { defaultUserSettings, getCurrentUserId, unauthorized } from '../../conte
 import { buildCheckinLogBlock, buildDailyLogPath } from '@/lib/goal-mate-log-format'
 import { inferDiagnosis } from '@/lib/goal-mate-diagnosis'
 import { upsertMarkdownDocument } from '@/lib/markdown-document-store'
+import { ensureTodayAction } from '@/lib/today-action-planner.mjs'
+import { ensureLogPeriodRollups } from '@/lib/log-period-rollup.mjs'
 
 const checkinSchema = z.object({
   actionId: z.string().uuid(),
@@ -34,6 +36,13 @@ const resultLabel = {
   skipped: '跳过',
 } as const
 
+const checkinHeatmapLevel = {
+  DONE: 4,
+  PARTIAL: 2,
+  NOT_DONE: 1,
+  NO_RESPONSE: 1,
+} as const
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
@@ -42,10 +51,118 @@ function readBooleanSetting(value: unknown, fallback: boolean) {
   return typeof value === 'boolean' ? value : fallback
 }
 
+function localDateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function buildMomentumDays(checkins: Array<{ createdAt: Date; result: keyof typeof checkinHeatmapLevel }>) {
+  const dayMap = new Map<string, { date: string; count: number; level: number }>()
+  for (const checkin of checkins) {
+    const date = localDateKey(checkin.createdAt)
+    const previous = dayMap.get(date) || { date, count: 0, level: 0 }
+    dayMap.set(date, {
+      date,
+      count: previous.count + 1,
+      level: Math.max(previous.level, checkinHeatmapLevel[checkin.result] || 0),
+    })
+  }
+  return [...dayMap.values()].sort((left, right) => left.date.localeCompare(right.date))
+}
+
 async function shouldAutoWriteCheckin(userId: string) {
   const settings = await prisma.userSetting.findUnique({ where: { userId } })
   const logs = { ...defaultUserSettings.logs, ...asRecord(settings?.logs) }
   return readBooleanSetting(logs.auto_write_checkin, defaultUserSettings.logs.auto_write_checkin)
+}
+
+function progressSignalFromResult(result: keyof typeof resultToActionStatus) {
+  if (result === 'done') return 1
+  if (result === 'partial') return 0.5
+  return null
+}
+
+function scoreConditionStatus(status: string) {
+  if (status === 'SATISFIED') return 1
+  if (status === 'PARTIAL') return 0.5
+  return 0
+}
+
+function nextConditionStatus(currentStatus: string, signal: number | null) {
+  if (signal === 1) return 'SATISFIED'
+  if (signal === 0.5 && currentStatus !== 'SATISFIED') return 'PARTIAL'
+  return currentStatus
+}
+
+function asStringArray(value: unknown) {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string')
+  return []
+}
+
+async function applyCheckinProgress(client: any, action: any, result: keyof typeof resultToActionStatus) {
+  const signal = progressSignalFromResult(result)
+  const condition = await client.goalCondition.findFirst({
+    where: { id: action.conditionId, userId: action.userId, goalId: action.goalId },
+  })
+  const nextStatus = condition ? nextConditionStatus(condition.status, signal) : null
+  const updatedCondition = condition && nextStatus !== condition.status
+    ? await client.goalCondition.update({ where: { id: condition.id }, data: { status: nextStatus } })
+    : condition
+
+  const conditions = await client.goalCondition.findMany({
+    where: { userId: action.userId, goalId: action.goalId },
+  })
+  const effectiveConditions = conditions.map((item: any) => item.id === updatedCondition?.id ? updatedCondition : item)
+  const conditionProgress = effectiveConditions.length
+    ? effectiveConditions.reduce((total: number, item: any) => total + scoreConditionStatus(item.status), 0) / effectiveConditions.length
+    : 0
+
+  const keyResults = signal === null ? [] : await client.keyResult.findMany({
+    where: { userId: action.userId, goalId: action.goalId },
+  })
+  const updatedKeyResults = []
+  for (const keyResult of keyResults) {
+    const currentProgress = typeof keyResult.progress === 'number' ? keyResult.progress : 0
+    const nextProgress = Math.max(currentProgress, Math.min(1, conditionProgress))
+    const nextKrStatus = nextProgress >= 1 ? 'ACHIEVED' : keyResult.status === 'ACHIEVED' ? 'ACHIEVED' : 'ACTIVE'
+    if (nextProgress !== currentProgress || nextKrStatus !== keyResult.status) {
+      updatedKeyResults.push(await client.keyResult.update({
+        where: { id: keyResult.id },
+        data: { progress: nextProgress, status: nextKrStatus },
+      }))
+    }
+  }
+
+  let updatedStagePlan = null
+  if (action.stagePlanId) {
+    const stagePlan = await client.stagePlan.findFirst({
+      where: { id: action.stagePlanId, userId: action.userId, goalId: action.goalId },
+    })
+    if (stagePlan) {
+      const linkedConditionIds = asStringArray(stagePlan.linkedConditionIds)
+      const stageConditions = effectiveConditions.filter((item: any) => {
+        return linkedConditionIds.length ? linkedConditionIds.includes(item.id) : item.id === action.conditionId
+      })
+      const hasProgress = stageConditions.some((item: any) => ['PARTIAL', 'SATISFIED'].includes(item.status))
+      const isComplete = stageConditions.length > 0 && stageConditions.every((item: any) => item.status === 'SATISFIED')
+      const nextStageStatus = isComplete ? 'COMPLETED' : hasProgress && stagePlan.status === 'DRAFT' ? 'ACTIVE' : stagePlan.status
+      if (nextStageStatus !== stagePlan.status) {
+        updatedStagePlan = await client.stagePlan.update({
+          where: { id: stagePlan.id },
+          data: { status: nextStageStatus },
+        })
+      }
+    }
+  }
+
+  return {
+    condition: updatedCondition,
+    keyResults: updatedKeyResults,
+    stagePlan: updatedStagePlan,
+    conditionProgress,
+  }
 }
 
 const app = new Hono()
@@ -54,29 +171,24 @@ const app = new Hono()
     const userId = await getCurrentUserId(c)
     if (!userId) return unauthorized(c)
 
-    const goal = await prisma.goal.findFirst({
-      where: { userId, isCurrentFocus: true },
-      include: {
-        keyResults: true,
-        conditions: true,
-        reasoningCards: { where: { status: 'CONFIRMED' }, orderBy: { version: 'desc' }, take: 1 },
-        dailyActions: {
-          where: { status: 'PLANNED' },
-          orderBy: { actionDate: 'asc' },
-          take: 1,
-          include: { condition: true },
-        },
-      },
+    const today = await ensureTodayAction(prisma, userId)
+    const since = new Date()
+    since.setDate(since.getDate() - 370)
+    const checkins = await prisma.checkin.findMany({
+      where: { userId, createdAt: { gte: since } },
+      select: { createdAt: true, result: true },
+      orderBy: { createdAt: 'asc' },
     })
+    const momentum = buildMomentumDays(checkins)
 
-    if (!goal) {
+    if (!today.goal) {
       return c.json(
         { error: { code: 'ACTIVE_GOAL_REQUIRED', message: '还没有当前主目标。' } },
         404,
       )
     }
 
-    return c.json({ data: { goal, action: goal.dailyActions[0] || null } })
+    return c.json({ data: { ...today, momentum } })
   })
   .post('/checkin', zValidator('json', checkinSchema), async (c) => {
     const userId = await getCurrentUserId(c)
@@ -139,6 +251,8 @@ const app = new Hono()
       })
     }
 
+    const progressUpdate = await applyCheckinProgress(prisma, action, input.result)
+
     let logEntry = null
     let markdownDocument = null
     const autoWriteCheckin = await shouldAutoWriteCheckin(userId)
@@ -191,9 +305,23 @@ const app = new Hono()
           actionTitle: action.title,
         },
       })
+
+      await ensureLogPeriodRollups(prisma, {
+        userId,
+        date: action.actionDate,
+        sourcePath: logPath,
+        sourceKind: 'checkin',
+        goalId: action.goalId,
+        actionId: action.id,
+        goalTitle: action.goal.title,
+        actionTitle: action.title,
+        resultLabel: resultLabel[input.result],
+        conditionTitle: action.condition.title,
+        diagnosisQuestion: diagnosis?.nextQuestion,
+      })
     }
 
-    return c.json({ data: { action: updatedAction, checkin, diagnosis, logEntry, markdownDocument, autoWriteCheckin } })
+    return c.json({ data: { action: updatedAction, checkin, diagnosis, progressUpdate, logEntry, markdownDocument, autoWriteCheckin } })
   })
 
 export default app

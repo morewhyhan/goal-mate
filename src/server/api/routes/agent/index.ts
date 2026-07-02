@@ -13,10 +13,6 @@ const createMessageSchema = z.object({
   structuredOutputType: z.string().optional(),
   structuredOutput: z.unknown().optional(),
 })
-const confirmStructuredOutputSchema = z.object({
-  messageId: z.string().uuid(),
-  outputType: z.string().min(1),
-})
 const executeToolSchema = z.object({
   toolName: z.string().min(1),
   input: z.unknown().optional(),
@@ -248,16 +244,6 @@ const app = new Hono()
 
     await prisma.agentThread.update({ where: { id: thread.id }, data: { updatedAt: new Date() } })
     return c.json({ data: { userMessage, assistantMessage } })
-  })
-  .post('/structured-output/confirm', zValidator('json', confirmStructuredOutputSchema), async (c) => {
-    const userId = await getCurrentUserId(c)
-    if (!userId) return unauthorized(c)
-
-    const input = c.req.valid('json')
-    const message = await prisma.agentMessage.findFirst({ where: { id: input.messageId, userId } })
-    if (!message) return notFound(c, '结构化输出不存在。')
-
-    return c.json({ data: { confirmed: true, outputType: input.outputType, messageId: message.id } })
   })
 
 export default app
