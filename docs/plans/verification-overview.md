@@ -12,16 +12,16 @@
 - 自部署长期运行验收计划和报告模板已存在。
 - 当前活跃消息通道已收敛为 QQ；Telegram 只保留历史设计参考，不再挂载 active API。
 - 页面层已去除 demo fallback，空状态不再伪造目标、日志、对话或热力图活动。
-- 本轮没有执行任何验证命令。
+- 本轮已执行低成本验证：`pnpm verify:static`、`pnpm db:generate`、`pnpm typecheck`，均通过。
 
 ## 2. 验收层级
 
 | 层级 | 入口 | 是否需要运行服务 | 是否访问网络 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | 静态门禁 | `pnpm verify:static` | 否 | 否 | 已定义，未执行 |
-| 密钥扫描 | `pnpm verify:secrets` | 否 | 否 | 已定义，未执行 |
-| 部署配置静态检查 | `pnpm verify:deployment-config` | 否 | 否 | 已定义，未执行 |
-| v0.1 类型/生成检查 | `pnpm verify:v01` | 否 | 否 | 已定义，未执行 |
+| 密钥扫描 | `pnpm verify:secrets` | 否 | 否 | 2026-07-02 已通过 |
+| 部署配置静态检查 | `pnpm verify:deployment-config` | 否 | 否 | 2026-07-02 已通过 |
+| v0.1 类型/生成检查 | `pnpm verify:v01` | 否 | 否 | 2026-07-02 已通过等价步骤：`db:generate` + `typecheck` |
 | v0.1 API 验收 | `pnpm verify:v01:api` | 是 | 否 | 已定义，未执行 |
 | v0.1 业务流验收 | `pnpm verify:v01:business` | 视脚本前置条件而定 | 否 | 已定义，未执行 |
 | Agent Loop 读取验收 | `pnpm verify:agent-loop` | 是 | 否 | 已定义，未执行 |
@@ -33,19 +33,15 @@
 如果用户授权验证，建议按这个顺序执行：
 
 ```text
-1. pnpm verify:static
-2. cd src && pnpm db:generate
-3. cd src && pnpm typecheck
-4. 启动本地 Web
-5. 执行 v0.1 API / Agent Loop 验收
-6. 部署服务器并执行 self-hosted runtime verification
+1. 启动本地 Web
+2. 执行 v0.1 API / Agent Loop 验收
+3. 执行页面浏览器验收
+4. 部署服务器并执行 self-hosted runtime verification
 ```
 
 原因：
 
-- 静态门禁成本最低，先发现密钥和部署资产问题。
-- 如果静态门禁失败，应先按 `docs/plans/static-verification-gates.md` 修复，不能继续宣称进入运行时验收。
-- `db:generate` 和 `typecheck` 能暴露 Prisma / TypeScript 基础问题。
+- 静态门禁、`db:generate` 和 `typecheck` 已在 2026-07-02 通过。
 - API / Agent Loop 需要服务和登录态，放在基础检查之后。
 - 服务器长期运行验收依赖真实 QQ / DeepSeek / systemd，最后执行。
 
@@ -72,8 +68,6 @@
 
 ## 6. 当前未证明事项
 
-- 未证明当前代码能 typecheck。
-- 未证明 Prisma Client 能生成。
 - 未证明数据库迁移或 reset 能成功。
 - 未证明 Web 页面真实可操作。
 - 未证明 Agent Loop API 在运行态可通过。
