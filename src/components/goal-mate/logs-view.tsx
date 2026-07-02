@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useLog, useLogTree, useUpdateLog } from '@/hooks/use-logs'
+import { useLog, useLogTree, usePatchLog, useUpdateLog } from '@/hooks/use-logs'
 
 type TreeNode = {
   id?: string
@@ -16,6 +16,7 @@ function pathsToTree(items: any[], selectedId?: string): TreeNode[] {
 
   for (const item of items) {
     const parts = String(item.path || item.title).split('/').filter(Boolean)
+    if (parts[0] === 'logs') parts.shift()
     let level = root
     parts.forEach((part, index) => {
       let node = level.find((entry) => entry.label === part)
@@ -33,6 +34,56 @@ function pathsToTree(items: any[], selectedId?: string): TreeNode[] {
   }
 
   return root
+}
+
+function pad(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function getWeekNumber(date: Date) {
+  const copied = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const day = copied.getUTCDay() || 7
+  copied.setUTCDate(copied.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(copied.getUTCFullYear(), 0, 1))
+  return Math.ceil((((copied.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+}
+
+function buildTodayLogPath(date = new Date()) {
+  const year = date.getFullYear()
+  const quarter = `Q${Math.floor(date.getMonth() / 3) + 1}`
+  const month = `${year}-${pad(date.getMonth() + 1)}`
+  const week = `W${pad(getWeekNumber(date))}`
+  const day = `${year}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  return `logs/${year}/${quarter}/${month}/${week}/${day}.md`
+}
+
+function buildTodayLogTemplate(date = new Date()) {
+  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  return [
+    `# ${day}`,
+    '',
+    '## 今日主目标',
+    '',
+    '- 目标：',
+    '- 当前 KR：',
+    '- 当前关键条件：',
+    '',
+    '## 今日行动',
+    '',
+    '- 行动：',
+    '- 完成标准：',
+    '- 最小启动：',
+    '',
+    '## 执行反馈',
+    '',
+    '- 结果：',
+    '- 原因：',
+    '- 调整：',
+    '',
+    '## 自由记录',
+    '',
+    '',
+  ].join('\n')
 }
 
 function LogTreeNode({ node, level = 0, onSelect }: { node: TreeNode; level?: number; onSelect?: (id: string) => void }) {
@@ -58,6 +109,7 @@ export function LogsView() {
   const selectedLogId = selectedId || logs[0]?.id
   const logQuery = useLog(selectedLogId)
   const updateLog = useUpdateLog()
+  const createLog = usePatchLog()
   const apiLog = logQuery.data?.data
   const [content, setContent] = useState('')
 
@@ -68,21 +120,60 @@ export function LogsView() {
   const tree = useMemo(() => logs.length ? pathsToTree(logs, selectedLogId) : [], [logs, selectedLogId])
   const title = apiLog?.title || '未选择日志'
   const canSave = !!apiLog?.id
+  const isDirty = canSave && content !== (apiLog?.content || '')
+  const saveStatus = updateLog.isPending
+    ? '保存中'
+    : createLog.isPending
+      ? '创建中'
+      : isDirty
+        ? '未保存'
+        : canSave
+          ? '已保存'
+          : '未创建'
 
   const handleSave = () => {
-    if (!apiLog?.id) return
+    if (!apiLog?.id || !isDirty) return
     updateLog.mutate({ id: apiLog.id, content })
+  }
+
+  const handleCreateTodayLog = () => {
+    const path = buildTodayLogPath()
+    const existing = logs.find((log: any) => log.path === path)
+    if (existing?.id) {
+      setSelectedId(existing.id)
+      return
+    }
+
+    createLog.mutate(
+      {
+        targetLog: path,
+        writeMode: 'create',
+        markdownContent: buildTodayLogTemplate(),
+        sourceContext: ['logs_page_manual_create'],
+      },
+      {
+        onSuccess: (response: any) => {
+          if (response?.data?.id) setSelectedId(response.data.id)
+          if (response?.data?.content) setContent(response.data.content)
+        },
+      },
+    )
   }
 
   return (
     <div className="grid h-[calc(100vh-4rem)] grid-cols-1 grid-rows-[210px_minmax(0,1fr)] overflow-hidden p-4 md:p-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-1">
       <aside className="overflow-y-auto overflow-x-hidden rounded-t-[32px] border border-stone-200 bg-white p-5 shadow-sm lg:rounded-l-[32px] lg:rounded-r-none lg:rounded-t-none">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Logs</p>
-        <h1 className="mt-2 text-2xl font-semibold text-stone-950">Markdown 推进记录</h1>
+        <div className="mt-2 flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold text-stone-950">Markdown 推进记录</h1>
+          <button disabled={createLog.isPending} onClick={handleCreateTodayLog} className="shrink-0 rounded-full bg-stone-950 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
+            今日日志
+          </button>
+        </div>
         <div className="mt-6 space-y-1">
           {tree.length ? tree.map((node) => <LogTreeNode key={node.label} node={node} onSelect={setSelectedId} />) : (
             <div className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm leading-6 text-stone-500">
-              还没有日志文件。Agent 生成年志、周志、日记后会出现在这里。
+              还没有日志文件。可以直接创建今日日志，也可以让 Agent 在 Check-in 或复盘后自动写入。
             </div>
           )}
         </div>
@@ -92,9 +183,9 @@ export function LogsView() {
         <div className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4">
           <div>
             <h2 className="text-xl font-semibold text-stone-950">{title}</h2>
-            <p className="text-sm text-stone-500">{canSave ? '已连接日志 API · 可直接编辑保存' : '选择一篇真实日志后才可以编辑保存'}</p>
+            <p className="text-sm text-stone-500">{canSave ? `已连接日志 API · ${saveStatus}` : '选择或创建一篇真实日志后才可以编辑保存'}</p>
           </div>
-          <button disabled={!canSave || updateLog.isPending} onClick={handleSave} className="rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存</button>
+          <button disabled={!canSave || !isDirty || updateLog.isPending} onClick={handleSave} className="rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存</button>
         </div>
         <textarea
           value={content}
