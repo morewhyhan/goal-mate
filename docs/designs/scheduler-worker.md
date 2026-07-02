@@ -66,8 +66,27 @@ pnpm worker:scheduler
 | `SCHEDULER_MIDDAY_TIME` | `12:30` |
 | `SCHEDULER_EVENING_TIME` | `21:30` |
 | `SCHEDULER_WEEKLY_TIME` | `SUN 21:00` |
+| `QQ_SCHEDULER_REPLY_WINDOW_HOURS` | `18` |
 
-## 5. 发送内容原则
+## 5. 回复闭环
+
+QQ Worker 会把最近一次状态为 `sent` 的 QQ SchedulerEvent 视为可回复提醒。
+
+默认窗口是 18 小时。用户回复后：
+
+```text
+QQ reply
+  -> classify done / partial / not_done
+  -> classify motivation / ability / prompt / path / unknown
+  -> write check-in when relevant
+  -> append daily Markdown log
+  -> generate weekly review draft when relevant
+  -> mark SchedulerEvent as responded
+```
+
+待确认工具优先级高于 Scheduler 回复。也就是说，如果用户回复“确认执行”，系统会优先确认工具动作，不会把它误判为提醒反馈。
+
+## 6. 发送内容原则
 
 - 一次只问一个关键问题。
 - 必须关联当前目标或今日行动。
@@ -75,7 +94,7 @@ pnpm worker:scheduler
 - 用户连续无响应时，不提高频率，触发诊断。
 - 没完成时同时判断行为原因和路径原因。
 
-## 6. QQ 主动消息边界
+## 7. QQ 主动消息边界
 
 QQ 主动消息能力依赖平台权限和最近会话上下文。
 
@@ -86,7 +105,7 @@ QQ 主动消息能力依赖平台权限和最近会话上下文。
 - 发送失败时记录失败原因，不丢失调度事件。
 - 如果 QQ 平台限制主动 C2C 消息，Web 内提醒作为降级路径。
 
-## 7. 数据需求
+## 8. 数据需求
 
 P0 需要新增或复用：
 
@@ -98,7 +117,7 @@ P0 需要新增或复用：
 | QqChatBinding | 找到 QQ 推送目标 |
 | AgentThread | 保存主动提醒和用户回复 |
 
-## 8. 与 Agent 工具的关系
+## 9. 与 Agent 工具的关系
 
 Scheduler 不直接生成业务结论。
 

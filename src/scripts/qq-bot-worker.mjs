@@ -747,6 +747,155 @@ function formatToolReply(toolName, execution) {
   return `已处理：${toolName}`
 }
 
+function classifySchedulerReply(text) {
+  const content = String(text || '').trim()
+  const lower = content.toLowerCase()
+  const done = /(完成|做完|已做|搞定|done|finished|ok了|好了)/i.test(content)
+  const notDone = /(没做|没完成|未完成|没推进|没开始|失败|做不了|不想做|太难|忘了|来不及|拖延)/i.test(content)
+  const partial = /(做了一点|一部分|部分|还差|进行中|started|partial)/i.test(content)
+
+  let result = 'PARTIAL'
+  if (done && !notDone) result = 'DONE'
+  if (notDone) result = 'NOT_DONE'
+  if (partial) result = 'PARTIAL'
+  if (!done && !notDone && !partial) result = lower.length <= 6 ? 'NO_RESPONSE' : 'PARTIAL'
+
+  let reasonCategory = 'UNKNOWN'
+  if (/(不想|没意义|不重要|没动力|不值得|抗拒)/i.test(content)) reasonCategory = 'MOTIVATION'
+  if (/(太难|不会|不知道怎么|做不了|累|困|没精力|时间不够|来不及)/i.test(content)) reasonCategory = 'ABILITY'
+  if (/(忘|没提醒|时间不对|没看到|错过)/i.test(content)) reasonCategory = 'PROMPT'
+  if (/(方向|路径|计划不对|不是关键|不知道为什么做)/i.test(content)) reasonCategory = 'PATH'
+
+  const adjustment = result === 'DONE'
+    ? '保持当前推进节奏，明天继续围绕关键条件推进下一步。'
+    : reasonCategory === 'ABILITY'
+      ? '明天把行动缩小到更容易开始的最小步骤。'
+      : reasonCategory === 'PROMPT'
+        ? '需要调整提醒时间或提醒方式。'
+        : reasonCategory === 'MOTIVATION'
+          ? '需要重新确认这个目标是否仍然重要。'
+          : reasonCategory === 'PATH'
+            ? '需要检查当前行动是否真的对应关键条件。'
+            : '先记录反馈，下一步继续缩小动作并观察。'
+
+  return { result, reasonCategory, userFeedback: content, adjustment }
+}
+
+function formatReminderType(type) {
+  if (type === 'morning_planning') return '早晨规划'
+  if (type === 'midday_check') return '中午检查'
+  if (type === 'evening_review') return '晚上复盘'
+  if (type === 'weekly_review') return '周复盘'
+  return type
+}
+
+async function findRecentSchedulerEvent(userId) {
+  const hours = Number(process.env.QQ_SCHEDULER_REPLY_WINDOW_HOURS || '18')
+  const threshold = new Date(Date.now() - Math.max(1, hours) * 60 * 60 * 1000)
+  return prisma.schedulerEvent.findFirst({
+    where: {
+      userId,
+      channel: 'qq',
+      status: 'sent',
+      sentAt: { gte: threshold },
+    },
+    orderBy: { sentAt: 'desc' },
+  })
+}
+
+async function buildSchedulerDailyLogContent(userId, schedulerEvent, feedback) {
+  const dateInfo = formatDatePath(new Date())
+  const existing = await prisma.markdownDocument.findUnique({ where: { userId_path: { userId, path: dateInfo.path } } })
+  const section = [
+    `## ${formatReminderType(schedulerEvent.eventType)}反馈`,
+    '',
+    `- 时间：${new Date().toISOString()}`,
+    `- 用户回复：${feedback.userFeedback}`,
+    `- 系统判断：${feedback.result}`,
+    `- 原因分类：${feedback.reasonCategory}`,
+    `- 调整建议：${feedback.adjustment}`,
+  ].join('\n')
+
+  return existing?.content ? `${existing.content}\n\n${section}` : `# ${dateInfo.title}\n\n${section}`
+}
+
+async function processSchedulerReply(userId, thread, userMessage, context) {
+  const schedulerEvent = await findRecentSchedulerEvent(userId)
+  if (!schedulerEvent) return null
+
+  const feedback = classifySchedulerReply(context.text)
+  const toolResults = []
+
+  if (schedulerEvent.eventType !== 'morning_planning' && schedulerEvent.eventType !== 'weekly_review') {
+    const checkinExecution = await executeQqAgentTool(
+      { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+      'checkin.submit',
+      {
+        result: feedback.result.toLowerCase(),
+        reasonCategory: feedback.reasonCategory,
+        userFeedback: feedback.userFeedback,
+        adjustment: feedback.adjustment,
+      },
+    )
+    toolResults.push({ toolName: 'checkin.submit', execution: checkinExecution })
+  }
+
+  const logContent = await buildSchedulerDailyLogContent(userId, schedulerEvent, feedback)
+  const logExecution = await executeQqAgentTool(
+    { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+    'log.write_daily',
+    {
+      title: formatDatePath(new Date()).title,
+      content: logContent,
+    },
+  )
+  toolResults.push({ toolName: 'log.write_daily', execution: logExecution })
+
+  if (schedulerEvent.eventType === 'weekly_review') {
+    const reviewExecution = await executeQqAgentTool(
+      { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+      'review.generate',
+      { type: 'weekly', nextFocus: feedback.adjustment },
+    )
+    toolResults.push({ toolName: 'review.generate', execution: reviewExecution })
+  }
+
+  await prisma.schedulerEvent.update({
+    where: { id: schedulerEvent.id },
+    data: {
+      status: 'responded',
+      payload: {
+        previousPayload: schedulerEvent.payload || {},
+        reply: {
+          contextType: context.contextType,
+          contextId: context.contextId,
+          messageId: context.messageId,
+          text: context.text,
+          feedback,
+          processedAt: new Date().toISOString(),
+        },
+      },
+    },
+  })
+
+  const failed = toolResults.filter((item) => item.execution?.action?.status === 'failed')
+  if (failed.length) {
+    return [
+      '我收到了这次反馈，但有一部分没有写入成功。',
+      ...failed.map((item) => `- ${item.toolName}：${item.execution.action.errorMessage || '未知错误'}`),
+      '已保留原始回复，后面可以继续补录。',
+    ].join('\n')
+  }
+
+  if (feedback.result === 'DONE') {
+    return '已记录：这一步完成了。我把反馈写入了今日日志，下一次会继续围绕当前目标推进。'
+  }
+  if (feedback.result === 'NOT_DONE') {
+    return `已记录：今天没有完成。我的当前判断是 ${feedback.reasonCategory}，下一步建议：${feedback.adjustment}`
+  }
+  return `已记录这次进展反馈。当前判断：${feedback.result}；下一步：${feedback.adjustment}`
+}
+
 async function generateReply(userId, threadId, latestUserContent) {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) return '当前服务器没有配置 DEEPSEEK_API_KEY，所以我只能先保存你的消息。'
@@ -919,8 +1068,17 @@ async function processDispatch(eventType, payload) {
       needsConfirmation: execution.needsConfirmation,
     }
   } else {
-    const toolIntent = await generateToolIntent(userId, context.text)
-    if (toolIntent) {
+    const schedulerReply = await processSchedulerReply(userId, thread, userMessage, context)
+    if (schedulerReply) {
+      reply = schedulerReply
+      structuredOutputType = 'qq_scheduler_reply'
+      structuredOutput = {
+        ...structuredOutput,
+        handledAsSchedulerReply: true,
+      }
+    } else {
+      const toolIntent = await generateToolIntent(userId, context.text)
+      if (toolIntent) {
       const execution = await executeQqAgentTool(
         { userId, confirmed: false, agentThreadId: thread.id, agentMessageId: userMessage.id },
         toolIntent.toolName,
@@ -933,6 +1091,7 @@ async function processDispatch(eventType, payload) {
         toolIntent,
         toolActionId: execution.action?.id,
         needsConfirmation: execution.needsConfirmation,
+      }
       }
     }
   }
