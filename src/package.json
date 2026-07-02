@@ -20,6 +20,8 @@
     "verify:v01:business:write": "node scripts/verify-v01-business-flow.mjs --write",
     "verify:agent-loop": "node scripts/verify-agent-action-loop.mjs",
     "verify:agent-loop:write": "node scripts/verify-agent-action-loop.mjs --write",
+    "verify:dashboard-browser": "node scripts/verify-dashboard-browser.mjs",
+    "verify:dashboard-browser:write": "node scripts/verify-dashboard-browser.mjs --write",
     "verify:deployment-config": "node scripts/verify-deployment-config.mjs",
     "verify:deployment-config:write": "node scripts/verify-deployment-config.mjs --write",
     "verify:secrets": "node scripts/verify-secret-hygiene.mjs",

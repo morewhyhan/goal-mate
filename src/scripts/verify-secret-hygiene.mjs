@@ -8,6 +8,7 @@ const projectRoot = resolve(appRoot, '..')
 
 const ignoredDirectories = new Set([
   '.git',
+  '.artifacts',
   '.codex',
   '.claude',
   '.ai',

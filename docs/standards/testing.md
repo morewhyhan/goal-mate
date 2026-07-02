@@ -27,6 +27,15 @@
 - 空状态有明确下一步。
 - 移动端和桌面端布局都不能破版。
 
+自动化入口：
+
+```bash
+cd src
+pnpm verify:dashboard-browser
+```
+
+该脚本启动本机 Edge/Chrome，打开 Today、Goals、Logs、Agent、Settings，检查关键文本、横向溢出、Agent 固定输入框、Logs 编辑区、Settings 配置控件和 Today 热力图，并把截图写入 `.artifacts/browser-smoke/`。如果提供 `GOAL_MATE_COOKIE`，脚本会使用登录态验证真实数据页面；否则只验证页面骨架和空状态。
+
 ## Agent 验收
 
 - 输入框始终可见。

@@ -110,6 +110,15 @@
 | Settings | 配置真实 | 每项配置有当前值和影响说明，不是假按钮 |
 | Settings | 模型配置 | DeepSeek、模型名、API Base、API Key、测试连接可见 |
 
+自动化页面 smoke：
+
+```bash
+cd src
+pnpm verify:dashboard-browser
+```
+
+覆盖：Today 热力图、Goals 只读结构、Logs Markdown 编辑区、Agent 固定输入框、Settings 无横向溢出和真实配置控件。完整直觉判断仍需人工验收，但布局回归不得绕过该脚本。
+
 ## 10. 安全和隐私用例
 
 | ID | 场景 | 期望 |
