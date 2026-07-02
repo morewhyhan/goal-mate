@@ -12,4 +12,8 @@ Plan 是追加型文档，不是长期事实来源。任务完成后，需要把
 
 当前验收总览：`docs/plans/verification-overview.md`。
 
+当前静态门禁说明：`docs/plans/static-verification-gates.md`。
+
 当前服务器长期运行验收计划：`docs/plans/self-hosted-runtime-verification-plan.md`。
+
+当前服务器长期运行验收报告模板：`docs/plans/self-hosted-runtime-verification-report-template.md`。

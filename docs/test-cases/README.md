@@ -8,4 +8,6 @@
 
 当前自部署配置测试矩阵：`docs/test-cases/deployment-config-test-cases.md`。
 
+当前密钥卫生测试矩阵：`docs/test-cases/secret-hygiene-test-cases.md`。
+
 新测试用例请复制 `template-e2e-case.md` 或按模块创建专用文档。

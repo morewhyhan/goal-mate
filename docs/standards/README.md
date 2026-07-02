@@ -32,3 +32,5 @@
 - `database.md`：Prisma 模型、关系、迁移和数据边界。
 - `security.md`：鉴权、权限、密钥和隐私边界。
 - `testing.md`：必要测试范围和验收标准。
+
+提交前轻量静态门禁见 `docs/plans/static-verification-gates.md`。完整验收状态见 `docs/plans/verification-overview.md`。
