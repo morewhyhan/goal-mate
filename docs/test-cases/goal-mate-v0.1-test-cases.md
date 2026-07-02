@@ -119,6 +119,15 @@ pnpm verify:dashboard-browser
 
 覆盖：Today 热力图、Goals 只读结构、Logs Markdown 编辑区、Agent 固定输入框、Settings 无横向溢出和真实配置控件。完整直觉判断仍需人工验收，但布局回归不得绕过该脚本。
 
+登录态真实数据 smoke：
+
+```bash
+cd src
+pnpm verify:dashboard-browser:auth
+```
+
+覆盖：真实暑假目标、KR、日志、Agent 历史和模型配置在浏览器中可见，且仍满足无横向溢出、Agent 输入框固定、Logs 编辑区可见、Goals 只读等页面约束。
+
 ## 10. 安全和隐私用例
 
 | ID | 场景 | 期望 |

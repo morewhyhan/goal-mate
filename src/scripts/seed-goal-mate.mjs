@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
+const seedEmail = process.env.GOAL_MATE_SEED_EMAIL || 'demo@goalmate.local'
+const seedName = process.env.GOAL_MATE_SEED_NAME || 'Goal Mate Demo'
 
 function nowAt(date) {
   return new Date(`${date}T08:30:00.000+08:00`)
@@ -8,11 +10,11 @@ function nowAt(date) {
 
 async function main() {
   const user = await prisma.user.upsert({
-    where: { email: 'demo@goalmate.local' },
-    update: { name: 'Goal Mate Demo' },
+    where: { email: seedEmail },
+    update: { name: seedName },
     create: {
-      email: 'demo@goalmate.local',
-      name: 'Goal Mate Demo',
+      email: seedEmail,
+      name: seedName,
       emailVerified: true,
     },
   })

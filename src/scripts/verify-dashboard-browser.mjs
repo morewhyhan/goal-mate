@@ -1,14 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
 
 const shouldWrite = process.argv.includes('--write')
-const baseUrl = process.env.GOAL_MATE_BASE_URL || 'http://127.0.0.1:3000'
-const cookieHeader = process.env.GOAL_MATE_COOKIE || ''
+const shouldPrepareAuth = process.argv.includes('--prepare-auth')
+const requireAuth = process.argv.includes('--require-auth')
+const baseUrl = process.env.GOAL_MATE_BASE_URL || (shouldPrepareAuth || requireAuth ? 'http://localhost:3000' : 'http://127.0.0.1:3000')
+const authOrigin = process.env.BETTER_AUTH_URL || 'http://localhost:3000'
+let cookieHeader = process.env.GOAL_MATE_COOKIE || ''
 const browserOverride = process.env.GOAL_MATE_BROWSER_PATH || ''
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const appRoot = resolve(scriptDir, '..')
@@ -17,12 +20,16 @@ const artifactDir = resolve(projectRoot, '.artifacts/browser-smoke')
 const runId = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-')
 const runDir = resolve(artifactDir, runId)
 const debugPort = Number(process.env.GOAL_MATE_BROWSER_DEBUG_PORT || 9222 + Math.floor(Math.random() * 1000))
+const authEmail = process.env.GOAL_MATE_DASHBOARD_BROWSER_EMAIL || 'dashboard-browser@goalmate.local'
+const authPassword = process.env.GOAL_MATE_DASHBOARD_BROWSER_PASSWORD || 'dashboard-browser-pass-123'
+const authName = process.env.GOAL_MATE_DASHBOARD_BROWSER_NAME || 'Dashboard Browser User'
 
 const pages = [
   {
     id: 'today',
     path: '/dashboard/today',
     requiredText: ['年度推进热力图'],
+    authenticatedText: ['走路 2 小时，并同步背单词', '完成 120 分钟步行'],
     evaluate: pageCheckExpression(`
       const cells = [...document.querySelectorAll('[title^="week "]')]
       const sample = cells[0]?.getBoundingClientRect()
@@ -38,6 +45,7 @@ const pages = [
     id: 'goals',
     path: '/dashboard/goals',
     requiredText: ['Key Results', 'Conditions', 'Cycle Plan'],
+    authenticatedText: ['2026 暑假主目标推进', '体重从 165 斤降到接近 130 斤'],
     evaluate: pageCheckExpression(`
       const appMain = document.querySelector('main')
       const text = appMain?.innerText || bodyText
@@ -53,6 +61,7 @@ const pages = [
     id: 'logs',
     path: '/dashboard/logs',
     requiredText: ['Logs', 'Markdown'],
+    authenticatedText: ['2026-07-01.md'],
     evaluate: pageCheckExpression(`
       const textarea = document.querySelector('textarea')
       const saveButton = [...document.querySelectorAll('button')].find((button) => button.innerText.includes('保存'))
@@ -70,6 +79,7 @@ const pages = [
     id: 'agent',
     path: '/dashboard/agent',
     requiredText: ['Agent', '对话', '发送'],
+    authenticatedText: ['暑假主目标拆解', '我已经读取当前主目标'],
     evaluate: pageCheckExpression(`
       const textarea = document.querySelector('textarea')
       const sendButton = [...document.querySelectorAll('button')].find((button) => button.innerText.includes('发送'))
@@ -88,6 +98,7 @@ const pages = [
     id: 'settings',
     path: '/dashboard/settings',
     requiredText: ['Settings', '模型配置', '消息通道', '主动推进节奏', '工具权限与审计', '数据与隐私'],
+    authenticatedText: ['deepseek-v4-flash', 'DeepSeek'],
     evaluate: pageCheckExpression(`
       const inputs = [...document.querySelectorAll('input')]
       const buttons = [...document.querySelectorAll('button')]
@@ -110,6 +121,72 @@ const results = []
 
 function record(id, purpose, ok, evidence = '') {
   results.push({ id, purpose, ok, evidence })
+}
+
+async function authRequest(path, body) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: authOrigin,
+    },
+    body: JSON.stringify(body),
+  })
+  const text = await response.text()
+  let json = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {
+    json = text
+  }
+  return { response, json, text }
+}
+
+function extractCookie(response) {
+  const setCookie = response.headers.get('set-cookie') || ''
+  const match = setCookie.match(/goal-mate\.session_token=[^;]+/) || setCookie.match(/hononext\.session_token=[^;]+/)
+  if (!match) throw new Error('Missing goal-mate.session_token in Set-Cookie.')
+  return match[0]
+}
+
+function maskEmail(email) {
+  const [name, domain] = email.split('@')
+  if (!domain) return '[redacted-email]'
+  return `${name.slice(0, 3)}...@${domain}`
+}
+
+async function signUpOrSignIn() {
+  const signUp = await authRequest('/api/auth/sign-up/email', { email: authEmail, password: authPassword, name: authName })
+  if (signUp.response.ok) return { cookie: extractCookie(signUp.response), mode: 'sign-up' }
+
+  const signIn = await authRequest('/api/auth/sign-in/email', { email: authEmail, password: authPassword })
+  if (signIn.response.ok) return { cookie: extractCookie(signIn.response), mode: 'sign-in' }
+
+  throw new Error(`Could not sign up or sign in dashboard browser user. sign-up=${signUp.response.status}; sign-in=${signIn.response.status}`)
+}
+
+function seedAuthenticatedData() {
+  const result = spawnSync(process.execPath, ['scripts/seed-goal-mate.mjs'], {
+    cwd: appRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GOAL_MATE_SEED_EMAIL: authEmail,
+      GOAL_MATE_SEED_NAME: authName,
+    },
+  })
+  if (result.status !== 0) {
+    throw new Error((result.stderr || result.stdout || 'seed-goal-mate failed').slice(0, 600))
+  }
+  return (result.stdout || '').trim().split('\n').pop() || 'seed completed'
+}
+
+async function prepareAuthenticatedSession() {
+  if (!shouldPrepareAuth) return
+  const auth = await signUpOrSignIn()
+  const seedEvidence = seedAuthenticatedData()
+  cookieHeader = auth.cookie
+  record('BROWSER-AUTH-PREPARE', 'authenticated browser smoke prepares a real seeded user without writing the cookie to reports', true, `mode=${auth.mode}; user=${maskEmail(authEmail)}; ${seedEvidence}`)
 }
 
 function pageCheckExpression(extraChecks) {
@@ -239,6 +316,24 @@ function parseCookiePairs(header) {
     .filter(Boolean)
 }
 
+function baseUrlHost() {
+  return new URL(baseUrl).hostname
+}
+
+async function authenticatedApiPreflight() {
+  if (!cookieHeader) return true
+  const response = await fetch(`${baseUrl}/api/today`, {
+    headers: { cookie: cookieHeader },
+  })
+  record(
+    'BROWSER-AUTH-PREFLIGHT',
+    'session cookie can read authenticated API before browser navigation',
+    response.ok,
+    `GET /api/today status=${response.status}`,
+  )
+  return response.ok
+}
+
 function toBrowserPath(path, browserPath) {
   if (!browserPath.startsWith('/mnt/c/')) return path
   if (!path.startsWith('/mnt/c/')) return path
@@ -274,16 +369,64 @@ function normalizeWsUrl(wsUrl, browserPath) {
 async function setCookies(send) {
   const cookies = parseCookiePairs(cookieHeader)
   for (const cookie of cookies) {
-    await send('Network.setCookie', {
+    const result = await send('Network.setCookie', {
       name: cookie.name,
       value: cookie.value,
       url: baseUrl,
-      httpOnly: true,
+      path: '/',
+      httpOnly: false,
       secure: baseUrl.startsWith('https://'),
       sameSite: 'Lax',
     })
+    if (!result?.success) {
+      throw new Error(`Browser rejected cookie ${cookie.name}`)
+    }
   }
-  return cookies.length
+  const stored = await send('Network.getCookies', { urls: [baseUrl] })
+  const storedCount = stored?.cookies?.filter((storedCookie) => cookies.some((cookie) => cookie.name === storedCookie.name)).length || 0
+  return storedCount
+}
+
+async function primeDocumentCookies(send) {
+  const cookies = parseCookiePairs(cookieHeader)
+  if (!cookies.length) return 0
+  await navigate(send, `${baseUrl}/api/health`)
+  for (const cookie of cookies) {
+    const cookieAssignment = `${cookie.name}=${cookie.value}; Path=/; SameSite=Lax`
+    await evaluate(send, `document.cookie = ${JSON.stringify(cookieAssignment)}`)
+  }
+  const visibleCookieNames = await evaluate(
+    send,
+    `document.cookie.split(';').map((item) => item.trim().split('=')[0]).filter(Boolean)`,
+  )
+  const visibleCount = Array.isArray(visibleCookieNames)
+    ? visibleCookieNames.filter((name) => cookies.some((cookie) => cookie.name === name)).length
+    : 0
+  return visibleCount
+}
+
+async function browserSignIn(send) {
+  await navigate(send, `${baseUrl}/api/health`)
+  const signIn = await evaluate(
+    send,
+    `(async () => {
+      const response = await fetch('/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: ${JSON.stringify(authEmail)}, password: ${JSON.stringify(authPassword)} })
+      })
+      return { status: response.status }
+    })()`,
+  )
+  const today = await evaluate(
+    send,
+    `(async () => {
+      const response = await fetch('/api/today', { credentials: 'include' })
+      return { status: response.status }
+    })()`,
+  )
+  return { signInStatus: signIn?.status, todayStatus: today?.status }
 }
 
 async function navigate(send, url) {
@@ -312,6 +455,26 @@ async function evaluate(send, expression) {
   return result.result?.value
 }
 
+async function waitForPageCheck(send, page, requiredText) {
+  const started = Date.now()
+  let lastCheck = null
+  let lastMissingText = requiredText
+
+  while (Date.now() - started < 10000) {
+    const check = await evaluate(send, page.evaluate)
+    const bodyText = String(check?.bodyText || '')
+    const missingText = requiredText.filter((text) => !bodyText.includes(text))
+    lastCheck = check
+    lastMissingText = missingText
+    if (check?.ok && missingText.length === 0) {
+      return { check, missingText }
+    }
+    await sleep(350)
+  }
+
+  return { check: lastCheck, missingText: lastMissingText }
+}
+
 async function screenshot(send, path) {
   const shot = await send('Page.captureScreenshot', {
     format: 'png',
@@ -327,6 +490,7 @@ function toMarkdown() {
     `- Time: ${new Date().toISOString()}`,
     `- Base URL: ${baseUrl}`,
     `- Authenticated: ${cookieHeader ? 'yes' : 'no'}`,
+    `- Require auth: ${requireAuth ? 'yes' : 'no'}`,
     `- Screenshots: ${runDir}`,
     '',
     '| ID | Purpose | Result | Evidence |',
@@ -387,6 +551,14 @@ browser.on('exit', (code, signal) => {
 let client
 
 try {
+  await prepareAuthenticatedSession()
+  if (requireAuth && !cookieHeader) {
+    throw new Error('Authenticated dashboard browser verification requires GOAL_MATE_COOKIE or --prepare-auth.')
+  }
+  if (requireAuth) {
+    await authenticatedApiPreflight()
+  }
+
   record('BROWSER-FOUND', 'Edge/Chrome executable is available for dashboard verification', true, browserPath)
 
   const targets = await waitForDevToolsHttp(debugPort)
@@ -397,16 +569,38 @@ try {
   await client.send('Page.enable')
   await client.send('Runtime.enable')
   await client.send('Network.enable')
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  })
 
-  const cookieCount = await setCookies(client.send)
-  record('BROWSER-COOKIE', 'browser verification can use authenticated session when supplied', cookieHeader ? cookieCount > 0 : true, cookieHeader ? `cookies=${cookieCount}` : 'no cookie supplied; running layout/empty-state smoke')
+  if (shouldPrepareAuth) {
+    const browserAuth = await browserSignIn(client.send)
+    record(
+      'BROWSER-COOKIE',
+      'browser verification signs in through the real browser auth flow',
+      browserAuth.signInStatus === 200 && browserAuth.todayStatus === 200,
+      `signIn=${browserAuth.signInStatus}; today=${browserAuth.todayStatus}`,
+    )
+  } else {
+    const cookieCount = await setCookies(client.send)
+    record('BROWSER-COOKIE', 'browser verification can use authenticated session when supplied', cookieHeader ? cookieCount > 0 : !requireAuth, cookieHeader ? `cookies=${cookieCount}` : 'no cookie supplied; running layout/empty-state smoke')
+    const documentCookieCount = cookieHeader ? await primeDocumentCookies(client.send) : 0
+    if (cookieHeader) {
+      record('BROWSER-DOCUMENT-COOKIE', 'browser page context can see the session cookie name before dashboard navigation', documentCookieCount > 0, `visibleCookieNames=${documentCookieCount}`)
+    }
+  }
 
   for (const page of pages) {
     const url = `${baseUrl}${page.path}`
     await navigate(client.send, url)
-    const check = await evaluate(client.send, page.evaluate)
-    const bodyText = String(check?.bodyText || '')
-    const missingText = page.requiredText.filter((text) => !bodyText.includes(text))
+    const requiredText = [
+      ...page.requiredText,
+      ...(requireAuth ? page.authenticatedText || [] : []),
+    ]
+    const { check, missingText } = await waitForPageCheck(client.send, page, requiredText)
     const textOk = missingText.length === 0
     const shotPath = resolve(runDir, `${page.id}.png`)
     await screenshot(client.send, shotPath)

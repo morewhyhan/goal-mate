@@ -101,8 +101,8 @@ export function AgentView() {
   }
 
   return (
-    <div className="grid h-[calc(100dvh-4rem)] grid-cols-1 overflow-hidden p-4 md:p-6 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="flex min-h-0 flex-col rounded-l-[32px] border border-stone-200 bg-white p-5 shadow-sm lg:rounded-r-none">
+    <div className="grid h-[calc(100dvh-4rem)] grid-cols-1 grid-rows-[190px_minmax(0,1fr)] overflow-hidden p-4 md:p-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-1">
+      <aside className="flex min-h-0 flex-col rounded-t-[32px] border border-stone-200 bg-white p-5 shadow-sm lg:rounded-l-[32px] lg:rounded-r-none lg:rounded-t-none">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Agent</p>
@@ -130,7 +130,7 @@ export function AgentView() {
         </div>
       </aside>
 
-      <main className="flex min-h-0 flex-col rounded-r-[32px] border-y border-r border-stone-200 bg-stone-50 shadow-sm">
+      <main className="flex min-h-0 flex-col rounded-b-[32px] border-x border-b border-stone-200 bg-stone-50 shadow-sm lg:rounded-b-none lg:rounded-r-[32px] lg:border-y lg:border-l-0 lg:border-r">
         <header className="shrink-0 border-b border-stone-200 bg-white px-6 py-4">
           <h2 className="text-xl font-semibold text-stone-950">{visibleThreads.find((thread: any) => thread.active)?.title || '开始一段 Agent 对话'}</h2>
           <p className="text-sm text-stone-500">它可以读取目标、日志和 Today；写入类动作会先让你确认。</p>

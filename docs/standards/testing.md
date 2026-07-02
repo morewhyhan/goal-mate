@@ -36,6 +36,15 @@ pnpm verify:dashboard-browser
 
 该脚本启动本机 Edge/Chrome，打开 Today、Goals、Logs、Agent、Settings，检查关键文本、横向溢出、Agent 固定输入框、Logs 编辑区、Settings 配置控件和 Today 热力图，并把截图写入 `.artifacts/browser-smoke/`。如果提供 `GOAL_MATE_COOKIE`，脚本会使用登录态验证真实数据页面；否则只验证页面骨架和空状态。
 
+登录态真实数据验收入口：
+
+```bash
+cd src
+pnpm verify:dashboard-browser:auth
+```
+
+该命令会创建或登录本地验收用户，生成一套真实 seed 数据，把 session cookie 直接注入浏览器。报告不会写出 cookie。
+
 ## Agent 验收
 
 - 输入框始终可见。
