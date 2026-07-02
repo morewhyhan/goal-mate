@@ -127,7 +127,7 @@ P0 不做：
 
 ## 10. 当前实现边界
 
-当前实现是显式工具 API + Web Agent 工具意图识别，不是模型原生 function calling。
+当前实现是显式工具 API + Web / QQ Agent 工具意图识别，不是模型原生 function calling。
 
 也就是说：
 
@@ -137,6 +137,8 @@ P0 不做：
 - 用户可以通过确认卡片或“确认执行”文本确认最近一条 pending 工具。
 - QQ Bot 可以把“模型判断出的工具意图”转成 QQ 侧工具调用。
 - QQ Bot 的 execute 工具同样需要用户回复“确认执行”。
+- Web、QQ 和 Scheduler 回复路径已经共用 shared executor、shared read/write handlers 和 shared audit writer。
+- Scheduler 主动发送提醒的 `reminder.send` 是内部审计动作，不作为用户可调用工具暴露。
 
 下一步应把 Agent Runtime 的回复结构升级为：
 
@@ -149,12 +151,15 @@ tool_result
 
 当前前端已经有基础确认组件。后续应继续增强为更清晰的影响范围预览和可撤回说明。
 
-## 11. 技术债务
+## 11. 当前共享边界
 
-当前 Web Agent 和 QQ Worker 已共享：
+当前 Web Agent、QQ Worker 和 Scheduler 回复路径已共享：
 
 ```text
 src/lib/agent-tool-shared.mjs
+src/lib/agent-tool-read-handlers.mjs
+src/lib/agent-tool-write-handlers.mjs
+src/lib/agent-tool-executor.mjs
 ```
 
 已共享内容：
@@ -166,15 +171,18 @@ src/lib/agent-tool-shared.mjs
 - 日期路径生成。
 - check-in / action 状态归一化。
 - 工具意图 JSON 解析。
+- 读取、草稿、写入类业务 handler。
+- execute 权限确认拦截。
+- `AgentToolAction` 成功、失败、待确认审计写入。
+- Scheduler 内部 `reminder.send` 审计写入。
 
-仍未共享：
+当前仍不共享：
 
-- 具体业务 handler。
-- 工具审计写入封装。
+- 通道层逻辑，例如 Web 请求、QQ Gateway 消息解析、QQ OpenAPI 发送。
+- 真实模型对话质量判断。
+- 外部高风险动作执行。
 
-Web Agent 仍使用 `src/lib/agent-tools.ts`，QQ Worker 仍在 `src/scripts/qq-bot-worker.mjs` 中保留业务 handler。
-
-这是为了让 QQ 常驻 worker 不依赖 Next.js TypeScript alias 启动链路。后续应抽出 runtime-neutral 的工具服务，避免 Web 和 QQ 两套工具逻辑长期分叉。
+Web Agent 的 `src/lib/agent-tools.ts` 现在只是薄适配层。QQ Worker 保留 QQ 通道、消息解析、确认和回复逻辑，不再保留工具业务 handler。
 
 对应重构计划：
 

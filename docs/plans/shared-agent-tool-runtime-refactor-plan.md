@@ -158,3 +158,4 @@ pnpm worker:qq
 - 2026-07-02：新增 `src/lib/agent-tool-executor.mjs`，Web 和 QQ 已共享确认拦截、业务执行、失败处理和 `AgentToolAction` 审计写入；`verify-agent-action-loop` 已同步检查 shared executor。
 - 2026-07-02：调整 Scheduler 回复路径的工具执行上下文，用户在 QQ 回复主动提醒时仍由 QQ 通道接收，但 `AgentToolAction.source` 记录为 `scheduler`。
 - 2026-07-02：扩展 `src/lib/agent-tool-executor.mjs`，新增 shared audit writer；Scheduler Worker 的内部 `reminder.send` 成功/失败审计改为共用该写入函数。
+- 2026-07-02：修正 `agent-tool-runtime.md` 和 `qq-bot-integration.md` 中过期的“handler 未共享、QQ 参数待获取”描述，文档事实已更新为 shared executor 和服务器常驻验证阶段。
