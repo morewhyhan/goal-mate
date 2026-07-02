@@ -96,9 +96,9 @@ async function run() {
   const userId = control.data?.settings?.userId || control.data?.model?.userId
   record(
     'AAL-SETTINGS-CENTER',
-    'Settings Control Center returns model, reminders, policy and audit surfaces',
-    Boolean(control.data?.model && Array.isArray(control.data?.reminderRules) && control.data?.permissionPolicy && Array.isArray(control.data?.toolActions) && Array.isArray(control.data?.schedulerEvents)),
-    `model=${control.data?.model?.model}; reminders=${control.data?.reminderRules?.length || 0}; actions=${control.data?.toolActions?.length || 0}`,
+    'Settings Control Center returns model, reminders, runtime status, policy and audit surfaces',
+    Boolean(control.data?.model && Array.isArray(control.data?.reminderRules) && control.data?.runtimeStatus && control.data?.permissionPolicy && Array.isArray(control.data?.toolActions) && Array.isArray(control.data?.schedulerEvents)),
+    `model=${control.data?.model?.model}; reminders=${control.data?.reminderRules?.length || 0}; actions=${control.data?.toolActions?.length || 0}; runtime=${Object.keys(control.data?.runtimeStatus || {}).join(',')}`,
   )
   record(
     'AAL-SETTINGS-SECRETS',

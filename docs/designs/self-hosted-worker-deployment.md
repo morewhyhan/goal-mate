@@ -121,6 +121,7 @@ deploy/systemd/README.md
 | Agent 工具是否执行 | `AgentToolAction` 出现 drafted / pending / executed / failed |
 | QQ 是否被平台限制 | `SchedulerEvent.errorMessage` 和 worker 日志 |
 | 模型是否可用 | Settings 模型测试 |
+| 整体运行摘要 | Settings Control Center 顶部 runtime status |
 
 ## 9. 静态配置验证
 
@@ -137,6 +138,16 @@ pnpm verify:deployment-config:write
 - `deploy/systemd` service 是否包含必要 systemd 指令。
 - `.env.example` 是否列出部署必需变量。
 - 部署事实文档是否仍然记录真实部署缺口。
+
+Settings Control Center 还会返回 `runtimeStatus`，用于在页面上快速判断：
+
+```text
+web
+model
+qq
+scheduler
+tools
+```
 
 ## 10. 当前缺口
 

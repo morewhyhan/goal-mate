@@ -30,7 +30,7 @@ const defaultReminderDrafts: ReminderDraft[] = [
 
 function statusClass(status?: string) {
   const normalized = String(status || '').toLowerCase()
-  if (normalized.includes('enabled') || normalized.includes('sent') || normalized.includes('executed') || normalized.includes('drafted')) {
+  if (normalized.includes('enabled') || normalized.includes('sent') || normalized.includes('executed') || normalized.includes('drafted') || normalized.includes('ok') || normalized.includes('configured') || normalized.includes('bound') || normalized.includes('responded')) {
     return 'bg-emerald-100 text-emerald-800'
   }
   if (normalized.includes('pending') || normalized.includes('approved')) return 'bg-amber-100 text-amber-800'
@@ -58,6 +58,7 @@ export function SettingsView() {
 
   const data = controlCenter.data?.data
   const model = data?.model
+  const runtimeStatus = data?.runtimeStatus || {}
   const qqBindings = data?.qqBindings || []
   const toolActions = data?.toolActions || []
   const schedulerEvents = data?.schedulerEvents || []
@@ -160,6 +161,19 @@ export function SettingsView() {
             </div>
           </div>
         </header>
+
+        <section className="grid gap-3 md:grid-cols-5">
+          {Object.entries(runtimeStatus).map(([key, item]: [string, any]) => (
+            <div key={key} className="rounded-[28px] border border-stone-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{key}</p>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(item?.status)}`}>{item?.status || 'unknown'}</span>
+              </div>
+              <p className="mt-3 text-sm font-semibold text-stone-900">{item?.label || '暂无状态'}</p>
+              <p className="mt-1 truncate text-xs text-stone-500">{item?.evidence || 'no evidence'}</p>
+            </div>
+          ))}
+        </section>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
           <section className="rounded-[36px] border border-stone-200 bg-white p-6 shadow-sm">

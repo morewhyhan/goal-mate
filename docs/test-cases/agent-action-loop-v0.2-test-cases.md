@@ -35,7 +35,7 @@
 | AAL-4 | execute 工具确认 | 确认执行后创建真实业务数据，并写入 `AgentToolAction` |
 | AAL-5 | check-in 工具 | `checkin.submit` 可更新行动状态并创建 Checkin |
 | AAL-6 | log 工具 | `log.write_daily` 可写入 MarkdownDocument / LogEntry |
-| AAL-7 | Settings Control Center | 返回模型、提醒、QQ 绑定、工具审计、调度记录 |
+| AAL-7 | Settings Control Center | 返回模型、提醒、运行状态、QQ 绑定、工具审计、调度记录 |
 | AAL-8 | 提醒规则配置 | `PUT /api/settings/reminders` 可保存早中晚和周复盘规则 |
 | AAL-9 | 数据导出 | export 包含 reminderRules、toolActions、schedulerEvents、qqChatBindings |
 | AAL-10 | QQ 工具确认 | QQ execute 工具必须先 pending，再由“确认执行”触发执行 |

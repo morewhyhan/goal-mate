@@ -202,3 +202,4 @@ P0 提醒类型：
 - 2026-07-02：发现 Web / QQ 工具逻辑重复风险；新增共享工具运行时重构计划和自部署 worker 运行事实文档。
 - 2026-07-02：新增 `deploy/systemd` 模板，覆盖 Web、QQ Worker、Scheduler Worker，并提供服务器安装、启动、日志查看和验证顺序说明。
 - 2026-07-02：新增 `verify:deployment-config` 静态检查脚本和部署配置测试矩阵，部署前可检查 systemd 模板、package scripts、环境变量样例和事实文档是否一致。
+- 2026-07-02：Settings Control Center 新增 runtime status，汇总 Web、模型、QQ、Scheduler、Agent Tools 的当前运行状态，便于部署后快速定位断点。

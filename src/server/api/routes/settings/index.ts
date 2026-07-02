@@ -137,17 +137,23 @@ const app = new Hono()
       ensureDefaultReminderRules(userId),
     ])
 
-    const [reminderRules, qqBindings, toolActions, schedulerEvents] = await Promise.all([
+    const [reminderRules, qqBindings, toolActions, schedulerEvents, recentQqEvent] = await Promise.all([
       prisma.reminderRule.findMany({ where: { userId }, orderBy: [{ channel: 'asc' }, { reminderType: 'asc' }] }),
       prisma.qqChatBinding.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
       prisma.agentToolAction.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 12 }),
       prisma.schedulerEvent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 8 }),
+      prisma.qqMessageEvent.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' } }),
     ])
+    const modelStatus = modelForSettings(model)
+    const enabledQqBindings = qqBindings.filter((binding) => binding.status === 'ENABLED')
+    const pendingToolActions = toolActions.filter((action) => action.status === 'pending_confirmation')
+    const failedToolActions = toolActions.filter((action) => action.status === 'failed')
+    const latestSchedulerEvent = schedulerEvents[0]
 
     return c.json({
       data: {
         settings: settings || { userId, ...defaultUserSettings },
-        model: modelForSettings(model),
+        model: modelStatus,
         reminderRules,
         qqBindings: qqBindings.map((binding) => ({
           ...binding,
@@ -155,6 +161,35 @@ const app = new Hono()
         })),
         toolActions,
         schedulerEvents,
+        runtimeStatus: {
+          web: {
+            status: 'ok',
+            label: 'Web/API 正常响应',
+            evidence: 'Settings Control Center loaded.',
+          },
+          model: {
+            status: modelStatus?.apiKeyConfigured ? 'configured' : 'missing_key',
+            label: modelStatus?.apiKeyConfigured ? '模型密钥已配置' : '模型密钥缺失',
+            evidence: modelStatus ? `${modelStatus.provider}/${modelStatus.model}` : 'missing model config',
+          },
+          qq: {
+            status: enabledQqBindings.length ? 'bound' : 'not_bound',
+            label: enabledQqBindings.length ? 'QQ 已绑定' : 'QQ 未绑定',
+            evidence: recentQqEvent ? `last=${recentQqEvent.status} ${recentQqEvent.eventType}` : 'no qq message event',
+            lastEventAt: recentQqEvent?.createdAt,
+          },
+          scheduler: {
+            status: latestSchedulerEvent?.status || 'idle',
+            label: latestSchedulerEvent ? `Scheduler ${latestSchedulerEvent.status}` : '暂无调度事件',
+            evidence: latestSchedulerEvent ? `${latestSchedulerEvent.eventType} ${latestSchedulerEvent.channel}` : 'no scheduler event',
+            lastEventAt: latestSchedulerEvent?.createdAt,
+          },
+          tools: {
+            status: failedToolActions.length ? 'failed' : pendingToolActions.length ? 'pending' : 'ok',
+            label: failedToolActions.length ? '存在失败工具动作' : pendingToolActions.length ? '存在待确认动作' : '工具审计正常',
+            evidence: `pending=${pendingToolActions.length}; failed=${failedToolActions.length}; recent=${toolActions.length}`,
+          },
+        },
         permissionPolicy: {
           read: '直接执行',
           draft: '生成草稿',
