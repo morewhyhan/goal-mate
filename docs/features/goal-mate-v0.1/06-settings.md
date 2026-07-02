@@ -25,8 +25,8 @@ v0.1 必须支持模型配置，默认加入 DeepSeek。
 | 字段 | 必填 | 示例 | 说明 |
 | --- | --- | --- | --- |
 | provider | 是 | DeepSeek | 模型供应商 |
-| model | 是 | DeepSeek V4 Flash | 默认便宜快速模型 |
-| reasoning_model | 否 | DeepSeek Reasoner | 复杂目标推理可用 |
+| model | 是 | deepseek-v4-flash | 默认便宜快速模型 |
+| reasoning_model | 否 | deepseek-reasoner | 复杂目标推理可用 |
 | api_base | 是 | https://api.deepseek.com | API 地址 |
 | api_key | 是 | sk-**** | 密钥，必须脱敏显示 |
 | default_for | 是 | chat / reasoning / summary | 用途 |

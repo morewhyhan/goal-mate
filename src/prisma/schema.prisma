@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,30 +7,778 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Task model
-model task {
-  id        String   @id @default(uuid())
-  title     String
-  completed Boolean  @default(false)
+enum GoalStatus {
+  DRAFT      @map("draft")
+  CLARIFYING @map("clarifying")
+  CONFIRMED  @map("confirmed")
+  ACTIVE     @map("active")
+  PAUSED     @map("paused")
+  COMPLETED  @map("completed")
+  ABANDONED  @map("abandoned")
+  ARCHIVED   @map("archived")
+}
+
+enum ReasoningCardStatus {
+  DRAFT                     @map("draft")
+  PENDING_USER_CONFIRMATION @map("pending_user_confirmation")
+  CONFIRMED                 @map("confirmed")
+  REJECTED                  @map("rejected")
+  STALE                     @map("stale")
+}
+
+enum MetricType {
+  BOOLEAN @map("boolean")
+  COUNT   @map("count")
+  PERCENT @map("percent")
+  WEIGHT  @map("weight")
+  TEXT    @map("text")
+}
+
+enum KeyResultStatus {
+  ACTIVE    @map("active")
+  ACHIEVED  @map("achieved")
+  AT_RISK   @map("at_risk")
+  ABANDONED @map("abandoned")
+}
+
+enum ConditionType {
+  HARD       @map("hard")
+  ASSUMED    @map("assumed")
+  SUPPORTING @map("supporting")
+}
+
+enum ConditionStatus {
+  MISSING     @map("missing")
+  PARTIAL     @map("partial")
+  SATISFIED   @map("satisfied")
+  INVALIDATED @map("invalidated")
+}
+
+enum StageStatus {
+  DRAFT     @map("draft")
+  ACTIVE    @map("active")
+  COMPLETED @map("completed")
+  ADJUSTED  @map("adjusted")
+  CANCELLED @map("cancelled")
+}
+
+enum ActionStatus {
+  PLANNED  @map("planned")
+  DONE     @map("done")
+  PARTIAL  @map("partial")
+  NOT_DONE @map("not_done")
+  SKIPPED  @map("skipped")
+  REPLACED @map("replaced")
+}
+
+enum CheckinResult {
+  DONE        @map("done")
+  PARTIAL     @map("partial")
+  NOT_DONE    @map("not_done")
+  NO_RESPONSE @map("no_response")
+}
+
+enum DiagnosisCategory {
+  MOTIVATION @map("motivation")
+  ABILITY    @map("ability")
+  PROMPT     @map("prompt")
+  PATH       @map("path")
+  CONDITION  @map("condition")
+  GOAL       @map("goal")
+  UNKNOWN    @map("unknown")
+}
+
+enum AdjustmentType {
+  KEEP         @map("keep")
+  SIMPLIFY     @map("simplify")
+  RESCHEDULE   @map("reschedule")
+  REFRAME_GOAL @map("reframe_goal")
+  REBUILD_PATH @map("rebuild_path")
+  PAUSE_GOAL   @map("pause_goal")
+}
+
+enum ReviewType {
+  DAILY      @map("daily")
+  WEEKLY     @map("weekly")
+  MONTHLY    @map("monthly")
+  QUARTERLY  @map("quarterly")
+  YEARLY     @map("yearly")
+  GOAL_CYCLE @map("goal_cycle")
+}
+
+enum LogPeriodType {
+  YEAR    @map("year")
+  QUARTER @map("quarter")
+  MONTH   @map("month")
+  WEEK    @map("week")
+  DAY     @map("day")
+}
+
+enum MarkdownDocumentType {
+  YEAR    @map("year")
+  QUARTER @map("quarter")
+  MONTH   @map("month")
+  WEEK    @map("week")
+  DAY     @map("day")
+  GOAL    @map("goal")
+  NOTE    @map("note")
+  SYSTEM  @map("system")
+}
+
+enum MarkdownDocumentSource {
+  USER     @map("user")
+  AGENT    @map("agent")
+  SYSTEM   @map("system")
+  SEED     @map("seed")
+  IMPORTED @map("imported")
+}
+
+enum MarkdownLinkType {
+  WIKI       @map("wiki")
+  GOAL       @map("goal")
+  ACTION     @map("action")
+  LOG_PARENT @map("log_parent")
+  RELATED    @map("related")
+}
+
+enum AgentMessageRole {
+  USER      @map("user")
+  ASSISTANT @map("assistant")
+  SYSTEM    @map("system")
+  TOOL      @map("tool")
+}
+
+enum AgentThreadStatus {
+  ACTIVE   @map("active")
+  ARCHIVED @map("archived")
+}
+
+enum ModelUsage {
+  CHAT      @map("chat")
+  REASONING @map("reasoning")
+  SUMMARY   @map("summary")
+  EMBEDDING  @map("embedding")
+}
+
+enum IntegrationStatus {
+  DISABLED @map("disabled")
+  ENABLED  @map("enabled")
+  ERROR    @map("error")
+}
+
+enum ExternalActionStatus {
+  DRAFT     @map("draft")
+  PENDING   @map("pending")
+  CONFIRMED @map("confirmed")
+  EXECUTED  @map("executed")
+  REJECTED  @map("rejected")
+  FAILED    @map("failed")
+}
+
+model Goal {
+  id                     String     @id @default(uuid())
+  userId                 String
+  title                  String
+  rawInput               String
+  interpretedGoal        String?
+  horizonStart           DateTime?
+  horizonEnd             DateTime?
+  status                 GoalStatus @default(DRAFT)
+  isCurrentFocus         Boolean    @default(false)
+  currentReasoningCardId String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  user           user                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reasoningCards GoalReasoningCard[]
+  keyResults     KeyResult[]
+  conditions     GoalCondition[]
+  stagePlans     StagePlan[]
+  dailyActions   DailyAction[]
+  checkins       Checkin[]
+  diagnoses      Diagnosis[]
+  reviews        Review[]
+  agentThreads   AgentThread[]
+
+  @@index([userId])
+  @@index([userId, isCurrentFocus])
+  @@index([status])
+}
+
+model GoalReasoningCard {
+  id                       String                @id @default(uuid())
+  userId                   String
+  goalId                   String
+  version                  Int                   @default(1)
+  purposeSummary           String
+  successSignals           Json
+  sufficientConditionSet   String
+  currentGapConditionId    String?
+  recommendedFocus         String
+  confidenceScore          Float                 @default(0.6)
+  evidence                 Json
+  status                   ReasoningCardStatus   @default(DRAFT)
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, version])
+  @@index([userId])
+  @@index([goalId])
+}
+
+model KeyResult {
+  id           String          @id @default(uuid())
+  userId       String
+  goalId       String
+  title        String
+  metricType   MetricType      @default(TEXT)
+  currentValue String?
+  targetValue  String?
+  progress     Float           @default(0)
+  status       KeyResultStatus @default(ACTIVE)
+  whyNecessary String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([goalId])
+}
+
+model GoalCondition {
+  id          String          @id @default(uuid())
+  userId      String
+  goalId      String
+  title       String
+  type        ConditionType   @default(HARD)
+  status      ConditionStatus @default(MISSING)
+  whyRequired String
+  evidence    Json?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user         user          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal         Goal          @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  dailyActions DailyAction[]
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([status])
+}
+
+model StagePlan {
+  id                 String      @id @default(uuid())
+  userId             String
+  goalId             String
+  title              String
+  stageGoal          String
+  startDate          DateTime
+  endDate            DateTime?
+  linkedConditionIds Json
+  successSignals     Json
+  status             StageStatus @default(DRAFT)
+  sortOrder          Int         @default(0)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  user         user          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal         Goal          @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  dailyActions DailyAction[]
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([status])
+}
+
+model DailyAction {
+  id              String       @id @default(uuid())
+  userId          String
+  goalId          String
+  stagePlanId     String?
+  conditionId     String
+  actionDate      DateTime
+  title           String
+  reason          String?
+  doneWhen        String
+  minimumStep     String
+  estimatedMinutes Int         @default(20)
+  fallbackAction  String
+  checkinQuestion String?
+  status          ActionStatus @default(PLANNED)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user      user          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal      Goal          @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  stagePlan StagePlan?    @relation(fields: [stagePlanId], references: [id], onDelete: SetNull)
+  condition GoalCondition @relation(fields: [conditionId], references: [id], onDelete: Restrict)
+  checkins  Checkin[]
+  diagnoses Diagnosis[]
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([conditionId])
+  @@index([actionDate])
+  @@index([status])
+}
+
+model Checkin {
+  id             String             @id @default(uuid())
+  userId         String
+  goalId         String
+  actionId       String
+  result         CheckinResult
+  reasonCategory DiagnosisCategory?
+  userFeedback   String?
+  adjustment     String?
+  createdAt      DateTime           @default(now())
+
+  user      user        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal      Goal        @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  action    DailyAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  diagnoses Diagnosis[]
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([actionId])
+  @@index([result])
+}
+
+model Diagnosis {
+  id                 String            @id @default(uuid())
+  userId             String
+  goalId             String
+  actionId           String?
+  checkinId          String?
+  category           DiagnosisCategory
+  evidence           String
+  adjustmentType     AdjustmentType
+  nextQuestion       String
+  proposedNextAction String?
+  createdAt          DateTime          @default(now())
+
+  user    user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal    Goal         @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  action  DailyAction? @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  checkin Checkin?     @relation(fields: [checkinId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([category])
+}
+
+model Review {
+  id               String     @id @default(uuid())
+  userId           String
+  goalId           String
+  type             ReviewType
+  periodStart      DateTime
+  periodEnd        DateTime
+  progressSummary  String
+  conditionChanges Json
+  blockerSummary   String
+  nextFocus        String
+  logEntryId       String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  user     user      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal     Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  logEntry LogEntry? @relation(fields: [logEntryId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([type])
+}
+
+model LogEntry {
+  id              String        @id @default(uuid())
+  userId          String
+  periodType      LogPeriodType
+  title           String
+  path            String
+  content         String
+  linkedGoalIds   Json?
+  linkedActionIds Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user    user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviews Review[]
+
+  @@unique([userId, path])
+  @@index([userId])
+  @@index([periodType])
+}
+
+model MarkdownDocument {
+  id              String                 @id @default(uuid())
+  userId          String
+  type            MarkdownDocumentType   @default(NOTE)
+  title           String
+  path            String
+  content         String
+  frontmatter     Json?
+  linkedGoalIds   Json?
+  linkedActionIds Json?
+  source          MarkdownDocumentSource @default(USER)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  user          user                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outgoingLinks MarkdownDocumentLink[] @relation("MarkdownDocumentOutgoingLinks")
+  incomingLinks MarkdownDocumentLink[] @relation("MarkdownDocumentIncomingLinks")
+
+  @@unique([userId, path])
+  @@index([userId])
+  @@index([type])
+  @@index([source])
+  @@index([updatedAt])
+}
+
+model MarkdownDocumentLink {
+  id             String           @id @default(uuid())
+  userId         String
+  fromDocumentId String
+  toDocumentId   String?
+  targetPath     String
+  linkType       MarkdownLinkType @default(WIKI)
+  context        String?
+  createdAt      DateTime         @default(now())
+
+  user         user              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromDocument MarkdownDocument  @relation("MarkdownDocumentOutgoingLinks", fields: [fromDocumentId], references: [id], onDelete: Cascade)
+  toDocument   MarkdownDocument? @relation("MarkdownDocumentIncomingLinks", fields: [toDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([fromDocumentId])
+  @@index([toDocumentId])
+  @@index([targetPath])
+  @@index([linkType])
+}
+
+model AgentThread {
+  id        String            @id @default(uuid())
   userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  goalId    String?
+  title     String
+  status    AgentThreadStatus @default(ACTIVE)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user     user           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal     Goal?          @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  messages AgentMessage[]
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([status])
+}
+
+model AgentMessage {
+  id                   String           @id @default(uuid())
+  userId               String
+  threadId             String
+  role                 AgentMessageRole
+  content              String
+  structuredOutputType String?
+  structuredOutput     Json?
+  createdAt            DateTime         @default(now())
+
+  user   user        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread AgentThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([threadId])
+  @@index([role])
+}
+
+model ModelConfig {
+  id             String     @id @default(uuid())
+  userId         String
+  provider       String
+  model          String
+  reasoningModel String?
+  apiBase        String
+  apiKeyRef      String
+  usage          ModelUsage @default(CHAT)
+  isDefault      Boolean    @default(false)
+  temperature    Float?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([provider])
+  @@index([usage])
+}
+
+model UserSetting {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  general      Json
+  goals        Json
+  logs         Json
+  today        Json
+  agent        Json
+  notifications Json
+  dataPrivacy  Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   user user @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// BetterAuth models
-model user {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  emailVerified Boolean   @default(false)
-  name          String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+model IntegrationAccount {
+  id           String            @id @default(uuid())
+  userId       String
+  provider     String
+  accountLabel String?
+  status       IntegrationStatus @default(DISABLED)
+  permissions  Json?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
-  sessions session[]
-  accounts account[]
-  tasks   task[]
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([provider])
+  @@index([status])
+}
+
+model TelegramChatBinding {
+  id        String            @id @default(uuid())
+  userId    String
+  chatId    String            @unique
+  username  String?
+  firstName String?
+  lastName  String?
+  title     String?
+  status    IntegrationStatus @default(ENABLED)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId])
+  @@index([userId])
+  @@index([chatId])
+  @@index([status])
+}
+
+model TelegramUpdateEvent {
+  id             String   @id @default(uuid())
+  userId         String?
+  chatId         String
+  updateId       Int      @unique
+  messageText    String?
+  payload        Json
+  status         String   @default("received")
+  agentThreadId  String?
+  agentMessageId String?
+  replyMessageId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user user? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([chatId])
+  @@index([status])
+}
+
+model QqChatBinding {
+  id          String            @id @default(uuid())
+  userId      String
+  contextType String
+  contextId   String
+  username    String?
+  nickname    String?
+  status      IntegrationStatus @default(ENABLED)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([contextType, contextId])
+  @@unique([userId, contextType, contextId])
+  @@index([userId])
+  @@index([contextType])
+  @@index([contextId])
+  @@index([status])
+}
+
+model QqMessageEvent {
+  id             String   @id @default(uuid())
+  userId         String?
+  eventId        String   @unique
+  eventType      String
+  contextType    String
+  contextId      String
+  messageText    String?
+  payload        Json
+  status         String   @default("received")
+  agentThreadId  String?
+  agentMessageId String?
+  replyMessageId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user user? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([contextType])
+  @@index([contextId])
+  @@index([status])
+}
+
+model ExternalActionRequest {
+  id                   String               @id @default(uuid())
+  userId               String
+  provider             String
+  actionType           String
+  payload              Json
+  riskLevel            String
+  status               ExternalActionStatus @default(DRAFT)
+  requiresConfirmation Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([provider])
+  @@index([status])
+}
+
+model AgentToolAction {
+  id                     String   @id @default(uuid())
+  userId                 String
+  source                 String
+  toolName               String
+  permission             String
+  inputSummary           String
+  input                  Json?
+  result                 Json?
+  targetType             String?
+  targetId               String?
+  riskLevel              String   @default("low")
+  requiresConfirmation   Boolean  @default(false)
+  status                 String   @default("drafted")
+  errorMessage           String?
+  agentThreadId          String?
+  agentMessageId         String?
+  externalActionRequestId String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([source])
+  @@index([toolName])
+  @@index([permission])
+  @@index([status])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+model ReminderRule {
+  id           String   @id @default(uuid())
+  userId       String
+  goalId       String?
+  reminderType String
+  channel      String   @default("qq")
+  schedule     String
+  timezone     String   @default("Asia/Shanghai")
+  maxPerDay    Int      @default(2)
+  quietHours   Json?
+  enabled      Boolean  @default(true)
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([reminderType])
+  @@index([channel])
+  @@index([enabled])
+}
+
+model SchedulerEvent {
+  id                String    @id @default(uuid())
+  userId            String
+  reminderRuleId    String?
+  eventType         String
+  channel           String
+  dueKey            String
+  scheduledFor      DateTime
+  status            String    @default("pending")
+  messageText       String?
+  payload           Json?
+  sentAt            DateTime?
+  agentThreadId     String?
+  agentMessageId    String?
+  externalMessageId String?
+  errorMessage      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventType, channel, dueKey])
+  @@index([userId])
+  @@index([reminderRuleId])
+  @@index([eventType])
+  @@index([channel])
+  @@index([status])
+  @@index([scheduledFor])
+}
+
+model user {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  name          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions               session[]
+  accounts               account[]
+  goals                  Goal[]
+  reasoningCards         GoalReasoningCard[]
+  keyResults             KeyResult[]
+  conditions             GoalCondition[]
+  stagePlans             StagePlan[]
+  dailyActions           DailyAction[]
+  checkins               Checkin[]
+  diagnoses              Diagnosis[]
+  reviews                Review[]
+  logEntries             LogEntry[]
+  markdownDocuments      MarkdownDocument[]
+  markdownDocumentLinks  MarkdownDocumentLink[]
+  agentThreads           AgentThread[]
+  agentMessages          AgentMessage[]
+  modelConfigs           ModelConfig[]
+  userSetting            UserSetting?
+  integrationAccounts    IntegrationAccount[]
+  telegramChatBindings   TelegramChatBinding[]
+  telegramUpdateEvents   TelegramUpdateEvent[]
+  qqChatBindings         QqChatBinding[]
+  qqMessageEvents        QqMessageEvent[]
+  externalActionRequests ExternalActionRequest[]
+  agentToolActions       AgentToolAction[]
+  reminderRules          ReminderRule[]
+  schedulerEvents        SchedulerEvent[]
 }
 
 model session {
@@ -50,17 +795,17 @@ model session {
 }
 
 model account {
-  id                String   @id @default(uuid())
-  userId            String
-  accountId         String
-  providerId        String
-  accessToken       String?
-  refreshToken      String?
-  idToken           String?
-  expiresAt         DateTime?
-  password          String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id           String    @id @default(uuid())
+  userId       String
+  accountId    String
+  providerId   String
+  accessToken  String?
+  refreshToken String?
+  idToken      String?
+  expiresAt    DateTime?
+  password     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   user user @relation(fields: [userId], references: [id], onDelete: Cascade)
 

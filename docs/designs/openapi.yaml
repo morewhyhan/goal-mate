@@ -284,10 +284,10 @@ components:
           example: deepseek
         default_model:
           type: string
-          example: DeepSeek V4 Flash
+          example: deepseek-v4-flash
         reasoning_model:
           type: string
-          example: DeepSeek Reasoner
+          example: deepseek-reasoner
         api_base_url:
           type: string
           example: https://api.deepseek.com

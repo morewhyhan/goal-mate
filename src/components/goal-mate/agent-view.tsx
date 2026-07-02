@@ -1,0 +1,82 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { agentMessages, agentThreads } from '@/lib/goal-mate-demo-data'
+import { useAgentMessages, useAgentThreads, useSendAgentMessage } from '@/hooks/use-agent'
+
+export function AgentView() {
+  const threadsQuery = useAgentThreads()
+  const threads = threadsQuery.data?.data || []
+  const [selectedThreadId, setSelectedThreadId] = useState<string | undefined>()
+  const activeThreadId = selectedThreadId || threads[0]?.id
+  const messagesQuery = useAgentMessages(activeThreadId)
+  const apiMessages = messagesQuery.data?.data || []
+  const sendMessage = useSendAgentMessage()
+  const [draft, setDraft] = useState('')
+
+  useEffect(() => {
+    if (!selectedThreadId && threads[0]?.id) setSelectedThreadId(threads[0].id)
+  }, [selectedThreadId, threads])
+
+  const visibleThreads = threads.length
+    ? threads.map((thread: any) => ({ title: thread.title, time: '最近', active: thread.id === activeThreadId, id: thread.id }))
+    : agentThreads
+  const visibleMessages = apiMessages.length ? apiMessages : agentMessages
+
+  const handleSend = () => {
+    if (!draft.trim() || !activeThreadId) return
+    sendMessage.mutate({ threadId: activeThreadId, content: draft.trim() })
+    setDraft('')
+  }
+
+  return (
+    <div className="grid h-[calc(100vh-4rem)] grid-cols-1 overflow-hidden p-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside className="overflow-y-auto rounded-l-[32px] border border-stone-200 bg-white p-5 shadow-sm lg:rounded-r-none">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Agent</p>
+        <h1 className="mt-2 text-2xl font-semibold text-stone-950">对话历史</h1>
+        <div className="mt-6 space-y-2">
+          {visibleThreads.map((thread: any) => (
+            <button key={thread.id || thread.title} onClick={() => thread.id && setSelectedThreadId(thread.id)} className={`block w-full rounded-2xl p-4 text-left ${thread.active ? 'bg-stone-950 text-white' : 'bg-stone-50 text-stone-700 hover:bg-stone-100'}`}>
+              <span className="block font-medium">{thread.title}</span>
+              <span className={`mt-1 block text-xs ${thread.active ? 'text-stone-300' : 'text-stone-400'}`}>{thread.time}</span>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <main className="flex min-h-0 flex-col rounded-r-[32px] border-y border-r border-stone-200 bg-stone-50 shadow-sm">
+        <header className="border-b border-stone-200 bg-white px-6 py-4">
+          <h2 className="text-xl font-semibold text-stone-950">{visibleThreads.find((thread: any) => thread.active)?.title || '暑假主目标拆解'}</h2>
+          <p className="text-sm text-stone-500">Agent 可读取当前目标、日志、Today 行动和设置；关键修改需要确认。</p>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className="mx-auto max-w-3xl space-y-5">
+            {visibleMessages.map((message: any, index: number) => {
+              const role = String(message.role || '').toLowerCase()
+              return (
+                <div key={message.id || index} className={`flex ${role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[78%] rounded-[24px] px-5 py-4 text-sm leading-7 ${role === 'user' ? 'bg-stone-950 text-white' : 'border border-stone-200 bg-white text-stone-700'}`}>
+                    {message.content}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <footer className="border-t border-stone-200 bg-white p-4">
+          <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[26px] border border-stone-200 bg-stone-50 p-3">
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="问 Agent：今天没做怎么办？这个目标为什么这么拆？帮我生成周志。"
+              className="max-h-32 min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 outline-none"
+            />
+            <button disabled={!activeThreadId || sendMessage.isPending} onClick={handleSend} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">发送</button>
+          </div>
+        </footer>
+      </main>
+    </div>
+  )
+}

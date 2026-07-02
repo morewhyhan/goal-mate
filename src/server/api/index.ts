@@ -1,16 +1,20 @@
 import { handleError } from './error'
 import { Hono } from 'hono'
-import usersRoute from './routes/users'
-import tasksRoute from './routes/tasks'
+import settingsRoute from './routes/settings'
+import modelsRoute from './routes/models'
+import logsRoute from './routes/logs'
+import goalsRoute from './routes/goals'
+import todayRoute from './routes/today'
+import agentRoute from './routes/agent'
+import reviewsRoute from './routes/reviews'
+import telegramRoute from './routes/integrations/telegram'
 import { auth } from '@/lib/auth'
 
 const app = new Hono().basePath('/api')
 
 app.onError(handleError)
 
-// CORS middleware for auth routes
 app.use('/auth/*', async (c, next) => {
-  // Handle OPTIONS preflight
   if (c.req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -25,10 +29,8 @@ app.use('/auth/*', async (c, next) => {
   await next()
 })
 
-// BetterAuth handler - handle all auth routes
 app.all('/auth/*', async (c) => {
   const response = await auth.handler(c.req.raw)
-  // Add CORS headers to response
   if (response instanceof Response) {
     const newHeaders = new Headers(response.headers)
     newHeaders.set('Access-Control-Allow-Origin', '*')
@@ -42,12 +44,19 @@ app.all('/auth/*', async (c) => {
   return response as any
 })
 
-// Health check
 app.get('/health', (c) => {
-  return c.json({ status: 'ok', timestamp: new Date().toISOString() })
+  return c.json({ status: 'ok', product: 'goal-mate', timestamp: new Date().toISOString() })
 })
 
-const routes = app.route('/', usersRoute).route('/', tasksRoute)
+const routes = app
+  .route('/', settingsRoute)
+  .route('/', modelsRoute)
+  .route('/', logsRoute)
+  .route('/', goalsRoute)
+  .route('/', todayRoute)
+  .route('/', agentRoute)
+  .route('/', reviewsRoute)
+  .route('/', telegramRoute)
 
 export default app
 

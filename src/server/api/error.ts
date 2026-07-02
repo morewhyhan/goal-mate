@@ -17,8 +17,25 @@ export function handleError(err: Error, c: Context): Response {
     const firstError = err.issues[0]
 
     return c.json(
-      { code: 422, message: `\`${firstError.path}\`: ${firstError.message}` },
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `\`${firstError.path}\`: ${firstError.message}`,
+        },
+      },
       422,
+    )
+  }
+
+  if (err instanceof ApiError) {
+    return c.json(
+      {
+        error: {
+          code: String(err.code || 'INTERNAL_ERROR'),
+          message: err.message,
+        },
+      },
+      err.code || 500,
     )
   }
 
@@ -28,8 +45,10 @@ export function handleError(err: Error, c: Context): Response {
 
   return c.json(
     {
-      code: 500,
-      message: '出了点问题, 请稍后再试。',
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: '出了点问题, 请稍后再试。',
+      },
     },
     { status: 500 },
   )

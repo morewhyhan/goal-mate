@@ -68,3 +68,21 @@ Automatic high-risk external actions
 | Markdown storage | Logs output | Web version may store in DB first and export as Markdown. |
 | Future bot channels | Daily reminders and check-in | WeChat / Feishu / Telegram / Email are future entry points. |
 | Future MCP tools | Power-user automation | Requires explicit permission and confirmation. |
+
+## Current Agent Capability Boundary
+
+As of 2026-07-02, the Agent can chat through the Web Agent page and QQ Bot, call DeepSeek, and read allowed goal/log context.
+
+The system now has an explicit Agent Tool Runtime foundation for creating goal drafts, updating today's action, submitting check-ins, writing logs, generating review drafts, scheduling reminders, updating model settings, and recording audit logs.
+
+Web Agent conversations can now route explicit system-operation requests into tool intent handling. Execute tools are held for confirmation and can be executed after the user confirms.
+
+The remaining gap is product-grade confirmation UI and QQ-side tool confirmation.
+
+The next product increment is:
+
+```text
+Tool confirmation UI
+QQ tool confirmation flow
+Server deployment for QQ worker and Scheduler
+```

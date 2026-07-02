@@ -4,7 +4,23 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev --name goal_mate_v01",
+    "db:reset": "prisma migrate reset --force --skip-seed",
+    "db:seed": "node scripts/seed-goal-mate.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify:v01": "pnpm db:generate && pnpm typecheck",
+    "verify:v01:api": "node scripts/verify-v01-acceptance.mjs",
+    "verify:v01:api:write": "node scripts/verify-v01-acceptance.mjs --write",
+    "verify:v01:api:auth": "node scripts/verify-v01-acceptance.mjs --require-auth",
+    "verify:v01:api:auth:write": "node scripts/verify-v01-acceptance.mjs --require-auth --write",
+    "verify:v01:prepare-auth": "node scripts/prepare-v01-auth-session.mjs",
+    "verify:v01:business": "node scripts/verify-v01-business-flow.mjs",
+    "verify:v01:business:write": "node scripts/verify-v01-business-flow.mjs --write",
+    "verify:telegram:webhook": "node scripts/verify-telegram-webhook-smoke.mjs",
+    "worker:qq": "node scripts/qq-bot-worker.mjs",
+    "worker:scheduler": "node scripts/scheduler-worker.mjs"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.4.1",
@@ -40,6 +56,7 @@
     "recharts": "2.15.4",
     "sonner": "^1.5.0",
     "tailwind-merge": "^3.5.0",
+    "ws": "^8.18.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

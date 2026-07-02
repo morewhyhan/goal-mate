@@ -109,7 +109,7 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | id | string | 是 | 配置 ID |
 | user_id | string | 是 | 用户 ID |
 | provider | string | 是 | DeepSeek 等 |
-| model | string | 是 | DeepSeek V4 Flash 等 |
+| model | string | 是 | deepseek-v4-flash 等 |
 | api_base | string | 是 | API 地址 |
 | api_key_ref | string | 是 | 密钥安全引用 |
 | usage | enum | 是 | chat, reasoning, summary |

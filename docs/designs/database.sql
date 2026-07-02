@@ -108,10 +108,48 @@ CREATE TABLE model_configs (
   id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(64) NOT NULL REFERENCES users(id),
   provider VARCHAR(80) NOT NULL DEFAULT 'deepseek',
-  default_model VARCHAR(120) NOT NULL DEFAULT 'DeepSeek V4 Flash',
-  reasoning_model VARCHAR(120) NOT NULL DEFAULT 'DeepSeek Reasoner',
+  default_model VARCHAR(120) NOT NULL DEFAULT 'deepseek-v4-flash',
+  reasoning_model VARCHAR(120) NOT NULL DEFAULT 'deepseek-reasoner',
   api_base_url VARCHAR(300) NOT NULL DEFAULT 'https://api.deepseek.com',
   api_key_ref VARCHAR(200),
   fallback_strategy VARCHAR(80) NOT NULL DEFAULT 'retry_then_fallback',
   updated_at TIMESTAMP NOT NULL
 );
+-- Markdown document store: database-backed MD files and references.
+CREATE TABLE markdown_documents (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  type VARCHAR(40) NOT NULL DEFAULT 'note',
+  title VARCHAR(240) NOT NULL,
+  path VARCHAR(500) NOT NULL,
+  content TEXT NOT NULL,
+  frontmatter JSON,
+  linked_goal_ids JSON,
+  linked_action_ids JSON,
+  source VARCHAR(40) NOT NULL DEFAULT 'user',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, path)
+);
+
+CREATE INDEX idx_markdown_documents_user_id ON markdown_documents(user_id);
+CREATE INDEX idx_markdown_documents_type ON markdown_documents(type);
+CREATE INDEX idx_markdown_documents_source ON markdown_documents(source);
+CREATE INDEX idx_markdown_documents_updated_at ON markdown_documents(updated_at);
+
+CREATE TABLE markdown_document_links (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  from_document_id VARCHAR(36) NOT NULL,
+  to_document_id VARCHAR(36),
+  target_path VARCHAR(500) NOT NULL,
+  link_type VARCHAR(40) NOT NULL DEFAULT 'wiki',
+  context TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_markdown_document_links_user_id ON markdown_document_links(user_id);
+CREATE INDEX idx_markdown_document_links_from_document_id ON markdown_document_links(from_document_id);
+CREATE INDEX idx_markdown_document_links_to_document_id ON markdown_document_links(to_document_id);
+CREATE INDEX idx_markdown_document_links_target_path ON markdown_document_links(target_path);
+CREATE INDEX idx_markdown_document_links_link_type ON markdown_document_links(link_type);

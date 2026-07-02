@@ -40,7 +40,10 @@ Storage
 | Agent Runtime | Handles conversation, goal clarification, plan adjustment, diagnosis, and log drafting. |
 | Logs Service | Reads and writes Markdown-style year, quarter, month, week, and day records. |
 | Settings Service | Stores product configuration, permissions, reminders, model config, and data preferences. |
-| Model Provider Adapter | Routes Agent requests to configured models such as DeepSeek V4 Flash or reasoning models. |
+| Model Provider Adapter | Routes Agent requests to configured models such as deepseek-v4-flash or reasoning models. |
+| Agent Tool Runtime | Converts Agent intent into controlled read, draft, and execute tools. |
+| Scheduler Worker | Triggers morning planning, midday checks, evening reviews, and weekly reviews. |
+| Tool Audit Log | Records every Agent-triggered system operation for traceability. |
 
 ## First-version Page Architecture
 
@@ -68,3 +71,20 @@ Storage
 | Self-hosted runtime | Reuses Web Console, API, storage, and model adapter with local deployment. |
 | MCP Server | Exposes controlled tools backed by Goal Engine and Logs Service. |
 | Obsidian export | Exports Logs records as a compatible Markdown vault. |
+
+## Agent Operation Architecture
+
+The Agent must not write business data directly.
+
+```text
+Agent Runtime
+  -> Tool Intent Parser
+  -> Agent Tool Runtime
+  -> Permission Guard
+  -> Business Service
+  -> Tool Audit Log
+```
+
+Read tools can execute without confirmation. Draft tools create reversible drafts. Execute tools must pass permission checks and should require confirmation unless the user has explicitly configured automation.
+
+Scheduler-triggered actions use the same Agent Tool Runtime as Web and QQ. This prevents QQ Bot logic from becoming a separate product.
