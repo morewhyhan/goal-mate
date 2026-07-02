@@ -27,6 +27,7 @@ pnpm verify:deployment-config:write
 | DEPLOY-README | systemd README | 包含安装、启动、状态、日志查看命令 |
 | DEPLOY-ENV-EXAMPLE | `.env.example` | 包含部署所需环境变量 |
 | DEPLOY-DESIGN-DOC | 部署事实文档 | 引用 `deploy/systemd` 并保留真实部署缺口 |
+| DEPLOY-RUNTIME-PLAN | 服务器运行验收计划 | `docs/plans/self-hosted-runtime-verification-plan.md` 说明真实长期运行验证步骤 |
 
 ## 4. 不覆盖
 
@@ -34,4 +35,3 @@ pnpm verify:deployment-config:write
 - 不验证 systemd 是否可用。
 - 不验证 QQ / DeepSeek 网络。
 - 不验证 worker 长期运行。
-

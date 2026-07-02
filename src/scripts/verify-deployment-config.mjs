@@ -126,6 +126,14 @@ record(
   doc ? 'deployment design updated' : 'missing deployment design',
 )
 
+const runtimePlan = readText(resolve(projectRoot, 'docs/plans/self-hosted-runtime-verification-plan.md'))
+record(
+  'DEPLOY-RUNTIME-PLAN',
+  'self-hosted runtime verification plan documents real long-running checks',
+  Boolean(runtimePlan && runtimePlan.includes('Web') && runtimePlan.includes('QQ Worker') && runtimePlan.includes('Scheduler Worker') && runtimePlan.includes('AgentToolAction.source = scheduler')),
+  runtimePlan ? 'runtime verification plan present' : 'missing runtime verification plan',
+)
+
 const lines = [
   '# Goal Mate Deployment Config Verification',
   '',

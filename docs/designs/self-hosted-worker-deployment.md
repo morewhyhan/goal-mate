@@ -156,10 +156,11 @@ tools
 - 项目已有 worker 脚本。
 - 项目已有 Settings Control Center 可观察状态。
 - 项目已有 systemd service 模板。
+- 项目已有 shared executor 和 shared audit writer，Web、QQ、Scheduler 回复路径的工具动作已统一审计。
 - 尚未在服务器上完成长期运行验证。
 - 尚未完成 worker 崩溃自动重启验证。
 
 ## 11. 下一步
 
-- 在服务器上执行一次真实部署验证。
+- 按 `docs/plans/self-hosted-runtime-verification-plan.md` 在服务器上执行真实部署验证。
 - 把验证结果写入 `docs/plans`。
