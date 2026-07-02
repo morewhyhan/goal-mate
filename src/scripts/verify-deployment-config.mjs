@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -29,6 +30,11 @@ const serviceFiles = [
     command: 'pnpm worker:scheduler',
     description: 'Scheduler worker service',
   },
+]
+
+const runtimeScripts = [
+  { id: 'QQ-WORKER', file: 'scripts/qq-bot-worker.mjs', description: 'QQ worker script' },
+  { id: 'SCHEDULER-WORKER', file: 'scripts/scheduler-worker.mjs', description: 'Scheduler worker script' },
 ]
 
 const requiredEnvVars = [
@@ -103,6 +109,21 @@ for (const service of serviceFiles) {
     `${service.description} template contains required systemd directives`,
     check.ok,
     check.ok ? 'required directives present' : `missing=${check.missing.join(', ')}`,
+  )
+}
+
+for (const script of runtimeScripts) {
+  const scriptPath = resolve(appRoot, script.file)
+  const check = spawnSync(process.execPath, ['--check', scriptPath], {
+    cwd: appRoot,
+    encoding: 'utf8',
+  })
+  const output = `${check.stdout || ''}${check.stderr || ''}`.trim()
+  record(
+    `DEPLOY-${script.id}-SYNTAX`,
+    `${script.description} passes Node syntax check`,
+    check.status === 0,
+    check.status === 0 ? `${script.file} syntax ok` : output.slice(0, 240),
   )
 }
 

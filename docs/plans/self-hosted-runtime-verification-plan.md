@@ -63,6 +63,7 @@ Scheduler Worker
 | 状态 | 步骤 | 证据 |
 | --- | --- | --- |
 | Todo | 安装依赖并生成 Prisma Client | 命令输出成功 |
+| Todo | 执行静态门禁 | `pnpm verify:static` 通过，包含 QQ/Scheduler worker 语法检查 |
 | Todo | 配置服务器 `.env` | 不提交密钥，只记录变量名已配置 |
 | Todo | 启动 Web systemd service | `systemctl status goal-mate-web` active |
 | Todo | 启动 QQ Worker systemd service | 日志出现 Gateway 连接或心跳 |

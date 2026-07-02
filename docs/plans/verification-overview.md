@@ -15,6 +15,7 @@
 - 本轮已执行低成本验证：`pnpm verify:static`、`pnpm db:generate`、`pnpm typecheck`，均通过。
 - 本轮已执行本地运行时验证：`pnpm exec prisma migrate deploy`、`pnpm db:seed`、`pnpm verify:v01:api`、登录态 API smoke、`pnpm verify:v01:business`、`pnpm verify:agent-loop:write`、`pnpm build`、Dashboard 页面 HTTP smoke，均通过。
 - 本轮已执行 Dashboard 截图 smoke，发现并修复 Today 热力图横向滚动/灰条问题；修复后 `pnpm typecheck` 和 `pnpm build` 均通过。
+- 本轮发现并修复 QQ Worker 语法失败问题；`pnpm verify:static` 已新增 QQ Worker / Scheduler Worker `node --check` 防回归检查并通过。
 
 ## 2. 验收层级
 
@@ -22,7 +23,7 @@
 | --- | --- | --- | --- | --- |
 | 静态门禁 | `pnpm verify:static` | 否 | 否 | 2026-07-02 已通过 |
 | 密钥扫描 | `pnpm verify:secrets` | 否 | 否 | 2026-07-02 已通过 |
-| 部署配置静态检查 | `pnpm verify:deployment-config` | 否 | 否 | 2026-07-02 已通过 |
+| 部署配置静态检查 | `pnpm verify:deployment-config` | 否 | 否 | 2026-07-02 已通过，包含 worker 语法检查 |
 | v0.1 类型/生成检查 | `pnpm verify:v01` | 否 | 否 | 2026-07-02 已通过等价步骤：`db:generate` + `typecheck` |
 | v0.1 API 验收 | `pnpm verify:v01:api` | 是 | 否 | 2026-07-02 未登录和登录态 smoke 已通过 |
 | v0.1 业务流验收 | `pnpm verify:v01:business` | 视脚本前置条件而定 | 否 | 2026-07-02 已通过 |
