@@ -1,0 +1,23 @@
+[Unit]
+Description=Goal Mate Web Console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=goalmate
+Group=goalmate
+WorkingDirectory=/opt/goal-mate/src
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/goal-mate/src/.env
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

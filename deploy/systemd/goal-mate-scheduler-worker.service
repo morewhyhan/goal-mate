@@ -1,0 +1,23 @@
+[Unit]
+Description=Goal Mate Scheduler Worker
+After=network-online.target goal-mate-qq-worker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=goalmate
+Group=goalmate
+WorkingDirectory=/opt/goal-mate/src
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/goal-mate/src/.env
+ExecStart=/usr/bin/env pnpm worker:scheduler
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

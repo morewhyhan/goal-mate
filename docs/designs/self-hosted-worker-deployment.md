@@ -87,6 +87,15 @@ WorkingDirectory=<repo>/src
 EnvironmentFile=<repo>/src/.env
 ```
 
+仓库已提供模板：
+
+```text
+deploy/systemd/goal-mate-web.service
+deploy/systemd/goal-mate-qq-worker.service
+deploy/systemd/goal-mate-scheduler-worker.service
+deploy/systemd/README.md
+```
+
 ## 7. 启动顺序
 
 ```text
@@ -119,14 +128,11 @@ EnvironmentFile=<repo>/src/.env
 
 - 项目已有 worker 脚本。
 - 项目已有 Settings Control Center 可观察状态。
-- 尚未新增 systemd service 文件。
+- 项目已有 systemd service 模板。
 - 尚未在服务器上完成长期运行验证。
 - 尚未完成 worker 崩溃自动重启验证。
 
 ## 10. 下一步
 
-- 新增 `deploy/systemd` service 模板。
-- 新增服务器部署 runbook。
 - 在服务器上执行一次真实部署验证。
 - 把验证结果写入 `docs/plans`。
-
