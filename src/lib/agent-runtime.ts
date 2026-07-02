@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db'
-import { defaultDeepSeekModel } from '@/server/api/context'
+import { defaultDeepSeekModel, defaultUserSettings } from '@/server/api/context'
 import { listAgentTools } from '@/lib/agent-tools'
 import { parseAgentToolIntentJson } from '@/lib/agent-tool-shared.mjs'
 
@@ -11,6 +11,24 @@ function toChatRole(role: string) {
 
 export function trimForPrompt(value: string, max = 900) {
   return value.length > max ? `${value.slice(0, max)}...` : value
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function readBooleanSetting(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+async function loadAgentRuntimeSettings(userId: string) {
+  const settings = await prisma.userSetting.findUnique({ where: { userId } })
+  const agentSettings = { ...defaultUserSettings.agent, ...asRecord(settings?.agent) }
+  return {
+    canReadGoals: readBooleanSetting(agentSettings.can_read_goals, defaultUserSettings.agent.can_read_goals),
+    canReadLogs: readBooleanSetting(agentSettings.can_read_logs, defaultUserSettings.agent.can_read_logs),
+    memoryEnabled: readBooleanSetting(agentSettings.memory_enabled, defaultUserSettings.agent.memory_enabled),
+  }
 }
 
 function extractSearchTerms(input: string) {
@@ -132,17 +150,27 @@ function generateFallbackAgentToolIntent(latestUserContent: string) {
   return null
 }
 
+function filterToolIntentByRuntimeSettings(intent: any, settings: { canReadGoals: boolean; canReadLogs: boolean }) {
+  if (!intent?.toolName) return intent
+  const goalReadTools = new Set(['goal.list', 'goal.get', 'today.get', 'review.generate'])
+  if (!settings.canReadGoals && goalReadTools.has(intent.toolName)) return null
+  return intent
+}
+
 export async function generateAssistantReply(userId: string, threadId: string, latestUserContent: string) {
   const apiKey = process.env.DEEPSEEK_API_KEY
-  const modelConfig = await prisma.modelConfig.findFirst({
-    where: { userId, isDefault: true },
-    orderBy: { createdAt: 'asc' },
-  })
+  const [modelConfig, runtimeSettings] = await Promise.all([
+    prisma.modelConfig.findFirst({
+      where: { userId, isDefault: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    loadAgentRuntimeSettings(userId),
+  ])
   const apiBase = String(modelConfig?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
   const modelName = String(modelConfig?.model || defaultDeepSeekModel.model)
 
   const [goal, history] = await Promise.all([
-    prisma.goal.findFirst({
+    runtimeSettings.canReadGoals ? prisma.goal.findFirst({
       where: { userId, isCurrentFocus: true },
       include: {
         keyResults: true,
@@ -151,12 +179,14 @@ export async function generateAssistantReply(userId: string, threadId: string, l
         dailyActions: { orderBy: { actionDate: 'desc' }, take: 3 },
         reasoningCards: { orderBy: { version: 'desc' }, take: 1 },
       },
-    }),
-    prisma.agentMessage.findMany({ where: { userId, threadId }, orderBy: { createdAt: 'desc' }, take: 12 }),
+    }) : Promise.resolve(null),
+    runtimeSettings.memoryEnabled ? prisma.agentMessage.findMany({ where: { userId, threadId }, orderBy: { createdAt: 'desc' }, take: 12 }) : Promise.resolve([]),
   ])
-  const markdownDocuments = await findRelevantMarkdownDocuments(userId, latestUserContent)
+  const markdownDocuments = runtimeSettings.canReadLogs ? await findRelevantMarkdownDocuments(userId, latestUserContent) : []
 
-  const goalContext = goal
+  const goalContext = !runtimeSettings.canReadGoals
+    ? 'Settings 已关闭 Agent 读取 Goals。不要引用目标结构；如果用户需要目标信息，请先说明需要开启 Goals 读取。'
+    : goal
     ? [
         `当前目标：${goal.title}`,
         `解释：${goal.interpretedGoal || goal.rawInput}`,
@@ -167,7 +197,9 @@ export async function generateAssistantReply(userId: string, threadId: string, l
       ].join('\n')
     : '当前还没有主目标。'
 
-  const markdownContext = markdownDocuments.length
+  const markdownContext = !runtimeSettings.canReadLogs
+    ? 'Settings 已关闭 Agent 读取 Logs。不要引用 Markdown 日志内容；如果用户需要日志信息，请先说明需要开启 Logs 读取。'
+    : markdownDocuments.length
     ? markdownDocuments.map((document) => `- ${document.path} [${document.type}]\n${trimForPrompt(document.content, 600)}`).join('\n\n')
     : '暂无 Markdown 文档。'
 
@@ -176,6 +208,7 @@ export async function generateAssistantReply(userId: string, threadId: string, l
     '你的任务不是闲聊，而是帮助用户澄清目标、理解当前计划、调整下一步行动、整理日志和解释系统状态。',
     '回答必须具体、简洁、可行动。不要编造不存在的数据；如果需要用户补充信息，直接问一个最关键的问题。',
     '涉及修改目标、设置、外部发送消息等高风险动作时，只提出建议，不要声称已经执行。',
+    '必须遵守 Settings 读取范围：关闭 Goals 或 Logs 读取时，不得引用对应上下文。',
     '',
     '系统已知上下文：',
     goalContext,
@@ -192,12 +225,16 @@ export async function generateAssistantReply(userId: string, threadId: string, l
     }
   }
 
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history.reverse().map((message) => ({
+  const conversationMessages = runtimeSettings.memoryEnabled
+    ? history.reverse().map((message) => ({
       role: toChatRole(message.role),
       content: trimForPrompt(message.content, 1600),
-    })),
+    }))
+    : [{ role: 'user', content: trimForPrompt(latestUserContent, 1600) }]
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...conversationMessages,
   ]
 
   try {
@@ -245,7 +282,9 @@ export async function generateAssistantReply(userId: string, threadId: string, l
 export async function generateAgentToolIntent(userId: string, latestUserContent: string) {
   const apiKey = process.env.DEEPSEEK_API_KEY
   const fallbackIntent = generateFallbackAgentToolIntent(latestUserContent)
-  if (!apiKey) return fallbackIntent
+  const runtimeSettings = await loadAgentRuntimeSettings(userId)
+  const allowedFallbackIntent = filterToolIntentByRuntimeSettings(fallbackIntent, runtimeSettings)
+  if (!apiKey) return allowedFallbackIntent
 
   const modelConfig = await prisma.modelConfig.findFirst({
     where: { userId, isDefault: true },
@@ -292,17 +331,17 @@ export async function generateAgentToolIntent(userId: string, latestUserContent:
     const content = data?.choices?.[0]?.message?.content
     if (typeof content !== 'string') return null
     const parsed = parseAgentToolIntentJson(content)
-    if (!parsed) return fallbackIntent
+    if (!parsed) return allowedFallbackIntent
 
     const toolName = typeof parsed.toolName === 'string' ? parsed.toolName : null
     const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0
     const input = parsed.input && typeof parsed.input === 'object' ? parsed.input : {}
     const reason = typeof parsed.reason === 'string' ? parsed.reason : ''
-    if (!toolName || confidence < 0.75) return fallbackIntent
-    if (!tools.some((tool) => tool.name === toolName)) return fallbackIntent
+    if (!toolName || confidence < 0.75) return allowedFallbackIntent
+    if (!tools.some((tool) => tool.name === toolName)) return allowedFallbackIntent
 
-    return { toolName, input, confidence, reason }
+    return filterToolIntentByRuntimeSettings({ toolName, input, confidence, reason }, runtimeSettings)
   } catch {
-    return fallbackIntent
+    return allowedFallbackIntent
   }
 }

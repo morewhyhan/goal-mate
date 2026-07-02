@@ -230,3 +230,5 @@ P0 提醒类型：
 - 2026-07-02：强化 Settings 页面闭环，新增真实保存的系统行为配置区，覆盖 General、Goals、Logs、Today、Agent、Data & Privacy；字段直接写入 `/api/settings` 的 UserSetting，不再只是模型/提醒/审计展示。
 
 - 2026-07-02：强化 Goals 只读推进总览，页面现在直接显示整体 KR 进度、当前缺口、今日行动、条件进度和当前阶段标记；Goals 仍不提供编辑操作，只承载目标拆解和推进状态。
+
+- 2026-07-02：强化 Settings 运行时闭环，Agent runtime 现在会真实执行 `can_read_goals`、`can_read_logs`、`memory_enabled`；关闭 Goals/Logs 读取后不会把对应上下文注入模型，工具路由也不会绕过读取范围。

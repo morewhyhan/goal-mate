@@ -129,6 +129,18 @@ function verifySharedRuntimeContracts() {
     'src/lib/agent-runtime.ts scanned',
   )
   record(
+    'AAL-SETTINGS-RUNTIME-POLICY',
+    'Agent runtime enforces Settings read scope for Goals, Logs and conversation memory',
+    agentRuntime.includes('loadAgentRuntimeSettings')
+      && agentRuntime.includes('can_read_goals')
+      && agentRuntime.includes('can_read_logs')
+      && agentRuntime.includes('memory_enabled')
+      && agentRuntime.includes('filterToolIntentByRuntimeSettings')
+      && agentRuntime.includes('Settings 已关闭 Agent 读取 Goals')
+      && agentRuntime.includes('Settings 已关闭 Agent 读取 Logs'),
+    'src/lib/agent-runtime.ts scanned',
+  )
+  record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
