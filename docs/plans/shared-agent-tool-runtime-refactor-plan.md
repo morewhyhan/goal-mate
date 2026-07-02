@@ -123,6 +123,7 @@ detectConfirmToolMessage(text)
 | Done | 删除 QQ 重复业务代码 | `qq-bot-worker.mjs` 的工具业务 handler 已切到共享 runtime，文件只保留 QQ 通道、消息解析、确认和回复逻辑 |
 | Done | 删除 Web 重复业务代码 | `src/lib/agent-tools.ts` 只保留 Web 工具适配、确认拦截、审计写入和 shared handler 调用 |
 | Done | Scheduler 回复审计来源 | Scheduler 提醒后的 QQ 回复通过 shared executor 写工具动作，审计来源标记为 `scheduler` |
+| Done | Scheduler 主动发送审计 | `reminder.send` 作为内部审计动作通过 shared audit writer 写入，不暴露为用户工具 |
 
 ## 7. 验收标准
 
@@ -156,3 +157,4 @@ pnpm worker:qq
 - 2026-07-02：重写 `src/lib/agent-tools.ts` 为薄适配层，删除 Web 侧旧业务 handler body；业务动作统一由 shared read/write handlers 承载。
 - 2026-07-02：新增 `src/lib/agent-tool-executor.mjs`，Web 和 QQ 已共享确认拦截、业务执行、失败处理和 `AgentToolAction` 审计写入；`verify-agent-action-loop` 已同步检查 shared executor。
 - 2026-07-02：调整 Scheduler 回复路径的工具执行上下文，用户在 QQ 回复主动提醒时仍由 QQ 通道接收，但 `AgentToolAction.source` 记录为 `scheduler`。
+- 2026-07-02：扩展 `src/lib/agent-tool-executor.mjs`，新增 shared audit writer；Scheduler Worker 的内部 `reminder.send` 成功/失败审计改为共用该写入函数。

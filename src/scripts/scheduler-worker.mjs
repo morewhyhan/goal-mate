@@ -1,5 +1,8 @@
 import { PrismaClient } from '@prisma/client'
 import { existsSync, readFileSync } from 'node:fs'
+import {
+  recordAgentToolActionWithPrisma,
+} from '../lib/agent-tool-executor.mjs'
 
 const prisma = new PrismaClient()
 
@@ -357,23 +360,18 @@ async function processRule(rule) {
         externalMessageId: String(sent?.id || sent?.message_id || sent?.data?.id || ''),
       },
     })
-    await prisma.agentToolAction.create({
-      data: {
-        userId: rule.userId,
-        source: 'scheduler',
-        toolName: 'reminder.send',
-        permission: 'execute',
-        inputSummary: `${rule.reminderType} -> qq`,
-        input: { reminderRuleId: rule.id, schedulerEventId: event.id },
-        result: sent || {},
-        targetType: 'reminder',
-        targetId: rule.id,
-        riskLevel: 'low',
-        requiresConfirmation: false,
-        status: 'executed',
-        agentThreadId: thread.id,
-        agentMessageId: assistantMessage.id,
-      },
+    await recordAgentToolActionWithPrisma(prisma, {
+      context: { userId: rule.userId, source: 'scheduler', agentThreadId: thread.id, agentMessageId: assistantMessage.id },
+      toolName: 'reminder.send',
+      permission: 'execute',
+      inputSummary: `${rule.reminderType} -> qq`,
+      input: { reminderRuleId: rule.id, schedulerEventId: event.id },
+      result: sent || {},
+      targetType: 'reminder',
+      targetId: rule.id,
+      riskLevel: 'low',
+      requiresConfirmation: false,
+      status: 'executed',
     })
     console.log(`[scheduler] sent ${rule.reminderType} to qq:${binding.contextType}:${binding.contextId}`)
   } catch (error) {
@@ -387,23 +385,18 @@ async function processRule(rule) {
         errorMessage: error instanceof Error ? error.message : String(error),
       },
     })
-    await prisma.agentToolAction.create({
-      data: {
-        userId: rule.userId,
-        source: 'scheduler',
-        toolName: 'reminder.send',
-        permission: 'execute',
-        inputSummary: `${rule.reminderType} -> qq`,
-        input: { reminderRuleId: rule.id, schedulerEventId: event.id },
-        targetType: 'reminder',
-        targetId: rule.id,
-        riskLevel: 'low',
-        requiresConfirmation: false,
-        status: 'failed',
-        errorMessage: error instanceof Error ? error.message : String(error),
-        agentThreadId: thread.id,
-        agentMessageId: assistantMessage.id,
-      },
+    await recordAgentToolActionWithPrisma(prisma, {
+      context: { userId: rule.userId, source: 'scheduler', agentThreadId: thread.id, agentMessageId: assistantMessage.id },
+      toolName: 'reminder.send',
+      permission: 'execute',
+      inputSummary: `${rule.reminderType} -> qq`,
+      input: { reminderRuleId: rule.id, schedulerEventId: event.id },
+      targetType: 'reminder',
+      targetId: rule.id,
+      riskLevel: 'low',
+      requiresConfirmation: false,
+      status: 'failed',
+      errorMessage: error instanceof Error ? error.message : String(error),
     })
     console.error(`[scheduler] failed ${rule.reminderType}`, error)
   }

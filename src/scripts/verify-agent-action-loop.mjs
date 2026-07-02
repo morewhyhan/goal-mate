@@ -78,6 +78,7 @@ function verifySharedRuntimeContracts() {
   const executor = readProjectFile('src/lib/agent-tool-executor.mjs')
   const webRuntime = readProjectFile('src/lib/agent-tools.ts')
   const qqWorker = readProjectFile('src/scripts/qq-bot-worker.mjs')
+  const schedulerWorker = readProjectFile('src/scripts/scheduler-worker.mjs')
   const combinedHandlers = `${readHandlers}\n${writeHandlers}`
 
   record(
@@ -95,7 +96,7 @@ function verifySharedRuntimeContracts() {
   record(
     'AAL-SHARED-EXECUTOR',
     'shared executor centralizes confirmation, execution and audit writing',
-    executor.includes('executeAgentToolWithPrisma') && executor.includes('pending_confirmation') && executor.includes('agentToolAction.create'),
+    executor.includes('executeAgentToolWithPrisma') && executor.includes('recordAgentToolActionWithPrisma') && executor.includes('pending_confirmation') && executor.includes('agentToolAction.create'),
     'src/lib/agent-tool-executor.mjs scanned',
   )
   record(
@@ -109,6 +110,12 @@ function verifySharedRuntimeContracts() {
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),
     'src/scripts/qq-bot-worker.mjs is channel adapter and scheduler reply adapter',
+  )
+  record(
+    'AAL-SCHEDULER-SHARED-AUDIT',
+    'Scheduler reminder.send audit uses shared audit writer without exposing a user-callable tool',
+    schedulerWorker.includes('recordAgentToolActionWithPrisma') && schedulerWorker.includes("toolName: 'reminder.send'") && !sharedCatalog.includes("name: 'reminder.send'"),
+    'src/scripts/scheduler-worker.mjs and shared catalog scanned',
   )
 }
 

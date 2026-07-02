@@ -19,6 +19,24 @@ export type SharedAgentToolDefinition = {
 
 export function listSharedAgentToolDefinitions(): SharedAgentToolDefinition[]
 
+export function recordAgentToolActionWithPrisma(
+  prisma: any,
+  options: {
+    context: SharedAgentToolContext
+    toolName: string
+    permission: SharedAgentToolPermission
+    input?: Record<string, unknown>
+    inputSummary?: string
+    result?: unknown
+    targetType: string
+    targetId?: string
+    riskLevel: 'low' | 'medium' | 'high'
+    requiresConfirmation?: boolean
+    status: 'pending_confirmation' | 'drafted' | 'approved' | 'executed' | 'failed' | 'rejected'
+    errorMessage?: string
+  },
+): Promise<any>
+
 export function executeAgentToolWithPrisma(
   prisma: any,
   context: SharedAgentToolContext,

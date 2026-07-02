@@ -123,6 +123,8 @@ Scheduler 不直接生成业务结论。
 
 Scheduler 只负责触发，具体内容由 Agent Runtime 基于当前目标、今日行动、日志和记忆生成。
 
+Scheduler 主动发送提醒时会写入内部审计动作 `reminder.send`。该动作不暴露给用户调用，但必须通过 shared audit writer 写入 `AgentToolAction`，便于在 Settings 中看到主动提醒是否实际发送成功。
+
 ```text
 Scheduler = 什么时候问
 Agent Runtime = 问什么、怎么问、如何根据回答推进
