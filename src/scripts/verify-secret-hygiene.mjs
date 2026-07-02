@@ -84,8 +84,9 @@ function redacted(value) {
 }
 
 const findings = []
+const scannedFiles = collectFiles(projectRoot)
 
-for (const file of collectFiles(projectRoot)) {
+for (const file of scannedFiles) {
   const rel = relative(projectRoot, file).replaceAll('\\', '/')
   let text = ''
   try {
@@ -110,16 +111,16 @@ const lines = [
   '# Goal Mate Secret Hygiene Verification',
   '',
   `- Project root: ${projectRoot}`,
-  `- Scanned files: ${collectFiles(projectRoot).length}`,
+  `- Scanned files: ${scannedFiles.length}`,
   `- Findings: ${findings.length}`,
   '',
 ]
 
 if (findings.length) {
-  lines.push('| File | Type | Evidence |')
-  lines.push('| --- | --- | --- |')
+  lines.push('| File | Type | Description | Evidence |')
+  lines.push('| --- | --- | --- | --- |')
   for (const finding of findings) {
-    lines.push(`| ${finding.file} | ${finding.type} | ${finding.value} |`)
+    lines.push(`| ${finding.file} | ${finding.type} | ${finding.description} | ${finding.value} |`)
   }
   lines.push('')
   lines.push('Result: FAIL')
