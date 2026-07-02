@@ -1,8 +1,25 @@
-# Goal Mate Telegram Bot Integration
+# Archived: Goal Mate Telegram Bot Integration
+
+Status: archived reference.
+
+Decision date: 2026-07-02.
+
+Current product decision:
+
+```text
+Goal Mate v0.1 uses Web Console first and QQ Bot as the first auxiliary runtime channel.
+Telegram is not an active v0.1 channel and should not be mounted in the current API surface.
+```
+
+This document is kept only as historical design reference. Do not use it as implementation guidance unless the product explicitly reopens Telegram later.
+
+If Telegram is reintroduced, it must be handled as a new increment with fresh requirements, security review, environment variables, API route registration, deployment plan, and acceptance tests.
+
+---
 
 ## 1. 目的
 
-Telegram Bot 是 Goal Mate 的外部对话入口。
+Telegram Bot 曾被设计为 Goal Mate 的外部对话入口。
 
 它不是一个独立功能，而是 Agent 的外部通道：
 
@@ -21,7 +38,7 @@ Telegram Bot API 支持两种接收消息方式：
 | `getUpdates` 轮询 | 适合本地调试，不适合产品化 |
 | `setWebhook` | 适合产品化，Telegram 主动推送 update 到 Goal Mate |
 
-v0.1 使用 webhook。
+该方案已经被 QQ Gateway Worker 方案替代；v0.1 不再使用 Telegram webhook。
 
 ## 3. 环境变量
 
@@ -33,16 +50,16 @@ v0.1 使用 webhook。
 | `TELEGRAM_DEFAULT_USER_EMAIL` | 默认绑定到哪个 Goal Mate 用户 |
 | `TELEGRAM_ALLOWED_CHAT_IDS` | 可选白名单，逗号分隔；为空表示不限制 |
 
-真实 token 只能放在 `.env`，不能写入代码、文档或 seed。
+真实 token 只能放在 `.env`，不能写入代码、文档或 seed。当前 `.env.example` 不再暴露 Telegram 配置项。
 
 ## 4. API 路由
 
 | 路由 | 作用 |
 | --- | --- |
-| `GET /api/integrations/telegram/status` | 登录用户查看 Telegram 配置和绑定状态 |
-| `POST /api/integrations/telegram/webhook` | Telegram 推送 update 的 webhook |
-| `POST /api/integrations/telegram/webhook/setup` | 登录用户设置 webhook |
-| `POST /api/integrations/telegram/webhook/delete` | 登录用户删除 webhook |
+| `GET /api/integrations/telegram/status` | 已归档，不挂载 |
+| `POST /api/integrations/telegram/webhook` | 已归档，不挂载 |
+| `POST /api/integrations/telegram/webhook/setup` | 已归档，不挂载 |
+| `POST /api/integrations/telegram/webhook/delete` | 已归档，不挂载 |
 
 ## 5. 数据模型
 
@@ -109,26 +126,12 @@ Telegram Bot 不可以：
 
 ## 8. 当前 v0.1 边界
 
-已实现：
+当前 v0.1 状态：
 
-- Telegram webhook 路由。
-- webhook secret token 校验。
-- chat 白名单。
-- chat 与 Goal Mate 用户绑定。
-- Telegram update 记录。
-- Telegram 消息进入 Agent thread。
-- Agent 读取目标和 MD 文档。
-- DeepSeek 回复后回发 Telegram。
-
-暂未实现：
-
-- BotFather 自动创建 bot。
-- 多用户自助绑定流程。
-- `/link` 短码绑定。
-- Telegram 菜单命令。
-- 图片、语音、文件消息。
-- Telegram 主动定时提醒。
-- 外部动作确认卡片。
+- Telegram API 路由不挂载。
+- Telegram 环境变量不出现在 active `.env.example`。
+- Telegram smoke script 不作为 active package script。
+- 旧数据模型可作为历史迁移保留，是否移除需要单独数据库迁移计划。
 
 ## 9. 上线步骤
 

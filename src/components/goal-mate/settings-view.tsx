@@ -64,7 +64,7 @@ export function SettingsView() {
   const schedulerEvents = data?.schedulerEvents || []
 
   const [modelDraft, setModelDraft] = useState({
-    provider: 'deepseek',
+    provider: 'DeepSeek',
     model: 'deepseek-v4-flash',
     reasoningModel: '',
     apiBase: 'https://api.deepseek.com',
@@ -75,7 +75,7 @@ export function SettingsView() {
   useEffect(() => {
     if (!model) return
     setModelDraft({
-      provider: model.provider || 'deepseek',
+      provider: model.provider || 'DeepSeek',
       model: model.model || 'deepseek-v4-flash',
       reasoningModel: model.reasoningModel || '',
       apiBase: model.apiBase || 'https://api.deepseek.com',
@@ -134,7 +134,7 @@ export function SettingsView() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[#f4f1ea] p-5 text-stone-950 md:p-8">
+    <div className="min-h-[calc(100vh-4rem)] overflow-x-hidden bg-[#f4f1ea] p-5 text-stone-950 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="rounded-[36px] border border-stone-200 bg-white p-6 shadow-sm md:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Settings</p>
@@ -142,19 +142,19 @@ export function SettingsView() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-stone-950 md:text-4xl">让 Agent 稳定工作</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">
-                这里不管理复杂项目，只配置 Agent 真正依赖的东西：模型、提醒、QQ 通道、工具权限和数据导出。
+                这里配置 Agent 能不能工作：模型、提醒、QQ 通道、工具权限和数据导出。
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 rounded-3xl bg-stone-950 p-3 text-white">
-              <div>
+            <div className="grid min-w-0 grid-cols-3 gap-2 rounded-3xl bg-stone-950 p-3 text-white">
+              <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">Model</p>
                 <p className="mt-1 truncate text-sm font-semibold">{model?.model || '未配置'}</p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">QQ</p>
                 <p className="mt-1 text-sm font-semibold">{qqBindings.length ? '已绑定' : '未绑定'}</p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">Tools</p>
                 <p className="mt-1 text-sm font-semibold">{toolActions.length} 条记录</p>
               </div>
@@ -164,13 +164,13 @@ export function SettingsView() {
 
         <section className="grid gap-3 md:grid-cols-5">
           {Object.entries(runtimeStatus).map(([key, item]: [string, any]) => (
-            <div key={key} className="rounded-[28px] border border-stone-200 bg-white p-4 shadow-sm">
+            <div key={key} className="min-w-0 rounded-[28px] border border-stone-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">{key}</p>
                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(item?.status)}`}>{item?.status || 'unknown'}</span>
               </div>
               <p className="mt-3 text-sm font-semibold text-stone-900">{item?.label || '暂无状态'}</p>
-              <p className="mt-1 truncate text-xs text-stone-500">{item?.evidence || 'no evidence'}</p>
+              <p className="mt-1 break-words text-xs text-stone-500">{item?.evidence || 'no evidence'}</p>
             </div>
           ))}
         </section>
@@ -191,23 +191,23 @@ export function SettingsView() {
             <div className="grid gap-3 md:grid-cols-2">
               <label className="rounded-3xl bg-stone-50 p-4">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Provider</span>
-                <input value={modelDraft.provider} onChange={(event) => setModelDraft((draft) => ({ ...draft, provider: event.target.value }))} className="mt-2 w-full bg-transparent text-base font-semibold outline-none" />
+                <input value={modelDraft.provider} onChange={(event) => setModelDraft((draft) => ({ ...draft, provider: event.target.value }))} className="mt-2 w-full min-w-0 bg-transparent text-base font-semibold outline-none" />
               </label>
               <label className="rounded-3xl bg-stone-50 p-4">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Chat Model</span>
-                <input value={modelDraft.model} onChange={(event) => setModelDraft((draft) => ({ ...draft, model: event.target.value }))} className="mt-2 w-full bg-transparent text-base font-semibold outline-none" />
+                <input value={modelDraft.model} onChange={(event) => setModelDraft((draft) => ({ ...draft, model: event.target.value }))} className="mt-2 w-full min-w-0 bg-transparent text-base font-semibold outline-none" />
               </label>
               <label className="rounded-3xl bg-stone-50 p-4">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Reasoning Model</span>
-                <input value={modelDraft.reasoningModel} onChange={(event) => setModelDraft((draft) => ({ ...draft, reasoningModel: event.target.value }))} placeholder="可为空" className="mt-2 w-full bg-transparent text-base font-semibold outline-none" />
+                <input value={modelDraft.reasoningModel} onChange={(event) => setModelDraft((draft) => ({ ...draft, reasoningModel: event.target.value }))} placeholder="可为空" className="mt-2 w-full min-w-0 bg-transparent text-base font-semibold outline-none" />
               </label>
               <label className="rounded-3xl bg-stone-50 p-4">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Temperature</span>
-                <input value={modelDraft.temperature} onChange={(event) => setModelDraft((draft) => ({ ...draft, temperature: event.target.value }))} className="mt-2 w-full bg-transparent text-base font-semibold outline-none" />
+                <input value={modelDraft.temperature} onChange={(event) => setModelDraft((draft) => ({ ...draft, temperature: event.target.value }))} className="mt-2 w-full min-w-0 bg-transparent text-base font-semibold outline-none" />
               </label>
               <label className="rounded-3xl bg-stone-50 p-4 md:col-span-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">API Base</span>
-                <input value={modelDraft.apiBase} onChange={(event) => setModelDraft((draft) => ({ ...draft, apiBase: event.target.value }))} className="mt-2 w-full bg-transparent text-base font-semibold outline-none" />
+                <input value={modelDraft.apiBase} onChange={(event) => setModelDraft((draft) => ({ ...draft, apiBase: event.target.value }))} className="mt-2 w-full min-w-0 bg-transparent text-base font-semibold outline-none" />
                 <span className="mt-2 block text-xs text-stone-500">API Key 只从服务器 `.env` 读取，页面不显示、不保存明文密钥。</span>
               </label>
             </div>
@@ -228,7 +228,7 @@ export function SettingsView() {
               {qqBindings.length ? qqBindings.map((binding: any) => (
                 <div key={binding.id} className="rounded-3xl bg-stone-50 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="font-semibold">{binding.contextType}:{binding.contextIdMasked || binding.contextId}</p>
+                    <p className="min-w-0 break-all font-semibold">{binding.contextType}:{binding.contextIdMasked || binding.contextId}</p>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(binding.status)}`}>{binding.status}</span>
                   </div>
                   <p className="mt-2 text-xs text-stone-500">最近更新：{formatDate(binding.updatedAt)}</p>
@@ -308,13 +308,13 @@ export function SettingsView() {
             </div>
             <div className="space-y-2">
               {toolActions.length ? toolActions.map((action: any) => (
-                <div key={action.id} className="grid gap-3 rounded-3xl bg-stone-50 p-4 md:grid-cols-[180px_minmax(0,1fr)_140px] md:items-center">
-                  <div>
+                <div key={action.id} className="grid min-w-0 gap-3 rounded-3xl bg-stone-50 p-4 md:grid-cols-[180px_minmax(0,1fr)_140px] md:items-center">
+                  <div className="min-w-0">
                     <p className="font-semibold">{action.toolName}</p>
                     <p className="text-xs text-stone-500">{action.source} · {action.permission}</p>
                   </div>
-                  <p className="truncate text-sm text-stone-600">{action.inputSummary}</p>
-                  <div className="flex items-center justify-between gap-2 md:justify-end">
+                  <p className="min-w-0 truncate text-sm text-stone-600">{action.inputSummary}</p>
+                  <div className="flex min-w-0 items-center justify-between gap-2 md:justify-end">
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(action.status)}`}>{action.status}</span>
                     <span className="text-xs text-stone-400">{formatDate(action.createdAt)}</span>
                   </div>

@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { agentMessages, agentThreads } from '@/lib/goal-mate-demo-data'
-import { useAgentMessages, useAgentThreads, useAgentToolActions, useConfirmAgentToolAction, useRejectAgentToolAction, useSendAgentMessage } from '@/hooks/use-agent'
+import { useAgentMessages, useAgentThreads, useAgentToolActions, useConfirmAgentToolAction, useCreateAgentThread, useRejectAgentToolAction, useSendAgentMessage } from '@/hooks/use-agent'
 
 function statusClass(status?: string) {
   const normalized = String(status || '').toLowerCase()
@@ -74,6 +73,7 @@ export function AgentView() {
   const apiMessages = messagesQuery.data?.data || []
   const toolActionsQuery = useAgentToolActions()
   const toolActions = toolActionsQuery.data?.data || []
+  const createThread = useCreateAgentThread()
   const sendMessage = useSendAgentMessage()
   const confirmToolAction = useConfirmAgentToolAction(activeThreadId)
   const rejectToolAction = useRejectAgentToolAction(activeThreadId)
@@ -83,11 +83,16 @@ export function AgentView() {
     if (!selectedThreadId && threads[0]?.id) setSelectedThreadId(threads[0].id)
   }, [selectedThreadId, threads])
 
-  const visibleThreads = threads.length
-    ? threads.map((thread: any) => ({ title: thread.title, time: '最近', active: thread.id === activeThreadId, id: thread.id }))
-    : agentThreads
-  const visibleMessages = apiMessages.length ? apiMessages : agentMessages
+  const visibleThreads = threads.map((thread: any) => ({ title: thread.title, time: '最近', active: thread.id === activeThreadId, id: thread.id }))
+  const visibleMessages = apiMessages
   const actionById = new Map(toolActions.map((action: any) => [action.id, action]))
+
+  const handleCreateThread = () => {
+    createThread.mutate(
+      { title: '新的 Agent 对话' },
+      { onSuccess: (response: any) => setSelectedThreadId(response?.data?.id) },
+    )
+  }
 
   const handleSend = () => {
     if (!draft.trim() || !activeThreadId) return
@@ -96,29 +101,44 @@ export function AgentView() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-4rem)] grid-cols-1 overflow-hidden p-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-      <aside className="overflow-y-auto rounded-l-[32px] border border-stone-200 bg-white p-5 shadow-sm lg:rounded-r-none">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Agent</p>
-        <h1 className="mt-2 text-2xl font-semibold text-stone-950">对话历史</h1>
-        <div className="mt-6 space-y-2">
-          {visibleThreads.map((thread: any) => (
+    <div className="grid h-[calc(100dvh-4rem)] grid-cols-1 overflow-hidden p-4 md:p-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="flex min-h-0 flex-col rounded-l-[32px] border border-stone-200 bg-white p-5 shadow-sm lg:rounded-r-none">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Agent</p>
+            <h1 className="mt-2 text-2xl font-semibold text-stone-950">对话历史</h1>
+          </div>
+          <button
+            disabled={createThread.isPending}
+            onClick={handleCreateThread}
+            className="rounded-full bg-stone-950 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            新对话
+          </button>
+        </div>
+        <div className="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto">
+          {visibleThreads.length ? visibleThreads.map((thread: any) => (
             <button key={thread.id || thread.title} onClick={() => thread.id && setSelectedThreadId(thread.id)} className={`block w-full rounded-2xl p-4 text-left ${thread.active ? 'bg-stone-950 text-white' : 'bg-stone-50 text-stone-700 hover:bg-stone-100'}`}>
               <span className="block font-medium">{thread.title}</span>
               <span className={`mt-1 block text-xs ${thread.active ? 'text-stone-300' : 'text-stone-400'}`}>{thread.time}</span>
             </button>
-          ))}
+          )) : (
+            <div className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm leading-6 text-stone-500">
+              还没有对话。新建一段对话后，Agent 会读取目标、日志和 Today。
+            </div>
+          )}
         </div>
       </aside>
 
       <main className="flex min-h-0 flex-col rounded-r-[32px] border-y border-r border-stone-200 bg-stone-50 shadow-sm">
-        <header className="border-b border-stone-200 bg-white px-6 py-4">
-          <h2 className="text-xl font-semibold text-stone-950">{visibleThreads.find((thread: any) => thread.active)?.title || '暑假主目标拆解'}</h2>
-          <p className="text-sm text-stone-500">Agent 可读取当前目标、日志、Today 行动和设置；关键修改需要确认。</p>
+        <header className="shrink-0 border-b border-stone-200 bg-white px-6 py-4">
+          <h2 className="text-xl font-semibold text-stone-950">{visibleThreads.find((thread: any) => thread.active)?.title || '开始一段 Agent 对话'}</h2>
+          <p className="text-sm text-stone-500">它可以读取目标、日志和 Today；写入类动作会先让你确认。</p>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
           <div className="mx-auto max-w-3xl space-y-5">
-            {visibleMessages.map((message: any, index: number) => {
+            {visibleMessages.length ? visibleMessages.map((message: any, index: number) => {
               const role = String(message.role || '').toLowerCase()
               const output = parseStructuredOutput(message)
               const actionId = output?.toolActionId || output?.confirmedActionId || output?.rejectedActionId
@@ -139,17 +159,31 @@ export function AgentView() {
                   </div>
                 </div>
               )
-            })}
+            }) : (
+              <div className="flex h-full min-h-[360px] items-center justify-center">
+                <div className="max-w-xl rounded-[28px] border border-dashed border-stone-200 bg-white p-8 text-center">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">Ask anything</p>
+                  <h3 className="mt-3 text-2xl font-semibold text-stone-950">把问题直接告诉 Agent</h3>
+                  <p className="mt-3 text-sm leading-6 text-stone-500">例如：今天做不动了怎么办？把本周日志整理成周志。帮我把目标拆成下一步。</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        <footer className="border-t border-stone-200 bg-white p-4">
-          <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[26px] border border-stone-200 bg-stone-50 p-3">
+        <footer className="shrink-0 border-t border-stone-200 bg-white p-4">
+          <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-[28px] border border-stone-200 bg-stone-50 p-3 shadow-sm">
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  handleSend()
+                }
+              }}
               placeholder="问 Agent：今天没做怎么办？这个目标为什么这么拆？帮我生成周志。"
-              className="max-h-32 min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 outline-none"
+              className="max-h-40 min-h-[72px] flex-1 resize-none bg-transparent px-3 py-2 text-sm leading-6 outline-none"
             />
             <button disabled={!activeThreadId || sendMessage.isPending} onClick={handleSend} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">发送</button>
           </div>

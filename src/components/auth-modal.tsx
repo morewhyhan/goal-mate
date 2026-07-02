@@ -79,7 +79,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Sparkles className="w-4.5 h-4.5 text-white" />
             </div>
-            <span className="text-lg font-semibold">HonoNext</span>
+            <span className="text-lg font-semibold">Goal Mate</span>
           </div>
 
           {/* 选项卡 */}
@@ -110,7 +110,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             {mode === 'login' ? '欢迎回来' : '创建账户'}
           </h2>
           <p className="text-sm text-muted-foreground mb-6 text-center">
-            {mode === 'login' ? '登录到你的账户继续使用' : '开始你的 HonoNext 之旅'}
+            {mode === 'login' ? '登录后继续推进目标' : '创建 Goal Mate 账户'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">

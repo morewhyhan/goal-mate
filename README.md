@@ -1,6 +1,6 @@
 # Goal Mate
 
-Goal Mate 是一个以 Web Console 为主、消息机器人为辅助入口的 AI 目标推进系统。
+Goal Mate 是一个以 Web Console 为主、QQ 机器人为辅助入口的 AI 目标推进系统。
 
 核心理念：
 
@@ -8,7 +8,7 @@ Goal Mate 是一个以 Web Console 为主、消息机器人为辅助入口的 AI
 复杂方法交给 AI，用户只专注下一步行动。
 ```
 
-系统把 OKR、目标拆解、日志、提醒、复盘和 Agent 工具调用放到后台运行。用户主要通过 Today、Goals、Logs、Agent、Settings 查看状态，并通过 QQ 等消息渠道接收主动提醒和反馈推进情况。
+系统把 OKR、目标拆解、日志、提醒、复盘和 Agent 工具调用放到后台运行。用户主要通过 Today、Goals、Logs、Agent、Settings 查看状态，并通过 QQ 接收主动提醒和反馈推进情况。
 
 ## 当前状态
 
@@ -17,6 +17,7 @@ Goal Mate 是一个以 Web Console 为主、消息机器人为辅助入口的 AI
 - v0.1 Web Console 开发资产已具备。
 - Agent Tool Runtime 已具备 shared catalog、shared executor、shared read/write handlers 和 shared audit writer。
 - QQ Worker 与 Scheduler Worker 已具备代码和 systemd 部署模板。
+- Telegram 已从当前 active API surface 中移除，只保留历史设计参考。
 - 静态验证、密钥扫描、部署配置检查、Agent Loop 验收脚本和服务器长期运行验收计划已具备。
 - 本仓库当前不能声明整体已验收通过，因为运行时验收和服务器长期运行验收尚未执行。
 

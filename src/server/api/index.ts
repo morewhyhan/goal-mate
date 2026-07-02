@@ -7,7 +7,6 @@ import goalsRoute from './routes/goals'
 import todayRoute from './routes/today'
 import agentRoute from './routes/agent'
 import reviewsRoute from './routes/reviews'
-import telegramRoute from './routes/integrations/telegram'
 import { auth } from '@/lib/auth'
 
 const app = new Hono().basePath('/api')
@@ -56,7 +55,6 @@ const routes = app
   .route('/', todayRoute)
   .route('/', agentRoute)
   .route('/', reviewsRoute)
-  .route('/', telegramRoute)
 
 export default app
 

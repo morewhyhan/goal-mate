@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { currentMarkdown, logTree } from '@/lib/goal-mate-demo-data'
 import { useLog, useLogTree, useUpdateLog } from '@/hooks/use-logs'
 
 type TreeNode = {
@@ -60,14 +59,14 @@ export function LogsView() {
   const logQuery = useLog(selectedLogId)
   const updateLog = useUpdateLog()
   const apiLog = logQuery.data?.data
-  const [content, setContent] = useState(currentMarkdown)
+  const [content, setContent] = useState('')
 
   useEffect(() => {
-    if (apiLog?.content) setContent(apiLog.content)
-  }, [apiLog?.content])
+    setContent(apiLog?.content || '')
+  }, [apiLog?.id, apiLog?.content])
 
-  const tree = useMemo(() => logs.length ? pathsToTree(logs, selectedLogId) : logTree, [logs, selectedLogId])
-  const title = apiLog?.title || '2026-07-01.md'
+  const tree = useMemo(() => logs.length ? pathsToTree(logs, selectedLogId) : [], [logs, selectedLogId])
+  const title = apiLog?.title || '未选择日志'
   const canSave = !!apiLog?.id
 
   const handleSave = () => {
@@ -81,7 +80,11 @@ export function LogsView() {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Logs</p>
         <h1 className="mt-2 text-2xl font-semibold text-stone-950">Markdown 推进记录</h1>
         <div className="mt-6 space-y-1">
-          {tree.map((node) => <LogTreeNode key={node.label} node={node} onSelect={setSelectedId} />)}
+          {tree.length ? tree.map((node) => <LogTreeNode key={node.label} node={node} onSelect={setSelectedId} />) : (
+            <div className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm leading-6 text-stone-500">
+              还没有日志文件。Agent 生成年志、周志、日记后会出现在这里。
+            </div>
+          )}
         </div>
       </aside>
 
@@ -89,13 +92,15 @@ export function LogsView() {
         <div className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4">
           <div>
             <h2 className="text-xl font-semibold text-stone-950">{title}</h2>
-            <p className="text-sm text-stone-500">{canSave ? '已连接日志 API · 可保存' : '当前显示 demo Markdown · seed 后可保存'}</p>
+            <p className="text-sm text-stone-500">{canSave ? '已连接日志 API · 可直接编辑保存' : '选择一篇真实日志后才可以编辑保存'}</p>
           </div>
           <button disabled={!canSave || updateLog.isPending} onClick={handleSave} className="rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存</button>
         </div>
         <textarea
           value={content}
           onChange={(event) => setContent(event.target.value)}
+          placeholder="这里显示真实 Markdown 日志。没有日志时，不展示示例文本。"
+          disabled={!canSave}
           className="min-h-0 flex-1 resize-none bg-transparent p-6 font-mono text-sm leading-7 text-stone-800 outline-none"
         />
       </main>

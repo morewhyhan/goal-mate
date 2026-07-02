@@ -8,7 +8,7 @@ export const auth = betterAuth({
   }),
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   advanced: {
-    cookiePrefix: "hononext",
+    cookiePrefix: "goal-mate",
     crossSubDomainCookies: {
       enabled: false,
     },

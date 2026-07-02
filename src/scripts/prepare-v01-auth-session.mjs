@@ -8,6 +8,7 @@ const sourceEmail = process.env.GOAL_MATE_SEED_SOURCE_EMAIL || 'demo@goalmate.lo
 const email = process.env.GOAL_MATE_ACCEPTANCE_EMAIL || 'acceptance@goalmate.local'
 const password = process.env.GOAL_MATE_ACCEPTANCE_PASSWORD || 'acceptance-pass-123'
 const name = process.env.GOAL_MATE_ACCEPTANCE_NAME || 'Acceptance User'
+const shouldPrintCookie = process.argv.includes('--print-cookie')
 
 async function authRequest(path, body) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -30,9 +31,13 @@ async function authRequest(path, body) {
 
 function extractCookie(response) {
   const setCookie = response.headers.get('set-cookie') || ''
-  const match = setCookie.match(/hononext\.session_token=[^;]+/)
-  if (!match) throw new Error(`Missing hononext.session_token in Set-Cookie: ${setCookie}`)
+  const match = setCookie.match(/goal-mate\.session_token=[^;]+/) || setCookie.match(/hononext\.session_token=[^;]+/)
+  if (!match) throw new Error(`Missing goal-mate.session_token in Set-Cookie.`)
   return match[0]
+}
+
+function maskCookie(cookie) {
+  return cookie.replace(/=([^;]{6})[^;]*/, '=$1...')
 }
 
 async function signUpOrSignIn() {
@@ -121,7 +126,12 @@ try {
   const moved = await moveGoalMateData(auth.userId)
   console.log(`Prepared v0.1 authenticated acceptance user by ${auth.mode}: ${email}`)
   console.log(`Moved seed data: goals=${moved.goalCount}, logs=${moved.logCount}, threads=${moved.threadCount}`)
-  console.log(`GOAL_MATE_COOKIE='${auth.cookie}'`)
+  if (shouldPrintCookie) {
+    console.log(`GOAL_MATE_COOKIE='${auth.cookie}'`)
+  } else {
+    console.log(`GOAL_MATE_COOKIE prepared: ${maskCookie(auth.cookie)}`)
+    console.log('Full cookie is hidden by default. Re-run with --print-cookie only in a local terminal if a manual run needs it.')
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
   process.exitCode = 1

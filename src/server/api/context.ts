@@ -45,7 +45,7 @@ export const defaultUserSettings = {
 export const defaultDeepSeekModel = {
   provider: 'DeepSeek',
   model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
-  reasoningModel: 'deepseek-reasoner',
+  reasoningModel: process.env.DEEPSEEK_REASONING_MODEL || '',
   apiBase: process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com',
   apiKeyRef: 'env:DEEPSEEK_API_KEY',
   usage: 'CHAT' as const,

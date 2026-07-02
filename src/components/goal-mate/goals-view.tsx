@@ -1,6 +1,5 @@
 'use client'
 
-import { demoGoal } from '@/lib/goal-mate-demo-data'
 import { useGoals } from '@/hooks/use-goals'
 
 export function GoalsView() {
@@ -8,17 +7,17 @@ export function GoalsView() {
   const apiGoals = goalsQuery.data?.data || []
   const apiGoal = apiGoals.find((goal: any) => goal.isCurrentFocus) || apiGoals[0]
 
-  const keyResults = apiGoal?.keyResults?.length ? apiGoal.keyResults : demoGoal.keyResults
-  const conditions = apiGoal?.conditions?.length ? apiGoal.conditions : demoGoal.conditions
-  const stages = apiGoal?.stagePlans?.length ? apiGoal.stagePlans : demoGoal.stages
+  const keyResults = apiGoal?.keyResults || []
+  const conditions = apiGoal?.conditions || []
+  const stages = apiGoal?.stagePlans || []
   const reasoningCard = apiGoal?.reasoningCards?.[0]
 
-  const title = apiGoal?.title || demoGoal.title
-  const objective = apiGoal?.interpretedGoal || reasoningCard?.purposeSummary || demoGoal.objective
+  const title = apiGoal?.title || '还没有目标'
+  const objective = apiGoal?.interpretedGoal || reasoningCard?.purposeSummary || '先和 Agent 说明你想推进的事情，系统会把它拆成目标、关键结果、条件和阶段。'
   const horizon = apiGoal?.horizonStart && apiGoal?.horizonEnd
     ? `${new Date(apiGoal.horizonStart).toLocaleDateString('zh-CN')} 至 ${new Date(apiGoal.horizonEnd).toLocaleDateString('zh-CN')}`
-    : demoGoal.horizon
-  const currentGap = reasoningCard?.recommendedFocus || demoGoal.currentGap
+    : '等待目标周期'
+  const currentGap = reasoningCard?.recommendedFocus || '还没有推导出当前关键缺口。'
 
   return (
     <div className="min-h-[calc(100vh-4rem)] space-y-6 p-6">
@@ -43,7 +42,7 @@ export function GoalsView() {
             <span className="rounded-full bg-stone-100 px-3 py-1 text-xs text-stone-500">只读</span>
           </div>
           <div className="space-y-4">
-            {keyResults.map((kr: any, index: number) => {
+            {keyResults.length ? keyResults.map((kr: any, index: number) => {
               const progress = typeof kr.progress === 'number' ? kr.progress : 0
               return (
                 <div key={kr.id || kr.title} className="rounded-3xl border border-stone-100 p-5">
@@ -56,11 +55,15 @@ export function GoalsView() {
                     <span className="text-lg font-semibold text-stone-950">{Math.round(progress * 100)}%</span>
                   </div>
                   <div className="mt-4 h-2 rounded-full bg-stone-100">
-                    <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${progress * 100}%` }} />
+                    <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }} />
                   </div>
                 </div>
               )
-            })}
+            }) : (
+              <div className="rounded-3xl border border-dashed border-stone-200 p-6 text-sm leading-6 text-stone-500">
+                还没有 KR。KR 只保留能证明目标达成的结果，不为了凑数量。
+              </div>
+            )}
           </div>
         </div>
 
@@ -68,7 +71,7 @@ export function GoalsView() {
           <h2 className="text-2xl font-semibold text-stone-950">Conditions</h2>
           <p className="mt-2 text-sm leading-6 text-stone-500">当前缺口：{currentGap}</p>
           <div className="mt-5 space-y-3">
-            {conditions.map((condition: any) => (
+            {conditions.length ? conditions.map((condition: any) => (
               <div key={condition.id || condition.title} className="rounded-2xl bg-stone-50 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium text-stone-900">{condition.title}</span>
@@ -76,7 +79,11 @@ export function GoalsView() {
                 </div>
                 <p className="mt-2 text-xs text-stone-400">{condition.type}</p>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-2xl bg-stone-50 p-4 text-sm leading-6 text-stone-500">
+                还没有必要条件。目标被拆清楚后，这里只显示真正影响推进的条件。
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -87,7 +94,7 @@ export function GoalsView() {
           <span className="text-sm text-stone-400">OKR + Gantt</span>
         </div>
         <div className="space-y-4">
-          {stages.map((stage: any) => {
+          {stages.length ? stages.map((stage: any) => {
             const progress = typeof stage.progress === 'number' ? stage.progress : 0
             return (
               <div key={stage.id || stage.name || stage.title} className="grid gap-3 md:grid-cols-[140px_1fr_90px] md:items-center">
@@ -101,13 +108,17 @@ export function GoalsView() {
                     <span>{Math.round(progress * 100)}%</span>
                   </div>
                   <div className="h-5 rounded-full bg-stone-100 p-1">
-                    <div className="h-3 rounded-full bg-stone-950" style={{ width: `${Math.max(progress * 100, 4)}%` }} />
+                    <div className="h-3 rounded-full bg-stone-950" style={{ width: `${Math.min(100, Math.max(progress * 100, progress > 0 ? 4 : 0))}%` }} />
                   </div>
                 </div>
                 <span className="rounded-full bg-stone-100 px-3 py-1 text-center text-xs text-stone-500">read only</span>
               </div>
             )
-          })}
+          }) : (
+            <div className="rounded-3xl border border-dashed border-stone-200 p-6 text-sm leading-6 text-stone-500">
+              还没有周期计划。生成目标后，这里会用阶段条展示从长期目标到当前阶段的推进情况。
+            </div>
+          )}
         </div>
       </section>
     </div>
