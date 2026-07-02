@@ -9,3 +9,7 @@ Plan 是追加型文档，不是长期事实来源。任务完成后，需要把
 当前 Agent Action Loop 增量计划：`docs/plans/agent-tools-and-scheduler-plan.md`。
 
 当前共享工具运行时重构计划：`docs/plans/shared-agent-tool-runtime-refactor-plan.md`。
+
+当前验收总览：`docs/plans/verification-overview.md`。
+
+当前服务器长期运行验收计划：`docs/plans/self-hosted-runtime-verification-plan.md`。
