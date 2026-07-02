@@ -232,6 +232,11 @@ export function SettingsView() {
         ...behaviorDraft.goals,
         max_active_goals: 1,
       },
+      logs: {
+        ...behaviorDraft.logs,
+        vault_root: 'logs/',
+        naming_pattern: 'YYYY/Q#/YYYY-MM/W##/YYYY-MM-DD.md',
+      },
     })
   }
 
@@ -358,11 +363,13 @@ export function SettingsView() {
               <div className="mt-4 grid gap-3">
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Vault Root</span>
-                  <input value={behaviorDraft.logs.vault_root} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, vault_root: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                  <input value="logs/" disabled className="mt-1 w-full rounded-2xl border border-stone-200 bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-500 outline-none" />
+                  <span className="mt-2 block text-xs leading-5 text-stone-500">v0.1 固定写入内置 Markdown vault，保证 Agent、Today、Review 和 Logs 文件树一致。</span>
                 </label>
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Naming Pattern</span>
-                  <input value={behaviorDraft.logs.naming_pattern} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, naming_pattern: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                  <input value="YYYY/Q#/YYYY-MM/W##/YYYY-MM-DD.md" disabled className="mt-1 w-full rounded-2xl border border-stone-200 bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-500 outline-none" />
+                  <span className="mt-2 block text-xs leading-5 text-stone-500">当前所有日志写入入口共用这套层级，后续支持外部 vault 时再开放。</span>
                 </label>
                 <ToggleRow label="自动写入 Check-in" description="完成/部分完成/没做会追加到当日日志。" checked={behaviorDraft.logs.auto_write_checkin} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, auto_write_checkin: checked } }))} />
                 <ToggleRow label="自动写入复盘" description="日/周/月复盘会沉淀到对应周期 Markdown。" checked={behaviorDraft.logs.auto_write_review} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, auto_write_review: checked } }))} />

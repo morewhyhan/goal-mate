@@ -170,6 +170,13 @@ function verifySharedRuntimeContracts() {
     'src/server/api/routes/settings/index.ts scanned',
   )
   record(
+    'AAL-LOG-PATH-SETTING-BOUNDARY',
+    'settings API keeps v0.1 fixed log vault and naming pattern instead of accepting fake custom path configuration',
+    settingsRoute.includes('vault_root: defaultUserSettings.logs.vault_root')
+      && settingsRoute.includes('naming_pattern: defaultUserSettings.logs.naming_pattern'),
+    'src/server/api/routes/settings/index.ts scanned',
+  )
+  record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),

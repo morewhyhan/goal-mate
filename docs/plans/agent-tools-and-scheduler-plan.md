@@ -242,3 +242,5 @@ P0 提醒类型：
 - 2026-07-02：强化 Data & Privacy 导出闭环，`dataPrivacy.export_markdown` 现在控制 `/api/settings/export` 是否包含 MarkdownDocument/MarkdownDocumentLink；模型密钥仍强制脱敏，不能通过设置关闭脱敏。
 
 - 2026-07-02：修正 Goals 设置边界，v0.1 固定单主目标；Settings 页面不再允许把 `max_active_goals` 改成多个，`/api/settings` 保存时也强制 `max_active_goals=1`，避免形成无效配置。
+
+- 2026-07-02：修正 Logs 路径设置边界，v0.1 固定 `vault_root=logs/` 和 `naming_pattern=YYYY/Q#/YYYY-MM/W##/YYYY-MM-DD.md`；Settings 页面只读展示，`/api/settings` 保存时也强制默认，避免形成不会被运行时执行的假路径配置。

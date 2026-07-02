@@ -251,7 +251,12 @@ const app = new Hono()
     const merged = {
       general: { ...defaultUserSettings.general, ...(input.general || {}) },
       goals: { ...defaultUserSettings.goals, ...(input.goals || {}), max_active_goals: 1 },
-      logs: { ...defaultUserSettings.logs, ...(input.logs || {}) },
+      logs: {
+        ...defaultUserSettings.logs,
+        ...(input.logs || {}),
+        vault_root: defaultUserSettings.logs.vault_root,
+        naming_pattern: defaultUserSettings.logs.naming_pattern,
+      },
       today: { ...defaultUserSettings.today, ...(input.today || {}) },
       agent: { ...defaultUserSettings.agent, ...(input.agent || {}) },
       notifications: { ...defaultUserSettings.notifications, ...(input.notifications || {}) },
