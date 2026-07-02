@@ -13,19 +13,22 @@
 - 当前活跃消息通道已收敛为 QQ；Telegram 只保留历史设计参考，不再挂载 active API。
 - 页面层已去除 demo fallback，空状态不再伪造目标、日志、对话或热力图活动。
 - 本轮已执行低成本验证：`pnpm verify:static`、`pnpm db:generate`、`pnpm typecheck`，均通过。
+- 本轮已执行本地运行时验证：`pnpm exec prisma migrate deploy`、`pnpm db:seed`、`pnpm verify:v01:api`、登录态 API smoke、`pnpm verify:v01:business`、`pnpm verify:agent-loop:write`、`pnpm build`、Dashboard 页面 HTTP smoke，均通过。
 
 ## 2. 验收层级
 
 | 层级 | 入口 | 是否需要运行服务 | 是否访问网络 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| 静态门禁 | `pnpm verify:static` | 否 | 否 | 已定义，未执行 |
+| 静态门禁 | `pnpm verify:static` | 否 | 否 | 2026-07-02 已通过 |
 | 密钥扫描 | `pnpm verify:secrets` | 否 | 否 | 2026-07-02 已通过 |
 | 部署配置静态检查 | `pnpm verify:deployment-config` | 否 | 否 | 2026-07-02 已通过 |
 | v0.1 类型/生成检查 | `pnpm verify:v01` | 否 | 否 | 2026-07-02 已通过等价步骤：`db:generate` + `typecheck` |
-| v0.1 API 验收 | `pnpm verify:v01:api` | 是 | 否 | 已定义，未执行 |
-| v0.1 业务流验收 | `pnpm verify:v01:business` | 视脚本前置条件而定 | 否 | 已定义，未执行 |
-| Agent Loop 读取验收 | `pnpm verify:agent-loop` | 是 | 否 | 已定义，未执行 |
-| Agent Loop 写入验收 | `pnpm verify:agent-loop:write` | 是 | 否 | 已定义，未执行 |
+| v0.1 API 验收 | `pnpm verify:v01:api` | 是 | 否 | 2026-07-02 未登录和登录态 smoke 已通过 |
+| v0.1 业务流验收 | `pnpm verify:v01:business` | 视脚本前置条件而定 | 否 | 2026-07-02 已通过 |
+| Agent Loop 读取验收 | `pnpm verify:agent-loop` | 是 | 否 | 2026-07-02 静态契约部分已通过；无 Cookie 时正确失败 |
+| Agent Loop 写入验收 | `pnpm verify:agent-loop:write` | 是 | 否 | 2026-07-02 已通过 |
+| Next 生产构建 | `pnpm build` | 否 | 否 | 2026-07-02 已通过 |
+| Dashboard 页面 HTTP smoke | `/dashboard/today` 等页面路由 | 是 | 否 | 2026-07-02 五个页面均返回 200 |
 | 服务器长期运行验收 | `docs/plans/self-hosted-runtime-verification-plan.md` | 是 | 是 | 已规划，未执行 |
 
 ## 3. 当前推荐顺序
@@ -33,16 +36,15 @@
 如果用户授权验证，建议按这个顺序执行：
 
 ```text
-1. 启动本地 Web
-2. 执行 v0.1 API / Agent Loop 验收
-3. 执行页面浏览器验收
-4. 部署服务器并执行 self-hosted runtime verification
+1. 执行浏览器视觉/交互验收
+2. 部署服务器并执行 self-hosted runtime verification
+3. 验证 QQ Gateway 长期连接、Scheduler 主动提醒和回复闭环
 ```
 
 原因：
 
-- 静态门禁、`db:generate` 和 `typecheck` 已在 2026-07-02 通过。
-- API / Agent Loop 需要服务和登录态，放在基础检查之后。
+- 静态门禁、`db:generate`、`typecheck`、本地 API、业务流、Agent Loop 写入、生产构建和页面 HTTP smoke 已在 2026-07-02 通过。
+- 仍未证明浏览器内真实视觉交互和服务器长期运行。
 - 服务器长期运行验收依赖真实 QQ / DeepSeek / systemd，最后执行。
 
 ## 4. 不能混淆的边界
@@ -62,21 +64,22 @@
 | v0.1 静态完成审计 | `docs/plans/v0.1-static-completion-audit.md` |
 | v0.1 验收 runbook | `docs/plans/v0.1-acceptance-runbook.md` |
 | Agent Loop 测试矩阵 | `docs/test-cases/agent-action-loop-v0.2-test-cases.md` |
+| Agent Loop 最近运行报告 | `docs/plans/agent-action-loop-v0.2-last-run.md` |
+| v0.1 本地运行时验收记录 | `docs/plans/v0.1-runtime-verification-last-run.md` |
 | 静态门禁说明 | `docs/plans/static-verification-gates.md` |
 | 服务器长期运行计划 | `docs/plans/self-hosted-runtime-verification-plan.md` |
 | 服务器验收报告模板 | `docs/plans/self-hosted-runtime-verification-report-template.md` |
 
 ## 6. 当前未证明事项
 
-- 未证明数据库迁移或 reset 能成功。
-- 未证明 Web 页面真实可操作。
-- 未证明 Agent Loop API 在运行态可通过。
+- 未证明数据库 reset 能成功；已有数据库的 `prisma migrate deploy` 已通过。
+- 未证明 Web 页面在真实浏览器中的视觉和交互符合预期；页面 HTTP smoke 已通过。
 - 未证明 QQ Gateway 长期连接稳定。
 - 未证明 Scheduler 能在服务器上长期主动推进。
 - 未证明去除 demo fallback 后的空状态和真实数据状态在浏览器中符合预期。
 
 ## 7. 下一步
 
-需要用户明确授权后，才能进入实际验证。
+下一步应进入真实浏览器验收和服务器长期运行验收。
 
-在没有授权运行命令前，后续增量只能继续完善计划、文档、静态资产和代码结构，不能宣称验收通过。
+在服务器验收完成前，不能宣称“电脑关闭后也能长期主动推进”已经通过生产验证。

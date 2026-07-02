@@ -1,7 +1,10 @@
 import { PrismaClient } from '@prisma/client'
 import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const prisma = new PrismaClient()
+const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const baseUrl = process.env.GOAL_MATE_BASE_URL || 'http://127.0.0.1:3000'
 const cookie = process.env.GOAL_MATE_COOKIE || ''
 const shouldWrite = process.argv.includes('--write')
@@ -68,7 +71,8 @@ function todayText() {
 }
 
 function readProjectFile(path) {
-  return readFileSync(path, 'utf8')
+  const normalizedPath = path.startsWith('src/') ? path.slice(4) : path
+  return readFileSync(resolve(appRoot, normalizedPath), 'utf8')
 }
 
 function verifySharedRuntimeContracts() {
