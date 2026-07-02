@@ -20,10 +20,12 @@ export function MomentumHeatmap() {
   const selectedScope = scopes.find((item) => item.label === scope) || scopes[0]
   const heatmapWeeks = useMemo(() => emptyWeeks(selectedScope.weeks), [selectedScope.weeks])
   const activeDays = heatmapWeeks.flat().filter((value) => value > 0).length
+  const cellSize = scope === 'Year' ? 'h-[5px] w-[5px]' : scope === 'Quarter' ? 'h-[8px] w-[8px]' : 'h-[11px] w-[11px]'
+  const weekGap = scope === 'Year' ? 'gap-[2px]' : 'gap-[3px]'
 
   return (
     <section className="rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Momentum</p>
           <h2 className="mt-1 text-xl font-semibold text-stone-950">年度推进热力图</h2>
@@ -41,8 +43,8 @@ export function MomentumHeatmap() {
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto pb-2">
-        <div className={scope === 'Year' ? 'min-w-[720px]' : 'min-w-[220px]'}>
+      <div className="max-w-full overflow-hidden pb-1">
+        <div className="w-full">
           {scope === 'Year' && (
             <div className="mb-2 grid grid-cols-12 text-[10px] text-stone-400">
               {months.map((month) => (
@@ -50,25 +52,18 @@ export function MomentumHeatmap() {
               ))}
             </div>
           )}
-          <div className="flex gap-[3px]">
+          <div className={`flex max-w-full ${weekGap}`}>
             {heatmapWeeks.map((week, weekIndex) => (
-              <div key={weekIndex} className="grid grid-rows-7 gap-[3px]">
+              <div key={weekIndex} className={`grid grid-rows-7 ${weekGap}`}>
                 {week.map((value, dayIndex) => (
                   <span
                     key={`${weekIndex}-${dayIndex}`}
                     title={`week ${weekIndex + 1}, day ${dayIndex + 1}`}
-                    className={`block h-[9px] w-[9px] rounded-[1px] ${levels[value]}`}
+                    className={`block rounded-[1px] ${cellSize} ${levels[value]}`}
                   />
                 ))}
               </div>
             ))}
-          </div>
-          <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-stone-400">
-            <span>Less</span>
-            {[0, 1, 2, 3, 4].map((level) => (
-              <span key={level} className={`h-[9px] w-[9px] rounded-[2px] ${levels[level]}`} />
-            ))}
-            <span>More</span>
           </div>
         </div>
       </div>

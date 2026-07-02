@@ -14,6 +14,7 @@
 - 页面层已去除 demo fallback，空状态不再伪造目标、日志、对话或热力图活动。
 - 本轮已执行低成本验证：`pnpm verify:static`、`pnpm db:generate`、`pnpm typecheck`，均通过。
 - 本轮已执行本地运行时验证：`pnpm exec prisma migrate deploy`、`pnpm db:seed`、`pnpm verify:v01:api`、登录态 API smoke、`pnpm verify:v01:business`、`pnpm verify:agent-loop:write`、`pnpm build`、Dashboard 页面 HTTP smoke，均通过。
+- 本轮已执行 Dashboard 截图 smoke，发现并修复 Today 热力图横向滚动/灰条问题；修复后 `pnpm typecheck` 和 `pnpm build` 均通过。
 
 ## 2. 验收层级
 
@@ -29,6 +30,7 @@
 | Agent Loop 写入验收 | `pnpm verify:agent-loop:write` | 是 | 否 | 2026-07-02 已通过 |
 | Next 生产构建 | `pnpm build` | 否 | 否 | 2026-07-02 已通过 |
 | Dashboard 页面 HTTP smoke | `/dashboard/today` 等页面路由 | 是 | 否 | 2026-07-02 五个页面均返回 200 |
+| Dashboard 截图 smoke | Edge headless screenshots | 是 | 否 | 2026-07-02 已执行，Today heatmap 问题已修复 |
 | 服务器长期运行验收 | `docs/plans/self-hosted-runtime-verification-plan.md` | 是 | 是 | 已规划，未执行 |
 
 ## 3. 当前推荐顺序
@@ -36,15 +38,15 @@
 如果用户授权验证，建议按这个顺序执行：
 
 ```text
-1. 执行浏览器视觉/交互验收
+1. 执行真实浏览器人工交互验收
 2. 部署服务器并执行 self-hosted runtime verification
 3. 验证 QQ Gateway 长期连接、Scheduler 主动提醒和回复闭环
 ```
 
 原因：
 
-- 静态门禁、`db:generate`、`typecheck`、本地 API、业务流、Agent Loop 写入、生产构建和页面 HTTP smoke 已在 2026-07-02 通过。
-- 仍未证明浏览器内真实视觉交互和服务器长期运行。
+- 静态门禁、`db:generate`、`typecheck`、本地 API、业务流、Agent Loop 写入、生产构建、页面 HTTP smoke 和截图 smoke 已在 2026-07-02 通过。
+- 仍未证明完整人工交互和服务器长期运行。
 - 服务器长期运行验收依赖真实 QQ / DeepSeek / systemd，最后执行。
 
 ## 4. 不能混淆的边界
@@ -73,7 +75,7 @@
 ## 6. 当前未证明事项
 
 - 未证明数据库 reset 能成功；已有数据库的 `prisma migrate deploy` 已通过。
-- 未证明 Web 页面在真实浏览器中的视觉和交互符合预期；页面 HTTP smoke 已通过。
+- 未证明 Web 页面完整人工交互符合预期；页面 HTTP smoke 和截图 smoke 已通过。
 - 未证明 QQ Gateway 长期连接稳定。
 - 未证明 Scheduler 能在服务器上长期主动推进。
 - 未证明去除 demo fallback 后的空状态和真实数据状态在浏览器中符合预期。
