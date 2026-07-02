@@ -17,24 +17,28 @@ const serviceFiles = [
     file: 'goal-mate-web.service',
     command: 'pnpm start',
     description: 'Web Console service',
+    extraRequired: ['Environment=HOSTNAME=0.0.0.0', 'Environment=PORT=3000'],
   },
   {
     id: 'QQ',
     file: 'goal-mate-qq-worker.service',
     command: 'pnpm worker:qq',
     description: 'QQ Gateway worker service',
+    extraRequired: [],
   },
   {
     id: 'SCHEDULER',
     file: 'goal-mate-scheduler-worker.service',
     command: 'pnpm worker:scheduler',
     description: 'Scheduler worker service',
+    extraRequired: [],
   },
 ]
 
 const runtimeScripts = [
   { id: 'QQ-WORKER', file: 'scripts/qq-bot-worker.mjs', description: 'QQ worker script' },
   { id: 'SCHEDULER-WORKER', file: 'scripts/scheduler-worker.mjs', description: 'Scheduler worker script' },
+  { id: 'DEPLOY-BUNDLE', file: 'scripts/create-deploy-bundle.mjs', description: 'Local deployment bundle script' },
 ]
 
 const requiredEnvVars = [
@@ -85,9 +89,9 @@ const packageScripts = packageJson.scripts || {}
 
 record(
   'DEPLOY-PACKAGE',
-  'package scripts expose web, QQ worker, scheduler and one-shot scheduler commands',
-  Boolean(packageScripts.start && packageScripts['worker:qq'] && packageScripts['worker:scheduler'] && packageScripts['worker:scheduler:once']),
-  `start=${packageScripts.start || 'missing'}; worker:qq=${packageScripts['worker:qq'] || 'missing'}; worker:scheduler=${packageScripts['worker:scheduler'] || 'missing'}; worker:scheduler:once=${packageScripts['worker:scheduler:once'] || 'missing'}`,
+  'package scripts expose web, QQ worker, scheduler, one-shot scheduler and local bundle commands',
+  Boolean(packageScripts.start && packageScripts['worker:qq'] && packageScripts['worker:scheduler'] && packageScripts['worker:scheduler:once'] && packageScripts['deploy:bundle']),
+  `start=${packageScripts.start || 'missing'}; worker:qq=${packageScripts['worker:qq'] || 'missing'}; worker:scheduler=${packageScripts['worker:scheduler'] || 'missing'}; worker:scheduler:once=${packageScripts['worker:scheduler:once'] || 'missing'}; deploy:bundle=${packageScripts['deploy:bundle'] || 'missing'}`,
 )
 
 for (const service of serviceFiles) {
@@ -107,6 +111,7 @@ for (const service of serviceFiles) {
     'Restart=always',
     'RestartSec=5',
     'WantedBy=multi-user.target',
+    ...(service.extraRequired || []),
   ]
   const check = includesAll(text, required)
   record(
@@ -135,9 +140,17 @@ for (const script of runtimeScripts) {
 const readme = readText(resolve(deployDir, 'README.md'))
 record(
   'DEPLOY-README',
-  'systemd README documents install, start, status and logs',
-  Boolean(readme && ['systemctl enable --now', 'systemctl status', 'journalctl', 'pnpm db:generate'].every((item) => readme.includes(item))),
+  'systemd README documents local bundle, install, start, status and logs',
+  Boolean(readme && ['pnpm deploy:bundle', 'systemctl enable --now', 'systemctl status', 'journalctl', 'pnpm db:generate'].every((item) => readme.includes(item))),
   readme ? 'README contains deployment commands' : 'missing README',
+)
+
+const rootGitignore = readText(resolve(projectRoot, '.gitignore'))
+record(
+  'DEPLOY-LOCAL-ARTIFACTS-IGNORED',
+  'local deployment bundles are ignored by git',
+  Boolean(rootGitignore && rootGitignore.includes('.artifacts/')),
+  rootGitignore ? '.artifacts/ ignore rule present' : 'missing root .gitignore',
 )
 
 const envExample = readText(envExamplePath)

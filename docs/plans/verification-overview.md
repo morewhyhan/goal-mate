@@ -18,6 +18,7 @@
 - 本轮发现并修复 QQ Worker 语法失败问题；`pnpm verify:static` 已新增 QQ Worker / Scheduler Worker `node --check` 防回归检查并通过。
 - 本轮新增并验证 `pnpm worker:scheduler:once`，可在服务器上立即触发 Scheduler 验证；本地无 QQ 绑定场景已产生 `SchedulerEvent.status=failed` 和明确失败原因。
 - 本轮只做本地部署准备，没有继续上传服务器；部署文档和 `.env.example` 已补齐生产 Web URL、端口、systemd 用户权限、migrate/build/static-gate 顺序。
+- 本轮新增本地交付包能力：`pnpm deploy:bundle` 会生成 `.artifacts/deploy/goal-mate-*.tar.gz`，并排除真实 `.env`、Git 历史、依赖、构建产物、本地数据库和日志。
 
 ## 2. 验收层级
 
@@ -35,6 +36,7 @@
 | Dashboard 页面 HTTP smoke | `/dashboard/today` 等页面路由 | 是 | 否 | 2026-07-02 五个页面均返回 200 |
 | Dashboard 截图 smoke | Edge headless screenshots | 是 | 否 | 2026-07-02 已执行，Today heatmap 问题已修复 |
 | Scheduler 一次性验证 | `pnpm worker:scheduler:once` | 否 | 仅发送时需要 | 2026-07-02 本地已通过无绑定失败记录场景 |
+| 本地部署交付包 | `pnpm deploy:bundle` | 否 | 否 | 2026-07-02 已新增，待随静态门禁复验 |
 | 服务器长期运行验收 | `docs/plans/self-hosted-runtime-verification-plan.md` | 是 | 是 | 已规划，未执行 |
 
 ## 3. 当前推荐顺序
@@ -50,6 +52,7 @@
 原因：
 
 - 静态门禁、`db:generate`、`typecheck`、本地 API、业务流、Agent Loop 写入、生产构建、页面 HTTP smoke 和截图 smoke 已在 2026-07-02 通过。
+- 本地交付包已具备安全边界，但不等同于服务器已部署。
 - 仍未证明完整人工交互和服务器长期运行。
 - 服务器长期运行验收依赖真实 QQ / DeepSeek / systemd，最后执行。
 

@@ -39,6 +39,21 @@ EnvironmentFile: /opt/goal-mate/src/.env
 
 先在本地完成提交，不要直接把半成品传到服务器。
 
+本地先生成交付包：
+
+```bash
+cd src
+pnpm deploy:bundle
+```
+
+这个命令只会在本机生成：
+
+```text
+.artifacts/deploy/goal-mate-时间戳.tar.gz
+```
+
+它不会上传服务器，也不会打包 `.git`、`node_modules`、`.next`、真实 `.env`、本地数据库或日志。服务器上的真实 `.env` 必须单独创建，不能从本机打包进去。
+
 服务器首次准备：
 
 ```bash
@@ -47,7 +62,7 @@ sudo mkdir -p /opt/goal-mate
 sudo chown -R goalmate:goalmate /opt/goal-mate
 ```
 
-把项目放到 `/opt/goal-mate` 后，在服务器上：
+确认要部署时，再把交付包解压到 `/opt/goal-mate`。之后在服务器上：
 
 在服务器上：
 
