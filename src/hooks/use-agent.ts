@@ -21,6 +21,17 @@ const $confirm = client.api.agent['structured-output'].confirm.$post
 type ConfirmStructuredOutputRequest = InferRequestType<typeof $confirm>['json']
 type ConfirmStructuredOutputResponse = any
 
+const $toolActions = client.api.agent.tools.actions.$get
+type AgentToolActionsResponse = any
+
+const $confirmToolAction = client.api.agent.tools.actions[':id'].confirm.$post
+type ConfirmToolActionRequest = { id: string }
+type ConfirmToolActionResponse = any
+
+const $rejectToolAction = client.api.agent.tools.actions[':id'].reject.$post
+type RejectToolActionRequest = { id: string; reason?: string }
+type RejectToolActionResponse = any
+
 export function useAgentThreads() {
   return useQuery<ThreadsResponse, Error>({
     queryKey: ['agent', 'threads'],
@@ -54,6 +65,41 @@ export function useSendAgentMessage() {
       queryClient.invalidateQueries({ queryKey: ['agent', 'messages', variables.threadId] })
     },
     onError: (error) => toast.error(error.message || '消息发送失败'),
+  })
+}
+
+export function useAgentToolActions() {
+  return useQuery<AgentToolActionsResponse, Error>({
+    queryKey: ['agent', 'tool-actions'],
+    queryFn: async () => (await $toolActions()).json(),
+  })
+}
+
+export function useConfirmAgentToolAction(threadId?: string) {
+  const queryClient = useQueryClient()
+  return useMutation<ConfirmToolActionResponse, Error, ConfirmToolActionRequest>({
+    mutationFn: async ({ id }) => (await $confirmToolAction({ param: { id } })).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent', 'tool-actions'] })
+      queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
+      if (threadId) queryClient.invalidateQueries({ queryKey: ['agent', 'messages', threadId] })
+      toast.success('工具动作已确认')
+    },
+    onError: (error) => toast.error(error.message || '工具动作确认失败'),
+  })
+}
+
+export function useRejectAgentToolAction(threadId?: string) {
+  const queryClient = useQueryClient()
+  return useMutation<RejectToolActionResponse, Error, RejectToolActionRequest>({
+    mutationFn: async ({ id, reason }) => (await $rejectToolAction({ param: { id }, json: { reason } })).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent', 'tool-actions'] })
+      queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
+      if (threadId) queryClient.invalidateQueries({ queryKey: ['agent', 'messages', threadId] })
+      toast.success('工具动作已取消')
+    },
+    onError: (error) => toast.error(error.message || '工具动作取消失败'),
   })
 }
 

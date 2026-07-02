@@ -23,6 +23,9 @@ const executeToolSchema = z.object({
   agentThreadId: z.string().uuid().optional(),
   agentMessageId: z.string().uuid().optional(),
 })
+const rejectToolActionSchema = z.object({
+  reason: z.string().optional(),
+})
 
 function isConfirmToolMessage(content: string) {
   return /^(确认执行|确认|执行|同意|可以|就这么做|开始执行)$/i.test(content.trim())
@@ -91,6 +94,87 @@ const app = new Hono()
       take: 50,
     })
     return c.json({ data: actions })
+  })
+  .post('/tools/actions/:id/confirm', async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    const action = await prisma.agentToolAction.findFirst({ where: { id: c.req.param('id'), userId } })
+    if (!action) return notFound(c, '工具动作不存在。')
+    if (action.status !== 'pending_confirmation') {
+      return c.json({ data: { action, confirmed: false, message: '该工具动作不在待确认状态。' } })
+    }
+
+    await prisma.agentToolAction.update({ where: { id: action.id }, data: { status: 'approved' } })
+    const execution = await executeAgentTool(
+      {
+        userId,
+        source: 'web',
+        confirmed: true,
+        agentThreadId: action.agentThreadId || undefined,
+        agentMessageId: action.agentMessageId || undefined,
+      },
+      action.toolName,
+      action.input,
+    )
+
+    let assistantMessage = null
+    if (action.agentThreadId) {
+      assistantMessage = await prisma.agentMessage.create({
+        data: {
+          userId,
+          threadId: action.agentThreadId,
+          role: 'ASSISTANT',
+          content: formatToolReply(action.toolName, execution),
+          structuredOutputType: 'agent_tool_result',
+          structuredOutput: {
+            confirmedActionId: action.id,
+            executedActionId: execution.action?.id,
+            toolName: action.toolName,
+            needsConfirmation: execution.needsConfirmation,
+          },
+        },
+      })
+      await prisma.agentThread.update({ where: { id: action.agentThreadId }, data: { updatedAt: new Date() } })
+    }
+
+    return c.json({ data: { confirmed: true, actionId: action.id, execution, assistantMessage } })
+  })
+  .post('/tools/actions/:id/reject', zValidator('json', rejectToolActionSchema), async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    const action = await prisma.agentToolAction.findFirst({ where: { id: c.req.param('id'), userId } })
+    if (!action) return notFound(c, '工具动作不存在。')
+    const input = c.req.valid('json')
+    const rejected = await prisma.agentToolAction.update({
+      where: { id: action.id },
+      data: {
+        status: 'rejected',
+        errorMessage: input.reason || '用户取消执行。',
+      },
+    })
+
+    let assistantMessage = null
+    if (action.agentThreadId) {
+      assistantMessage = await prisma.agentMessage.create({
+        data: {
+          userId,
+          threadId: action.agentThreadId,
+          role: 'ASSISTANT',
+          content: `已取消执行：${action.toolName}`,
+          structuredOutputType: 'agent_tool_result',
+          structuredOutput: {
+            rejectedActionId: action.id,
+            toolName: action.toolName,
+            needsConfirmation: false,
+          },
+        },
+      })
+      await prisma.agentThread.update({ where: { id: action.agentThreadId }, data: { updatedAt: new Date() } })
+    }
+
+    return c.json({ data: { rejected, assistantMessage } })
   })
   .post('/tools/execute', zValidator('json', executeToolSchema), async (c) => {
     const userId = await getCurrentUserId(c)

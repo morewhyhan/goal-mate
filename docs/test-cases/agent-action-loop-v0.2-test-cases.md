@@ -41,6 +41,7 @@
 | AAL-10 | QQ 工具确认 | QQ execute 工具必须先 pending，再由“确认执行”触发执行 |
 | AAL-11 | Scheduler 回复闭环 | 最近 sent 事件收到 QQ 回复后写 check-in、log，并标记 `responded` |
 | AAL-12 | 安全边界 | API Key 不以明文出现在 settings、models、export 响应中 |
+| AAL-13 | Web 确认 UI | Agent 消息出现待确认动作卡片，可点击确认或取消 |
 
 ## 4. 自动化验证入口
 
@@ -80,4 +81,3 @@ pnpm verify:agent-loop:write
 - 不验证服务器长期 systemd / pm2 守护。
 - 不验证 DeepSeek 真实模型质量，只验证接口和数据闭环。
 - 不验证浏览器视觉细节。
-

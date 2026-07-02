@@ -73,6 +73,10 @@ async function executeTool(toolName, input = {}, confirmed = false) {
   })
 }
 
+async function confirmToolAction(id) {
+  return request(`/api/agent/tools/actions/${id}/confirm`, { method: 'POST' })
+}
+
 async function run() {
   assert(cookie, 'GOAL_MATE_COOKIE is required for Agent Action Loop verification')
 
@@ -141,30 +145,20 @@ async function run() {
       `action=${pending.data?.action?.id}; status=${pending.data?.action?.status}`,
     )
 
-    const executedAction = await executeTool(
-      'today.set_next_action',
-      {
-        title: `验收确认动作 ${todayText()}`,
-        reason: 'Agent Action Loop 确认执行验收。',
-        doneWhen: '确认执行后 DailyAction 被创建。',
-        minimumStep: '写入一个最小验证动作。',
-        estimatedMinutes: 5,
-        fallbackAction: '如果失败，检查 AgentToolAction 审计。',
-        checkinQuestion: '确认执行是否写入？',
-      },
-      true,
-    )
+    const executedAction = await confirmToolAction(pending.data?.action?.id)
+    const executedResult = executedAction.data?.execution?.result
+    const executedAudit = executedAction.data?.execution?.action
     record(
       'AAL-EXECUTE-CONFIRMED',
-      'confirmed execute tool writes business data and audit action',
-      Boolean(executedAction.data?.needsConfirmation === false && executedAction.data?.action?.status === 'executed' && executedAction.data?.result?.id),
-      `toolAction=${executedAction.data?.action?.id}; dailyAction=${executedAction.data?.result?.id}`,
+      'confirm endpoint writes business data and audit action',
+      Boolean(executedAction.data?.confirmed === true && executedAudit?.status === 'executed' && executedResult?.id),
+      `toolAction=${executedAudit?.id}; dailyAction=${executedResult?.id}`,
     )
 
     const checkin = await executeTool(
       'checkin.submit',
       {
-        actionId: executedAction.data?.result?.id,
+        actionId: executedResult?.id,
         result: 'partial',
         reasonCategory: 'ABILITY',
         userFeedback: 'Agent Action Loop 验收：部分完成。',
@@ -184,7 +178,7 @@ async function run() {
       {
         title: todayText(),
         content: `# ${todayText()}\n\n## Agent Action Loop 验收\n\n- 工具确认：已验证\n- Check-in：已验证\n`,
-        linkedActionIds: [executedAction.data?.result?.id].filter(Boolean),
+      linkedActionIds: [executedResult?.id].filter(Boolean),
       },
       true,
     )

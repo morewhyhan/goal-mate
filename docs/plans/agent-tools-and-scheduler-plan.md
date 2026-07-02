@@ -153,6 +153,7 @@ P0 提醒类型：
 | Done | 新增 Tool Permission Guard | execute 工具未确认时进入 `pending_confirmation` |
 | Done | 新增 Tool Audit Log | `AgentToolAction` 记录工具调用 |
 | Done | 接入 Web Agent 工具意图 | Agent 对话可识别显式系统操作，确认后执行写工具 |
+| Done | 接入 Web Agent 工具确认 UI | Agent 页面显示待确认动作卡片，可点击确认或取消 |
 | Done | 实现 `goal.list`、`goal.get` | 显式工具 API 可读取目标结构 |
 | Done | 实现 `today.get`、`today.set_next_action` | 显式工具 API 可读取和设置今日行动 |
 | Done | 实现 `checkin.submit` | 显式工具 API 可提交完成情况 |
@@ -197,3 +198,4 @@ P0 提醒类型：
 - 2026-07-02：Settings 页面改为 Control Center，接入真实模型配置、提醒规则、QQ 绑定、工具审计、调度记录和数据导出。
 - 2026-07-02：QQ Worker 接入 Scheduler 回复闭环；用户回复最近一次 QQ Scheduler 提醒后，系统会记录 check-in、追加今日日志，周复盘场景生成复盘草稿，并把 SchedulerEvent 标记为 `responded`。
 - 2026-07-02：新增 `docs/test-cases/agent-action-loop-v0.2-test-cases.md` 和 `src/scripts/verify-agent-action-loop.mjs`，提供 Agent 工具、Settings Control Center、提醒规则、导出和 DB 契约的自动化验收入口。
+- 2026-07-02：Agent 页面新增工具确认卡片；新增工具动作确认/取消 API，用户可在 Web 里点击确认或取消，不再依赖输入“确认执行”。
