@@ -248,3 +248,5 @@ P0 提醒类型：
 - 2026-07-02：修正 Today 生成时间设置边界，`today.generate_time` 不再作为独立可编辑调度字段；Settings 页面展示 Reminders 中 `morning_planning` 的真实时间，`/api/settings` 保存时强制使用默认字段，避免和 ReminderRule 形成双重来源。
 
 - 2026-07-02：修正 Data & Privacy 脱敏边界，`redact_secrets` 不再作为可关闭配置暴露；Settings 页面只读显示始终开启，`/api/settings` 保存时也强制 `redact_secrets=true`，导出接口继续强制模型密钥脱敏。
+
+- 2026-07-02：修正 Logs 手写保护边界，`preserve_user_edits` 不再作为可关闭配置暴露；Settings 页面只读显示始终开启，`/api/settings` 保存时也强制 `preserve_user_edits=true`，避免自动写入覆盖用户自由记录的假配置风险。

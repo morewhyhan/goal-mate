@@ -236,6 +236,7 @@ export function SettingsView() {
         ...behaviorDraft.logs,
         vault_root: 'logs/',
         naming_pattern: 'YYYY/Q#/YYYY-MM/W##/YYYY-MM-DD.md',
+        preserve_user_edits: true,
       },
       today: {
         ...behaviorDraft.today,
@@ -382,7 +383,15 @@ export function SettingsView() {
                 </label>
                 <ToggleRow label="自动写入 Check-in" description="完成/部分完成/没做会追加到当日日志。" checked={behaviorDraft.logs.auto_write_checkin} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, auto_write_checkin: checked } }))} />
                 <ToggleRow label="自动写入复盘" description="日/周/月复盘会沉淀到对应周期 Markdown。" checked={behaviorDraft.logs.auto_write_review} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, auto_write_review: checked } }))} />
-                <ToggleRow label="保护手写内容" description="自动写入只追加或替换系统区块，不能覆盖用户自由记录。" checked={behaviorDraft.logs.preserve_user_edits} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, preserve_user_edits: checked } }))} />
+                <div className="rounded-2xl bg-stone-50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-stone-900">保护手写内容</span>
+                      <span className="mt-1 block text-xs leading-5 text-stone-500">安全边界，始终开启；自动写入只能追加系统内容，不能覆盖用户自由记录。</span>
+                    </span>
+                    <input type="checkbox" checked readOnly disabled className="mt-1 h-5 w-5 shrink-0 accent-stone-950 disabled:opacity-70" />
+                  </div>
+                </div>
               </div>
             </div>
 
