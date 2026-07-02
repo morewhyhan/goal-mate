@@ -18,6 +18,8 @@
 - 设置页只能显示脱敏状态，例如 `sk-****abcd`。
 - 测试连接接口只返回连接是否可用和必要错误提示。
 - 日志中不能打印完整 API Key、Authorization header、cookie。
+- 仓库提交前应执行或等价覆盖 `pnpm verify:secrets`，确保没有 `sk-...`、Bot Token、Bearer Token 形状的真实密钥进入 Git。
+- `.env.example` 只能使用 `replace_with_*` 这类不会被误判成真实密钥的占位符。
 
 ## 隐私
 
