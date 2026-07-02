@@ -164,7 +164,7 @@ P0 提醒类型：
 | Done | 接入 QQ 工具确认流程 | QQ 对话里可生成待确认动作，回复“确认执行”后执行并审计 |
 | Done | 接入 Scheduler 回复闭环 | QQ 回复最近的 Scheduler 提醒后，可写入 check-in、日志和周复盘草稿 |
 | Done | 设置页补齐模型、提醒、权限配置 | Settings Control Center 已承载模型、提醒、QQ、工具审计、数据导出 |
-| Todo | 更新验收用例 | 覆盖 Agent 工具、调度、审计主路径 |
+| Done | 更新验收用例 | 新增 Agent Action Loop v0.2 测试矩阵和 `verify:agent-loop` 脚本 |
 
 ## 7. 测试策略
 
@@ -196,3 +196,4 @@ P0 提醒类型：
 - 2026-07-02：QQ Worker 接入工具意图识别；read/draft 工具可直接返回，execute 工具进入待确认，QQ 回复“确认执行”后执行并写入 `AgentToolAction`。
 - 2026-07-02：Settings 页面改为 Control Center，接入真实模型配置、提醒规则、QQ 绑定、工具审计、调度记录和数据导出。
 - 2026-07-02：QQ Worker 接入 Scheduler 回复闭环；用户回复最近一次 QQ Scheduler 提醒后，系统会记录 check-in、追加今日日志，周复盘场景生成复盘草稿，并把 SchedulerEvent 标记为 `responded`。
+- 2026-07-02：新增 `docs/test-cases/agent-action-loop-v0.2-test-cases.md` 和 `src/scripts/verify-agent-action-loop.mjs`，提供 Agent 工具、Settings Control Center、提醒规则、导出和 DB 契约的自动化验收入口。
