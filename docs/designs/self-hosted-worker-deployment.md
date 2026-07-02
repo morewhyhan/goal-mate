@@ -51,6 +51,15 @@ SCHEDULER_EVENING_TIME
 SCHEDULER_WEEKLY_TIME
 ```
 
+建议环境变量：
+
+```text
+QQ_ALLOWED_CONTEXT_IDS
+QQ_SCHEDULER_REPLY_WINDOW_HOURS
+```
+
+`QQ_ALLOWED_CONTEXT_IDS` 用于限制机器人响应的 QQ 会话范围。`QQ_SCHEDULER_REPLY_WINDOW_HOURS` 用于限制用户回复主动提醒后，系统仍把它识别为 Scheduler 回复的时间窗口。
+
 真实密钥只能存在服务器 `.env`，不能写入文档、代码、提交记录或日志。
 
 ## 5. 推荐进程结构

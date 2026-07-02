@@ -26,6 +26,7 @@ pnpm verify:deployment-config:write
 | DEPLOY-SCHEDULER-CONTENT | Scheduler service 内容 | 包含 `pnpm worker:scheduler` 和自动重启策略 |
 | DEPLOY-README | systemd README | 包含安装、启动、状态、日志查看命令 |
 | DEPLOY-ENV-EXAMPLE | `.env.example` | 包含部署所需环境变量 |
+| DEPLOY-ENV-RECOMMENDED | `.env.example` 建议变量 | 包含 `QQ_ALLOWED_CONTEXT_IDS` 和 `QQ_SCHEDULER_REPLY_WINDOW_HOURS` |
 | DEPLOY-ENV-PLACEHOLDERS | `.env.example` 占位符 | 不使用 `sk-...` 或 Telegram bot token 形状的占位符 |
 | DEPLOY-DESIGN-DOC | 部署事实文档 | 引用 `deploy/systemd` 并保留真实部署缺口 |
 | DEPLOY-RUNTIME-PLAN | 服务器运行验收计划 | `docs/plans/self-hosted-runtime-verification-plan.md` 说明真实长期运行验证步骤 |

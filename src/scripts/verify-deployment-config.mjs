@@ -49,6 +49,11 @@ const requiredEnvVars = [
   'SCHEDULER_WEEKLY_TIME',
 ]
 
+const recommendedEnvVars = [
+  'QQ_ALLOWED_CONTEXT_IDS',
+  'QQ_SCHEDULER_REPLY_WINDOW_HOURS',
+]
+
 const results = []
 
 function record(id, purpose, ok, evidence = '') {
@@ -116,6 +121,13 @@ record(
   '.env.example documents required deployment variables',
   envCheck.ok,
   envCheck.ok ? 'all required variables present' : `missing=${envCheck.missing.join(', ')}`,
+)
+const recommendedEnvCheck = includesAll(envExample, recommendedEnvVars)
+record(
+  'DEPLOY-ENV-RECOMMENDED',
+  '.env.example documents recommended safety variables',
+  recommendedEnvCheck.ok,
+  recommendedEnvCheck.ok ? 'all recommended variables present' : `missing=${recommendedEnvCheck.missing.join(', ')}`,
 )
 record(
   'DEPLOY-ENV-PLACEHOLDERS',
