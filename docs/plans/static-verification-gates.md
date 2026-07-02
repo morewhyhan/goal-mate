@@ -42,7 +42,23 @@ docs/plans/v0.1-acceptance-runbook.md
 docs/test-cases/agent-action-loop-v0.2-test-cases.md
 ```
 
-## 5. 当前状态
+## 5. 失败处理规则
+
+如果 `pnpm verify:static` 失败，按这个顺序处理：
+
+| 失败项 | 处理方式 |
+| --- | --- |
+| `verify:secrets` | 先停下，不要提交；确认是否误提交真实密钥或 token-shaped placeholder |
+| `verify:deployment-config` | 检查 `src/package.json`、`src/.env.example`、`deploy/systemd` 和部署事实文档是否同步 |
+
+处理原则：
+
+- 不要把真实密钥写入报告或修复说明。
+- 不要通过放宽正则绕过真实泄露。
+- 如果是安全占位符误报，应改成 `replace_with_*` 形式。
+- 如果是部署文档缺项，应同步更新测试矩阵和静态检查脚本。
+
+## 6. 当前状态
 
 截至 2026-07-02：
 

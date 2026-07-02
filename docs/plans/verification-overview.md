@@ -42,6 +42,7 @@
 原因：
 
 - 静态门禁成本最低，先发现密钥和部署资产问题。
+- 如果静态门禁失败，应先按 `docs/plans/static-verification-gates.md` 修复，不能继续宣称进入运行时验收。
 - `db:generate` 和 `typecheck` 能暴露 Prisma / TypeScript 基础问题。
 - API / Agent Loop 需要服务和登录态，放在基础检查之后。
 - 服务器长期运行验收依赖真实 QQ / DeepSeek / systemd，最后执行。
