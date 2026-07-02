@@ -185,6 +185,15 @@ function verifySharedRuntimeContracts() {
     'src/server/api/routes/settings/index.ts scanned',
   )
   record(
+    'AAL-NOTIFICATION-SETTING-BOUNDARY',
+    'settings API keeps notification channel and prompt cadence reminder-controlled instead of accepting fake duplicate scheduler fields',
+    settingsRoute.includes('channel: defaultUserSettings.notifications.channel')
+      && settingsRoute.includes('max_daily_prompts: defaultUserSettings.notifications.max_daily_prompts')
+      && settingsRoute.includes('morning_checkin_time: defaultUserSettings.notifications.morning_checkin_time')
+      && settingsRoute.includes('evening_review_time: defaultUserSettings.notifications.evening_review_time'),
+    'src/server/api/routes/settings/index.ts scanned',
+  )
+  record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),

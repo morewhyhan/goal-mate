@@ -260,7 +260,14 @@ const app = new Hono()
       },
       today: { ...defaultUserSettings.today, ...(input.today || {}), generate_time: defaultUserSettings.today.generate_time },
       agent: { ...defaultUserSettings.agent, ...(input.agent || {}) },
-      notifications: { ...defaultUserSettings.notifications, ...(input.notifications || {}) },
+      notifications: {
+        ...defaultUserSettings.notifications,
+        ...(input.notifications || {}),
+        channel: defaultUserSettings.notifications.channel,
+        max_daily_prompts: defaultUserSettings.notifications.max_daily_prompts,
+        morning_checkin_time: defaultUserSettings.notifications.morning_checkin_time,
+        evening_review_time: defaultUserSettings.notifications.evening_review_time,
+      },
       dataPrivacy: { ...defaultUserSettings.dataPrivacy, ...(input.dataPrivacy || {}), redact_secrets: true },
     }
 

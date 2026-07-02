@@ -252,3 +252,5 @@ P0 提醒类型：
 - 2026-07-02：修正 Logs 手写保护边界，`preserve_user_edits` 不再作为可关闭配置暴露；Settings 页面只读显示始终开启，`/api/settings` 保存时也强制 `preserve_user_edits=true`，避免自动写入覆盖用户自由记录的假配置风险。
 
 - 2026-07-02：强化复盘节奏设置闭环，`goals.review_cadence` 现在作为 `/api/reviews/generate` 和 Agent `review.generate` 的默认复盘类型；用户明确指定日报/周报/月报等时仍优先尊重显式输入。
+
+- 2026-07-02：修正 Notifications 设置边界，通知渠道、早晚提醒时间和每日最大提醒次数以 ReminderRule 为真实来源；`/api/settings` 保存时固定 `notifications.channel/max_daily_prompts/morning_checkin_time/evening_review_time`，避免形成第二套不会被调度器执行的假配置。
