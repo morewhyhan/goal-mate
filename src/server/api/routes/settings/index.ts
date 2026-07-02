@@ -54,6 +54,14 @@ function maskContextId(contextId: string) {
   return `${contextId.slice(0, 4)}...${contextId.slice(-6)}`
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function readBooleanSetting(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback
+}
+
 async function ensureDefaultModel(userId: string) {
   const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultDeepSeekModel.provider, usage: defaultDeepSeekModel.usage } })
   if (existing) return existing
@@ -263,14 +271,17 @@ const app = new Hono()
     const userId = await getCurrentUserId(c)
     if (!userId) return unauthorized(c)
 
-    const [goals, logs, markdownDocuments, markdownLinks, threads, models, settings, reminderRules, toolActions, schedulerEvents, qqChatBindings] = await Promise.all([
+    const settings = await prisma.userSetting.findUnique({ where: { userId } })
+    const dataPrivacy = { ...defaultUserSettings.dataPrivacy, ...asRecord(settings?.dataPrivacy) }
+    const exportMarkdown = readBooleanSetting(dataPrivacy.export_markdown, defaultUserSettings.dataPrivacy.export_markdown)
+
+    const [goals, logs, markdownDocuments, markdownLinks, threads, models, reminderRules, toolActions, schedulerEvents, qqChatBindings] = await Promise.all([
       prisma.goal.findMany({ where: { userId }, include: { keyResults: true, conditions: true, stagePlans: true, dailyActions: true, reviews: true } }),
       prisma.logEntry.findMany({ where: { userId }, orderBy: { path: 'asc' } }),
-      prisma.markdownDocument.findMany({ where: { userId }, orderBy: { path: 'asc' } }),
-      prisma.markdownDocumentLink.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      exportMarkdown ? prisma.markdownDocument.findMany({ where: { userId }, orderBy: { path: 'asc' } }) : Promise.resolve([]),
+      exportMarkdown ? prisma.markdownDocumentLink.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }) : Promise.resolve([]),
       prisma.agentThread.findMany({ where: { userId }, include: { messages: true } }),
       prisma.modelConfig.findMany({ where: { userId } }),
-      prisma.userSetting.findUnique({ where: { userId } }),
       prisma.reminderRule.findMany({ where: { userId } }),
       prisma.agentToolAction.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
       prisma.schedulerEvent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
@@ -280,6 +291,11 @@ const app = new Hono()
     return c.json({
       data: {
         exportedAt: new Date().toISOString(),
+        exportPolicy: {
+          exportMarkdown,
+          redactSecrets: true,
+          requestedRedactSecrets: readBooleanSetting(dataPrivacy.redact_secrets, defaultUserSettings.dataPrivacy.redact_secrets),
+        },
         goals,
         logs,
         markdownDocuments,

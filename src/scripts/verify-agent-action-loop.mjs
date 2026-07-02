@@ -84,6 +84,7 @@ function verifySharedRuntimeContracts() {
   const webRuntime = readProjectFile('src/lib/agent-tools.ts')
   const qqWorker = readProjectFile('src/scripts/qq-bot-worker.mjs')
   const schedulerWorker = readProjectFile('src/scripts/scheduler-worker.mjs')
+  const settingsRoute = readProjectFile('src/server/api/routes/settings/index.ts')
   const combinedHandlers = `${readHandlers}\n${writeHandlers}`
 
   record(
@@ -150,6 +151,17 @@ function verifySharedRuntimeContracts() {
       && agentRuntime.includes('Settings 已关闭 Agent 读取 Goals')
       && agentRuntime.includes('Settings 已关闭 Agent 读取 Logs'),
     'src/lib/agent-runtime.ts scanned',
+  )
+  record(
+    'AAL-EXPORT-PRIVACY-POLICY',
+    'settings export respects dataPrivacy.export_markdown while always redacting model secrets',
+    settingsRoute.includes('exportMarkdown')
+      && settingsRoute.includes('dataPrivacy.export_markdown')
+      && settingsRoute.includes('markdownDocument.findMany')
+      && settingsRoute.includes('Promise.resolve([])')
+      && settingsRoute.includes('models.map(redactModel)')
+      && settingsRoute.includes('redactSecrets: true'),
+    'src/server/api/routes/settings/index.ts scanned',
   )
   record(
     'AAL-QQ-SHARED-RUNTIME',
