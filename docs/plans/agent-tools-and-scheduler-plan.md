@@ -250,3 +250,5 @@ P0 提醒类型：
 - 2026-07-02：修正 Data & Privacy 脱敏边界，`redact_secrets` 不再作为可关闭配置暴露；Settings 页面只读显示始终开启，`/api/settings` 保存时也强制 `redact_secrets=true`，导出接口继续强制模型密钥脱敏。
 
 - 2026-07-02：修正 Logs 手写保护边界，`preserve_user_edits` 不再作为可关闭配置暴露；Settings 页面只读显示始终开启，`/api/settings` 保存时也强制 `preserve_user_edits=true`，避免自动写入覆盖用户自由记录的假配置风险。
+
+- 2026-07-02：强化复盘节奏设置闭环，`goals.review_cadence` 现在作为 `/api/reviews/generate` 和 Agent `review.generate` 的默认复盘类型；用户明确指定日报/周报/月报等时仍优先尊重显式输入。

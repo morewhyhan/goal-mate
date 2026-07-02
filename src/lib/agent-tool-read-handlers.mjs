@@ -21,6 +21,12 @@ async function readSharedLogBooleanSetting(prisma, userId, key, fallback) {
   return typeof logs[key] === 'boolean' ? logs[key] : fallback
 }
 
+async function readSharedGoalReviewCadence(prisma, userId) {
+  const settings = await prisma.userSetting.findUnique({ where: { userId } })
+  const goals = isRecord(settings?.goals) ? settings.goals : {}
+  return readAgentToolString(goals, 'review_cadence', 'weekly')
+}
+
 function addDays(date, days) {
   return new Date(date.getTime() + days * DAY_MS)
 }
@@ -521,7 +527,8 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
 
   if (toolName === 'review.generate') {
     const goal = await getSharedCurrentGoal(prisma, userId, readAgentToolString(input, 'goalId'))
-    const type = normalizeReviewType(readAgentToolString(input, 'type', 'weekly'))
+    const configuredCadence = await readSharedGoalReviewCadence(prisma, userId)
+    const type = normalizeReviewType(readAgentToolString(input, 'type', configuredCadence))
     const periodEnd = parseOptionalDate(readAgentToolString(input, 'periodEnd'), new Date())
     const periodStart = parseOptionalDate(readAgentToolString(input, 'periodStart'), addDays(periodEnd, -7))
     const detail = await prisma.goal.findFirst({

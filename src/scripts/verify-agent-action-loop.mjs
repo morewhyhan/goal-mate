@@ -108,8 +108,8 @@ function verifySharedRuntimeContracts() {
   record(
     'AAL-REVIEW-GENERATE-CONTRACT',
     'review.generate shared tool writes Review and respects logs.auto_write_review before writing LogEntry/MarkdownDocument',
-    readHandlers.includes('review.create') && readHandlers.includes('auto_write_review') && readHandlers.includes('logEntry.upsert') && readHandlers.includes('markdownDocument.upsert') && readHandlers.includes('buildSharedReviewMarkdown'),
-    'review.generate persists review evidence and gates log writing by Settings',
+    readHandlers.includes('review.create') && readHandlers.includes('auto_write_review') && readHandlers.includes('review_cadence') && readHandlers.includes('logEntry.upsert') && readHandlers.includes('markdownDocument.upsert') && readHandlers.includes('buildSharedReviewMarkdown'),
+    'review.generate persists review evidence and gates default cadence/log writing by Settings',
   )
   record(
     'AAL-SHARED-EXECUTOR',

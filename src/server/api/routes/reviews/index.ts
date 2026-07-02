@@ -8,7 +8,7 @@ import { upsertMarkdownDocument } from '@/lib/markdown-document-store'
 
 const generateReviewSchema = z.object({
   goalId: z.string().uuid().optional(),
-  type: z.enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly', 'goal_cycle']).default('weekly'),
+  type: z.enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly', 'goal_cycle']).optional(),
   periodStart: z.string().optional(),
   periodEnd: z.string().optional(),
 })
@@ -21,10 +21,24 @@ function readBooleanSetting(value: unknown, fallback: boolean) {
   return typeof value === 'boolean' ? value : fallback
 }
 
-async function shouldAutoWriteReview(userId: string) {
+function normalizeReviewCadence(value: unknown) {
+  const normalized = String(value || '').toLowerCase()
+  if (normalized === 'daily') return 'daily'
+  if (normalized === 'monthly') return 'monthly'
+  if (normalized === 'quarterly') return 'quarterly'
+  if (normalized === 'yearly') return 'yearly'
+  if (normalized === 'goal_cycle') return 'goal_cycle'
+  return 'weekly'
+}
+
+async function readReviewSettings(userId: string) {
   const settings = await prisma.userSetting.findUnique({ where: { userId } })
   const logs = { ...defaultUserSettings.logs, ...asRecord(settings?.logs) }
-  return readBooleanSetting(logs.auto_write_review, defaultUserSettings.logs.auto_write_review)
+  const goals = { ...defaultUserSettings.goals, ...asRecord(settings?.goals) }
+  return {
+    autoWriteReview: readBooleanSetting(logs.auto_write_review, defaultUserSettings.logs.auto_write_review),
+    reviewType: normalizeReviewCadence(goals.review_cadence),
+  }
 }
 
 const app = new Hono()
@@ -46,10 +60,12 @@ const app = new Hono()
 
     if (!goal) return notFound(c, '目标不存在。')
 
+    const reviewSettings = await readReviewSettings(userId)
+    const reviewType = input.type || reviewSettings.reviewType
     const periodEnd = input.periodEnd ? new Date(input.periodEnd) : new Date()
     const periodStart = input.periodStart ? new Date(input.periodStart) : new Date(periodEnd.getTime() - 7 * 24 * 60 * 60 * 1000)
     const markdown = buildReviewMarkdown({
-      type: input.type,
+      type: reviewType,
       goalTitle: goal.title,
       keyResults: goal.keyResults,
       conditions: goal.conditions,
@@ -59,16 +75,16 @@ const app = new Hono()
 
     let logEntry = null
     let markdownDocument = null
-    const autoWriteReview = await shouldAutoWriteReview(userId)
+    const autoWriteReview = reviewSettings.autoWriteReview
     if (autoWriteReview) {
-      const logPath = buildReviewLogPath(input.type, periodEnd)
+      const logPath = buildReviewLogPath(reviewType, periodEnd)
       const existingLog = await prisma.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
       logEntry = await prisma.logEntry.upsert({
         where: { userId_path: { userId, path: logPath } },
         update: { content: existingLog ? `${existingLog.content}\n\n${markdown}` : markdown, linkedGoalIds: [goal.id] },
         create: {
           userId,
-          periodType: reviewTypeToPeriodType(input.type),
+          periodType: reviewTypeToPeriodType(reviewType),
           title: logPath.split('/').pop() || logPath,
           path: logPath,
           content: markdown,
@@ -79,7 +95,7 @@ const app = new Hono()
 
       markdownDocument = await upsertMarkdownDocument(prisma, {
         userId,
-        type: reviewTypeToPeriodType(input.type),
+        type: reviewTypeToPeriodType(reviewType),
         title: logPath.split('/').pop() || logPath,
         path: logPath,
         content: logEntry.content,
@@ -88,7 +104,7 @@ const app = new Hono()
         source: 'AGENT',
         frontmatter: {
           kind: 'review',
-          reviewType: input.type,
+          reviewType,
           goalTitle: goal.title,
         },
       })
@@ -98,7 +114,7 @@ const app = new Hono()
       data: {
         userId,
         goalId: goal.id,
-        type: reviewTypeToPrismaType(input.type),
+        type: reviewTypeToPrismaType(reviewType),
         periodStart,
         periodEnd,
         progressSummary: `本周期围绕「${goal.title}」生成复盘草案。`,
@@ -109,7 +125,7 @@ const app = new Hono()
       },
     })
 
-    return c.json({ data: { review, logEntry, markdownDocument, markdown, autoWriteReview } })
+    return c.json({ data: { review, logEntry, markdownDocument, markdown, autoWriteReview, reviewType } })
   })
 
 export default app

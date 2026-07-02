@@ -85,9 +85,10 @@ function inferReviewType(content: string) {
   if (/年报|年度|yearly|year/i.test(content)) return 'yearly'
   if (/季报|季度|quarterly|quarter/i.test(content)) return 'quarterly'
   if (/月报|月度|monthly|month/i.test(content)) return 'monthly'
+  if (/周报|周复盘|weekly|week/i.test(content)) return 'weekly'
   if (/日报|日复盘|daily|day/i.test(content)) return 'daily'
   if (/目标周期|goal_cycle/i.test(content)) return 'goal_cycle'
-  return 'weekly'
+  return undefined
 }
 
 function generateFallbackAgentToolIntent(latestUserContent: string) {
@@ -137,11 +138,10 @@ function generateFallbackAgentToolIntent(latestUserContent: string) {
   }
 
   if (/(生成|写|做).*(复盘|周报|日报|月报|季报|年报)|复盘一下/u.test(content)) {
+    const reviewType = inferReviewType(content)
     return {
       toolName: 'review.generate',
-      input: {
-        type: inferReviewType(content),
-      },
+      input: reviewType ? { type: reviewType } : {},
       confidence: 0.8,
       reason: '本地兜底：用户明确要求生成复盘。',
     }
