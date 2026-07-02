@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useUpdateModel } from '@/hooks/use-models'
-import { useExportUserData, useSettingsControlCenter, useTestModelConnection, useUpdateReminderRules } from '@/hooks/use-settings'
+import { useExportUserData, useSettingsControlCenter, useTestModelConnection, useUpdateReminderRules, useUpdateSettings } from '@/hooks/use-settings'
 
 type ReminderDraft = {
   id?: string
@@ -12,6 +12,43 @@ type ReminderDraft = {
   timezone: string
   maxPerDay: number
   enabled: boolean
+}
+
+type BehaviorDraft = {
+  general: {
+    locale: string
+    timezone: string
+    week_start: string
+  }
+  goals: {
+    max_active_goals: number
+    review_cadence: string
+  }
+  logs: {
+    vault_root: string
+    naming_pattern: string
+    auto_write_checkin: boolean
+    auto_write_review: boolean
+    preserve_user_edits: boolean
+  }
+  today: {
+    generate_time: string
+    low_energy_mode: boolean
+    heatmap_scope: string
+  }
+  agent: {
+    can_read_goals: boolean
+    can_read_logs: boolean
+    memory_enabled: boolean
+    require_confirm_goal_changes: boolean
+    require_confirm_setting_changes: boolean
+    require_confirm_external_actions: boolean
+  }
+  dataPrivacy: {
+    redact_secrets: boolean
+    export_markdown: boolean
+    local_first_mode: boolean
+  }
 }
 
 const reminderMeta = [
@@ -27,6 +64,28 @@ const defaultReminderDrafts: ReminderDraft[] = [
   { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
   { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, enabled: true },
 ]
+
+const defaultBehaviorDraft: BehaviorDraft = {
+  general: { locale: 'zh-CN', timezone: 'Asia/Shanghai', week_start: 'monday' },
+  goals: { max_active_goals: 1, review_cadence: 'weekly' },
+  logs: {
+    vault_root: 'logs/',
+    naming_pattern: 'YYYY/Q#/YYYY-MM/W##/YYYY-MM-DD.md',
+    auto_write_checkin: true,
+    auto_write_review: true,
+    preserve_user_edits: true,
+  },
+  today: { generate_time: '08:30', low_energy_mode: true, heatmap_scope: 'year' },
+  agent: {
+    can_read_goals: true,
+    can_read_logs: true,
+    memory_enabled: true,
+    require_confirm_goal_changes: true,
+    require_confirm_setting_changes: true,
+    require_confirm_external_actions: true,
+  },
+  dataPrivacy: { redact_secrets: true, export_markdown: true, local_first_mode: false },
+}
 
 function statusClass(status?: string) {
   const normalized = String(status || '').toLowerCase()
@@ -49,8 +108,31 @@ function ruleLabel(type: string) {
   return reminderMeta.find((item) => item.type === type)?.label || type
 }
 
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string
+  description: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="flex items-start justify-between gap-3 rounded-2xl bg-stone-50 p-3">
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-stone-900">{label}</span>
+        <span className="mt-1 block text-xs leading-5 text-stone-500">{description}</span>
+      </span>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-stone-950" />
+    </label>
+  )
+}
+
 export function SettingsView() {
   const controlCenter = useSettingsControlCenter()
+  const updateSettings = useUpdateSettings()
   const updateModel = useUpdateModel()
   const updateReminderRules = useUpdateReminderRules()
   const testModel = useTestModelConnection()
@@ -71,6 +153,7 @@ export function SettingsView() {
     temperature: '0.3',
   })
   const [reminderDrafts, setReminderDrafts] = useState<ReminderDraft[]>(defaultReminderDrafts)
+  const [behaviorDraft, setBehaviorDraft] = useState<BehaviorDraft>(defaultBehaviorDraft)
 
   useEffect(() => {
     if (!model) return
@@ -100,6 +183,19 @@ export function SettingsView() {
     }))
   }, [data?.reminderRules])
 
+  useEffect(() => {
+    const settings = data?.settings
+    if (!settings) return
+    setBehaviorDraft({
+      general: { ...defaultBehaviorDraft.general, ...(settings.general || {}) },
+      goals: { ...defaultBehaviorDraft.goals, ...(settings.goals || {}) },
+      logs: { ...defaultBehaviorDraft.logs, ...(settings.logs || {}) },
+      today: { ...defaultBehaviorDraft.today, ...(settings.today || {}) },
+      agent: { ...defaultBehaviorDraft.agent, ...(settings.agent || {}) },
+      dataPrivacy: { ...defaultBehaviorDraft.dataPrivacy, ...(settings.dataPrivacy || {}) },
+    })
+  }, [data?.settings])
+
   function saveModel() {
     if (!model?.id) return
     const temperature = Number(modelDraft.temperature)
@@ -127,6 +223,10 @@ export function SettingsView() {
         enabled: rule.enabled,
       })),
     })
+  }
+
+  function saveBehaviorSettings() {
+    updateSettings.mutate(behaviorDraft)
   }
 
   function updateReminder(index: number, patch: Partial<ReminderDraft>) {
@@ -173,6 +273,119 @@ export function SettingsView() {
               <p className="mt-1 break-words text-xs text-stone-500">{item?.evidence || 'no evidence'}</p>
             </div>
           ))}
+        </section>
+
+        <section className="rounded-[36px] border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Behavior</p>
+              <h2 className="mt-2 text-2xl font-semibold">系统行为</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">
+                这些设置决定系统怎么拆目标、写日志、生成 Today、读取上下文和导出数据。不是装饰项，保存后会写入用户设置。
+              </p>
+            </div>
+            <button disabled={updateSettings.isPending} onClick={saveBehaviorSettings} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
+              保存行为设置
+            </button>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <div className="rounded-3xl border border-stone-100 p-4">
+              <h3 className="font-semibold text-stone-950">General</h3>
+              <p className="mt-1 text-xs leading-5 text-stone-500">影响日期、周起点和默认显示语言。</p>
+              <div className="mt-4 grid gap-3">
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Locale</span>
+                  <input value={behaviorDraft.general.locale} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, general: { ...draft.general, locale: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                </label>
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Timezone</span>
+                  <input value={behaviorDraft.general.timezone} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, general: { ...draft.general, timezone: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                </label>
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Week Start</span>
+                  <select value={behaviorDraft.general.week_start} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, general: { ...draft.general, week_start: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900">
+                    <option value="monday">Monday</option>
+                    <option value="sunday">Sunday</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-stone-100 p-4">
+              <h3 className="font-semibold text-stone-950">Goals / Today</h3>
+              <p className="mt-1 text-xs leading-5 text-stone-500">决定目标上限、复盘节奏和今日行动生成方式。</p>
+              <div className="mt-4 grid gap-3">
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Active Goals</span>
+                  <input type="number" min={1} max={3} value={behaviorDraft.goals.max_active_goals} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, goals: { ...draft.goals, max_active_goals: Math.max(1, Number(event.target.value) || 1) } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                </label>
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Review Cadence</span>
+                  <select value={behaviorDraft.goals.review_cadence} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, goals: { ...draft.goals, review_cadence: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Today Generate Time</span>
+                  <input value={behaviorDraft.today.generate_time} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, today: { ...draft.today, generate_time: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                </label>
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Heatmap Scope</span>
+                  <select value={behaviorDraft.today.heatmap_scope} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, today: { ...draft.today, heatmap_scope: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900">
+                    <option value="year">Year</option>
+                    <option value="quarter">Quarter</option>
+                    <option value="month">Month</option>
+                    <option value="week">Week</option>
+                  </select>
+                </label>
+                <ToggleRow label="低精力模式" description="开启后 Today 优先保留最小启动和替代动作。" checked={behaviorDraft.today.low_energy_mode} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, today: { ...draft.today, low_energy_mode: checked } }))} />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-stone-100 p-4">
+              <h3 className="font-semibold text-stone-950">Logs</h3>
+              <p className="mt-1 text-xs leading-5 text-stone-500">决定 Markdown 根目录、命名规则和自动写入边界。</p>
+              <div className="mt-4 grid gap-3">
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Vault Root</span>
+                  <input value={behaviorDraft.logs.vault_root} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, vault_root: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                </label>
+                <label>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Naming Pattern</span>
+                  <input value={behaviorDraft.logs.naming_pattern} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, naming_pattern: event.target.value } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                </label>
+                <ToggleRow label="自动写入 Check-in" description="完成/部分完成/没做会追加到当日日志。" checked={behaviorDraft.logs.auto_write_checkin} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, auto_write_checkin: checked } }))} />
+                <ToggleRow label="自动写入复盘" description="日/周/月复盘会沉淀到对应周期 Markdown。" checked={behaviorDraft.logs.auto_write_review} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, auto_write_review: checked } }))} />
+                <ToggleRow label="保护手写内容" description="自动写入只追加或替换系统区块，不能覆盖用户自由记录。" checked={behaviorDraft.logs.preserve_user_edits} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, logs: { ...draft.logs, preserve_user_edits: checked } }))} />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-stone-100 p-4 xl:col-span-2">
+              <h3 className="font-semibold text-stone-950">Agent</h3>
+              <p className="mt-1 text-xs leading-5 text-stone-500">决定 Agent 能读取什么，以及哪些修改必须确认。</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <ToggleRow label="读取 Goals" description="关闭后 Agent 不应基于目标结构回答。" checked={behaviorDraft.agent.can_read_goals} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, can_read_goals: checked } }))} />
+                <ToggleRow label="读取 Logs" description="关闭后 Agent 不应引用 Markdown 日志内容。" checked={behaviorDraft.agent.can_read_logs} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, can_read_logs: checked } }))} />
+                <ToggleRow label="保留对话记忆" description="用于同一主题的持续规划、诊断和复盘。" checked={behaviorDraft.agent.memory_enabled} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, memory_enabled: checked } }))} />
+                <ToggleRow label="目标修改需确认" description="Agent 切换主目标或激活目标前必须等待确认。" checked={behaviorDraft.agent.require_confirm_goal_changes} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, require_confirm_goal_changes: checked } }))} />
+                <ToggleRow label="设置修改需确认" description="Agent 修改模型、提醒或系统行为前必须等待确认。" checked={behaviorDraft.agent.require_confirm_setting_changes} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, require_confirm_setting_changes: checked } }))} />
+                <ToggleRow label="外部动作强确认" description="向 QQ 等外部通道发送或调整计划时必须确认。" checked={behaviorDraft.agent.require_confirm_external_actions} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, require_confirm_external_actions: checked } }))} />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-stone-100 p-4">
+              <h3 className="font-semibold text-stone-950">Data & Privacy</h3>
+              <p className="mt-1 text-xs leading-5 text-stone-500">决定导出和隐私边界。</p>
+              <div className="mt-4 grid gap-3">
+                <ToggleRow label="导出时隐藏密钥" description="导出模型配置时不包含明文 API Key。" checked={behaviorDraft.dataPrivacy.redact_secrets} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, redact_secrets: checked } }))} />
+                <ToggleRow label="导出 Markdown" description="导出目标、日志和 Agent 沉淀的 Markdown 文档。" checked={behaviorDraft.dataPrivacy.export_markdown} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, export_markdown: checked } }))} />
+                <ToggleRow label="本地优先模式" description="预留给后续自部署/本地优先数据策略；当前只保存偏好。" checked={behaviorDraft.dataPrivacy.local_first_mode} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, dataPrivacy: { ...draft.dataPrivacy, local_first_mode: checked } }))} />
+              </div>
+            </div>
+          </div>
         </section>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
