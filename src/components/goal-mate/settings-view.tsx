@@ -226,7 +226,13 @@ export function SettingsView() {
   }
 
   function saveBehaviorSettings() {
-    updateSettings.mutate(behaviorDraft)
+    updateSettings.mutate({
+      ...behaviorDraft,
+      goals: {
+        ...behaviorDraft.goals,
+        max_active_goals: 1,
+      },
+    })
   }
 
   function updateReminder(index: number, patch: Partial<ReminderDraft>) {
@@ -318,7 +324,8 @@ export function SettingsView() {
               <div className="mt-4 grid gap-3">
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Active Goals</span>
-                  <input type="number" min={1} max={3} value={behaviorDraft.goals.max_active_goals} onChange={(event) => setBehaviorDraft((draft) => ({ ...draft, goals: { ...draft.goals, max_active_goals: Math.max(1, Number(event.target.value) || 1) } }))} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" />
+                  <input type="number" min={1} max={1} value={1} disabled className="mt-1 w-full rounded-2xl border border-stone-200 bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-500 outline-none" />
+                  <span className="mt-2 block text-xs leading-5 text-stone-500">v0.1 固定单主目标，避免多个当前焦点互相抢 Today。</span>
                 </label>
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Review Cadence</span>

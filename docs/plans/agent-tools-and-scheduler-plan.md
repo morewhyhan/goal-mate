@@ -240,3 +240,5 @@ P0 提醒类型：
 - 2026-07-02：强化 Agent 确认边界设置闭环，`executeAgentToolWithPrisma` 现在读取 `require_confirm_goal_changes`、`require_confirm_setting_changes`、`require_confirm_external_actions`；目标变更、模型/提醒设置、外部提醒相关工具不再使用固定确认规则。
 
 - 2026-07-02：强化 Data & Privacy 导出闭环，`dataPrivacy.export_markdown` 现在控制 `/api/settings/export` 是否包含 MarkdownDocument/MarkdownDocumentLink；模型密钥仍强制脱敏，不能通过设置关闭脱敏。
+
+- 2026-07-02：修正 Goals 设置边界，v0.1 固定单主目标；Settings 页面不再允许把 `max_active_goals` 改成多个，`/api/settings` 保存时也强制 `max_active_goals=1`，避免形成无效配置。

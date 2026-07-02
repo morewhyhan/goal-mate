@@ -164,6 +164,12 @@ function verifySharedRuntimeContracts() {
     'src/server/api/routes/settings/index.ts scanned',
   )
   record(
+    'AAL-SINGLE-FOCUS-SETTING',
+    'settings API keeps v0.1 single current-focus goal boundary instead of accepting fake multi-active configuration',
+    settingsRoute.includes('max_active_goals: 1'),
+    'src/server/api/routes/settings/index.ts scanned',
+  )
+  record(
     'AAL-QQ-SHARED-RUNTIME',
     'QQ Agent executes through shared executor without duplicated tool branches',
     qqWorker.includes('executeAgentToolWithPrisma') && qqWorker.includes("source: 'scheduler'") && !qqWorker.includes("if (toolName === 'goal.list')") && !qqWorker.includes('async function getCurrentGoal'),

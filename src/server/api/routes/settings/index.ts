@@ -250,7 +250,7 @@ const app = new Hono()
     const input = c.req.valid('json')
     const merged = {
       general: { ...defaultUserSettings.general, ...(input.general || {}) },
-      goals: { ...defaultUserSettings.goals, ...(input.goals || {}) },
+      goals: { ...defaultUserSettings.goals, ...(input.goals || {}), max_active_goals: 1 },
       logs: { ...defaultUserSettings.logs, ...(input.logs || {}) },
       today: { ...defaultUserSettings.today, ...(input.today || {}) },
       agent: { ...defaultUserSettings.agent, ...(input.agent || {}) },
