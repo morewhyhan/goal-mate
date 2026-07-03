@@ -2,6 +2,9 @@ import { prisma } from '@/lib/db'
 import { defaultDeepSeekModel, defaultUserSettings } from '@/server/api/context'
 import { listAgentTools } from '@/lib/agent-tools'
 import { parseAgentToolIntentJson } from '@/lib/agent-tool-shared.mjs'
+import { AGENT_SYSTEM_PROMPT_VERSION, buildAgentSystemPrompt } from '@/lib/agent-prompts'
+import { loadMetaCognitionHypotheses } from '@/lib/meta-cognition-layer.mjs'
+import { resolveModelApiKey } from '@/lib/model-secret.mjs'
 
 function toChatRole(role: string) {
   const normalized = role.toLowerCase()
@@ -91,9 +94,31 @@ function inferReviewType(content: string) {
   return undefined
 }
 
+function buildMetaCognitionPromptContext(hypotheses: any[]) {
+  if (!hypotheses.length) return '暂无活跃元认知。'
+  return hypotheses.slice(0, 5).map((item) => {
+    const policyDelta = asRecord(item.policy_delta)
+    const self = asRecord(item.ai_self_reflection)
+    const increase = Array.isArray(policyDelta.increase) ? policyDelta.increase.join(',') : ''
+    const decrease = Array.isArray(policyDelta.decrease) ? policyDelta.decrease.join(',') : ''
+    return [
+      `- ${trimForPrompt(String(item.claim || item.hypothesis || ''), 180)}`,
+      item.lifecycle_status ? `状态:${item.lifecycle_status}` : '',
+      typeof item.confidence === 'number' ? `置信度:${Math.round(item.confidence * 100)}%` : '',
+      self.next_thinking_rule ? `AI 下次思考:${trimForPrompt(String(self.next_thinking_rule), 180)}` : '',
+      increase ? `策略升权:${increase}` : '',
+      decrease ? `策略降权:${decrease}` : '',
+      policyDelta.verification_signal ? `验证:${trimForPrompt(String(policyDelta.verification_signal), 180)}` : '',
+    ].filter(Boolean).join('；')
+  }).join('\n')
+}
+
 function generateFallbackAgentToolIntent(latestUserContent: string) {
   const content = latestUserContent.trim()
   if (!content) return null
+
+  const feedbackIntent = inferCheckinFeedbackIntent(content)
+  if (feedbackIntent) return feedbackIntent
 
   if (/(查看|列出|有哪些|当前).*(目标)|目标.*(列表|有哪些)/u.test(content)) {
     return { toolName: 'goal.list', input: {}, confidence: 0.82, reason: '本地兜底：用户明确要求查看目标。' }
@@ -150,6 +175,43 @@ function generateFallbackAgentToolIntent(latestUserContent: string) {
   return null
 }
 
+function inferCheckinFeedbackIntent(content: string) {
+  if (/(假如|如果|要是).*(没做|未完成|没推进|做不动)/u.test(content)) return null
+
+  const feedbackInput = {
+    userFeedback: trimForPrompt(content, 240),
+  }
+
+  if (/(完成了|做完了|已经完成|已完成|done)/iu.test(content)) {
+    return {
+      toolName: 'checkin.submit',
+      input: { ...feedbackInput, result: 'done' },
+      confidence: 0.84,
+      reason: '本地兜底：用户明确反馈今日行动已完成，进入 Check-in 闭环。',
+    }
+  }
+
+  if (/(部分完成|做了一点|做了点|只做了|完成一部分|partial)/iu.test(content)) {
+    return {
+      toolName: 'checkin.submit',
+      input: { ...feedbackInput, result: 'partial' },
+      confidence: 0.84,
+      reason: '本地兜底：用户明确反馈今日行动部分完成，进入诊断闭环。',
+    }
+  }
+
+  if (/(没做|没有做|未完成|没完成|没推进|没开始|做不动|失败了|not[_ -]?done)/iu.test(content)) {
+    return {
+      toolName: 'checkin.submit',
+      input: { ...feedbackInput, result: 'not_done' },
+      confidence: 0.84,
+      reason: '本地兜底：用户明确反馈今日行动未完成，进入诊断闭环。',
+    }
+  }
+
+  return null
+}
+
 function filterToolIntentByRuntimeSettings(intent: any, settings: { canReadGoals: boolean; canReadLogs: boolean }) {
   if (!intent?.toolName) return intent
   const goalReadTools = new Set(['goal.list', 'goal.get', 'today.get', 'review.generate'])
@@ -157,8 +219,35 @@ function filterToolIntentByRuntimeSettings(intent: any, settings: { canReadGoals
   return intent
 }
 
+function buildAgentReplyStructuredOutput(input: {
+  naturalReply: string
+  modelName: string
+  ok: boolean
+  runtimeSettings: { canReadGoals: boolean; canReadLogs: boolean; memoryEnabled: boolean }
+  error?: string
+  usage?: unknown
+}) {
+  return {
+    natural_reply: input.naturalReply,
+    tool_intent: null,
+    requires_confirmation: false,
+    tool_result: null,
+    model: {
+      name: input.modelName,
+      ok: input.ok,
+      error: input.error || null,
+      usage: input.usage || null,
+    },
+    context_policy: {
+      can_read_goals: input.runtimeSettings.canReadGoals,
+      can_read_logs: input.runtimeSettings.canReadLogs,
+      memory_enabled: input.runtimeSettings.memoryEnabled,
+    },
+    prompt_version: AGENT_SYSTEM_PROMPT_VERSION,
+  }
+}
+
 export async function generateAssistantReply(userId: string, threadId: string, latestUserContent: string) {
-  const apiKey = process.env.DEEPSEEK_API_KEY
   const [modelConfig, runtimeSettings] = await Promise.all([
     prisma.modelConfig.findFirst({
       where: { userId, isDefault: true },
@@ -166,6 +255,7 @@ export async function generateAssistantReply(userId: string, threadId: string, l
     }),
     loadAgentRuntimeSettings(userId),
   ])
+  const apiKey = resolveModelApiKey(modelConfig)
   const apiBase = String(modelConfig?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
   const modelName = String(modelConfig?.model || defaultDeepSeekModel.model)
 
@@ -178,11 +268,16 @@ export async function generateAssistantReply(userId: string, threadId: string, l
         stagePlans: { orderBy: { sortOrder: 'asc' } },
         dailyActions: { orderBy: { actionDate: 'desc' }, take: 3 },
         reasoningCards: { orderBy: { version: 'desc' }, take: 1 },
+        diagnoses: { orderBy: { createdAt: 'desc' }, take: 3 },
+        reviews: { orderBy: { createdAt: 'desc' }, take: 3 },
       },
     }) : Promise.resolve(null),
     runtimeSettings.memoryEnabled ? prisma.agentMessage.findMany({ where: { userId, threadId }, orderBy: { createdAt: 'desc' }, take: 12 }) : Promise.resolve([]),
   ])
   const markdownDocuments = runtimeSettings.canReadLogs ? await findRelevantMarkdownDocuments(userId, latestUserContent) : []
+  const metaCognitionHypotheses = runtimeSettings.canReadGoals && goal
+    ? await loadMetaCognitionHypotheses(prisma, userId, { goalId: goal.id })
+    : []
 
   const goalContext = !runtimeSettings.canReadGoals
     ? 'Settings 已关闭 Agent 读取 Goals。不要引用目标结构；如果用户需要目标信息，请先说明需要开启 Goals 读取。'
@@ -203,25 +298,39 @@ export async function generateAssistantReply(userId: string, threadId: string, l
     ? markdownDocuments.map((document) => `- ${document.path} [${document.type}]\n${trimForPrompt(document.content, 600)}`).join('\n\n')
     : '暂无 Markdown 文档。'
 
-  const systemPrompt = [
-    '你是 Goal Mate 的 AI 目标秘书。',
-    '你的任务不是闲聊，而是帮助用户澄清目标、理解当前计划、调整下一步行动、整理日志和解释系统状态。',
-    '回答必须具体、简洁、可行动。不要编造不存在的数据；如果需要用户补充信息，直接问一个最关键的问题。',
-    '涉及修改目标、设置、外部发送消息等高风险动作时，只提出建议，不要声称已经执行。',
-    '必须遵守 Settings 读取范围：关闭 Goals 或 Logs 读取时，不得引用对应上下文。',
-    '',
-    '系统已知上下文：',
+  const memoryContext = !runtimeSettings.memoryEnabled
+    ? 'Settings 已关闭 Agent 对话记忆。不要引用历史对话。'
+    : goal
+    ? [
+        `最近复盘：${goal.reviews.map((review) => `${review.type}:${review.nextFocus}`).join('；') || '暂无'}`,
+        `最近诊断：${goal.diagnoses.map((diagnosis) => `${diagnosis.category}:${diagnosis.nextQuestion}`).join('；') || '暂无'}`,
+        `已加载最近对话：${history.length} 条。`,
+      ].join('\n')
+    : `已加载最近对话：${history.length} 条。`
+  const metaCognitionContext = runtimeSettings.memoryEnabled
+    ? buildMetaCognitionPromptContext(metaCognitionHypotheses)
+    : 'Settings 已关闭 Agent 对话记忆。不要引用元认知判断。'
+
+  const systemPrompt = buildAgentSystemPrompt({
     goalContext,
-    '',
-    '相关 Markdown 文档：',
+    memoryContext,
+    metaCognitionContext,
     markdownContext,
-  ].join('\n')
+  })
 
   if (!apiKey) {
+    const content = '我已经保存了你的消息，但当前用户还没有配置模型 API Key，所以还不能调用真实模型。请先在 Settings 里填入自己的模型密钥。'
     return {
-      content: '我已经保存了你的消息，但当前没有配置 DEEPSEEK_API_KEY，所以还不能调用真实模型。请先在 Settings 里完成模型配置。',
+      content,
       modelName,
       ok: false,
+      structuredOutput: buildAgentReplyStructuredOutput({
+        naturalReply: content,
+        modelName,
+        ok: false,
+        runtimeSettings,
+        error: 'missing_api_key',
+      }),
     }
   }
 
@@ -254,42 +363,66 @@ export async function generateAssistantReply(userId: string, threadId: string, l
 
     if (!response.ok) {
       const text = await response.text()
+      const content = `模型调用失败，当前未改动任何计划。状态码：${response.status}。错误摘要：${trimForPrompt(text, 220)}`
       return {
-        content: `模型调用失败，当前未改动任何计划。状态码：${response.status}。错误摘要：${trimForPrompt(text, 220)}`,
+        content,
         modelName,
         ok: false,
+        structuredOutput: buildAgentReplyStructuredOutput({
+          naturalReply: content,
+          modelName,
+          ok: false,
+          runtimeSettings,
+          error: `http_${response.status}`,
+        }),
       }
     }
 
     const data = await response.json()
     const content = data?.choices?.[0]?.message?.content
+    const naturalReply = typeof content === 'string' && content.trim()
+      ? content.trim()
+      : '模型返回为空。我已经保存你的消息，但这次没有得到可用回复。'
     return {
-      content: typeof content === 'string' && content.trim()
-        ? content.trim()
-        : '模型返回为空。我已经保存你的消息，但这次没有得到可用回复。',
+      content: naturalReply,
       modelName,
       ok: true,
+      structuredOutput: buildAgentReplyStructuredOutput({
+        naturalReply,
+        modelName,
+        ok: true,
+        runtimeSettings,
+        usage: data?.usage,
+      }),
     }
   } catch (error) {
+    const content = `模型连接失败，当前未改动任何计划。错误：${error instanceof Error ? error.message : String(error)}`
     return {
-      content: `模型连接失败，当前未改动任何计划。错误：${error instanceof Error ? error.message : String(error)}`,
+      content,
       modelName,
       ok: false,
+      structuredOutput: buildAgentReplyStructuredOutput({
+        naturalReply: content,
+        modelName,
+        ok: false,
+        runtimeSettings,
+        error: error instanceof Error ? error.message : String(error),
+      }),
     }
   }
 }
 
 export async function generateAgentToolIntent(userId: string, latestUserContent: string) {
-  const apiKey = process.env.DEEPSEEK_API_KEY
   const fallbackIntent = generateFallbackAgentToolIntent(latestUserContent)
   const runtimeSettings = await loadAgentRuntimeSettings(userId)
   const allowedFallbackIntent = filterToolIntentByRuntimeSettings(fallbackIntent, runtimeSettings)
-  if (!apiKey) return allowedFallbackIntent
 
   const modelConfig = await prisma.modelConfig.findFirst({
     where: { userId, isDefault: true },
     orderBy: { createdAt: 'asc' },
   })
+  const apiKey = resolveModelApiKey(modelConfig)
+  if (!apiKey) return allowedFallbackIntent
   const apiBase = String(modelConfig?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
   const modelName = String(modelConfig?.model || defaultDeepSeekModel.model)
   const tools = listAgentTools()

@@ -12,6 +12,7 @@ import {
 import {
   executeAgentToolWithPrisma,
 } from '../lib/agent-tool-executor.mjs'
+import { resolveModelApiKey } from '../lib/model-secret.mjs'
 
 const prisma = new PrismaClient()
 
@@ -35,7 +36,7 @@ loadLocalEnv()
 const apiBase = (process.env.QQ_BOT_API_BASE || 'https://api.sgroup.qq.com').replace(/\/+$/, '')
 const appId = process.env.QQ_BOT_APP_ID || ''
 const token = process.env.QQ_BOT_TOKEN || ''
-const defaultUserEmail = process.env.QQ_DEFAULT_USER_EMAIL || 'demo@goalmate.local'
+const defaultUserEmail = process.env.QQ_DEFAULT_USER_EMAIL || ''
 const intents = Number(process.env.QQ_BOT_INTENTS || '33554432')
 const allowedContextIds = new Set(
   (process.env.QQ_ALLOWED_CONTEXT_IDS || '')
@@ -160,7 +161,9 @@ async function resolveUser(contextType, contextId, payload) {
   const existing = await prisma.qqChatBinding.findUnique({ where: { contextType_contextId: { contextType, contextId } } })
   if (existing?.status === 'ENABLED') return existing.userId
 
-  const user = await prisma.user.findUnique({ where: { email: defaultUserEmail } })
+  const user = defaultUserEmail
+    ? await prisma.user.findUnique({ where: { email: defaultUserEmail } })
+    : await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } })
   if (!user) return null
 
   await prisma.qqChatBinding.upsert({
@@ -230,10 +233,10 @@ async function findMarkdownDocuments(userId, input) {
 }
 
 async function generateToolIntent(userId, latestUserContent) {
-  const apiKey = process.env.DEEPSEEK_API_KEY
+  const modelConfig = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
+  const apiKey = resolveModelApiKey(modelConfig)
   if (!apiKey) return null
 
-  const modelConfig = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
   const apiBaseForModel = String(modelConfig?.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
   const modelName = String(modelConfig?.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
 
@@ -449,10 +452,10 @@ async function processSchedulerReply(userId, thread, userMessage, context) {
 }
 
 async function generateReply(userId, threadId, latestUserContent) {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) return '当前服务器没有配置 DEEPSEEK_API_KEY，所以我只能先保存你的消息。'
-
   const modelConfig = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
+  const apiKey = resolveModelApiKey(modelConfig)
+  if (!apiKey) return '当前用户还没有配置模型 API Key，所以我只能先保存你的消息。请先在 Settings 里填入自己的模型密钥。'
+
   const apiBaseForModel = String(modelConfig?.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
   const modelName = String(modelConfig?.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
 

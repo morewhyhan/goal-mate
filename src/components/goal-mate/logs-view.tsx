@@ -184,6 +184,7 @@ export function LogsView() {
           <div>
             <h2 className="text-xl font-semibold text-stone-950">{title}</h2>
             <p className="text-sm text-stone-500">{canSave ? `已连接日志 API · ${saveStatus}` : '选择或创建一篇真实日志后才可以编辑保存'}</p>
+            <p className="mt-1 text-xs text-stone-400">日志用于还原：系统观察、执行结果、偏差判断、下一步调整。</p>
           </div>
           <button disabled={!canSave || !isDirty || updateLog.isPending} onClick={handleSave} className="rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存</button>
         </div>

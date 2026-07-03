@@ -28,12 +28,18 @@ v0.1 必须支持模型配置，默认加入 DeepSeek。
 | model | 是 | deepseek-v4-flash | 默认便宜快速模型 |
 | reasoning_model | 否 | deepseek-reasoner | 复杂目标推理可用 |
 | api_base | 是 | https://api.deepseek.com | API 地址 |
-| api_key | 是 | sk-**** | 密钥，必须脱敏显示 |
+| api_key | 是 | sk-**** | 当前用户自己的模型密钥，保存后必须加密存储，页面和导出只显示脱敏状态 |
 | default_for | 是 | chat / reasoning / summary | 用途 |
 | temperature | 否 | 0.3 | 输出稳定性 |
 | test_connection | 是 | 按钮 | 测试连接是否可用 |
 
-说明：模型名称按当前产品配置显示，实际可用性由后续接入时验证。
+说明：
+
+```text
+模型 API Key 属于用户私有配置，不是服务器全局共享配置。
+```
+
+服务器 `.env` 可以保留 DeepSeek 默认 API Base / 默认模型等非密钥参数，但不能把 `DEEPSEEK_API_KEY` 当作所有用户共用的默认密钥。Web Agent、QQ Agent、Scheduler 和模型测试都必须优先使用当前 session 用户保存的模型密钥。
 
 ## 4. Notifications 配置
 
@@ -83,6 +89,7 @@ v0.1 必须支持模型配置，默认加入 DeepSeek。
 | --- | --- |
 | 每个配置必须有影响说明 | 用户要知道开关/输入会改变什么 |
 | 密钥必须脱敏 | 不明文展示 API Key |
+| 密钥必须按用户隔离 | A 用户配置的模型密钥不能被 B 用户读取、导出或用于调用模型 |
 | 测试连接不保存密钥日志 | 不能把敏感信息写入日志 |
 | 未实现渠道必须标明后续 | 不能假装可用 |
 | 配置面板不能溢出 | 所有控件必须在边界内可读可操作 |
@@ -92,6 +99,8 @@ v0.1 必须支持模型配置，默认加入 DeepSeek。
 | 编号 | Given | When | Then |
 | --- | --- | --- | --- |
 | AC-F5-1 | 用户打开 Settings | 查看 Models | 能看到 DeepSeek、模型、API Base、API Key 和测试连接 |
+| AC-F5-1b | 用户保存 API Key | 再读取 Models 或导出数据 | 只能看到脱敏状态，不能看到明文 key |
 | AC-F5-2 | 用户关闭 Agent 读取 Logs | Agent 回答问题 | Agent 不得引用日志内容 |
 | AC-F5-3 | 用户设置提醒时间 | 保存 | Today 和 Agent 使用新的提醒时间 |
 | AC-F5-4 | 用户导出数据 | 执行 | 导出文件不包含明文 API Key |
+| AC-F5-5 | 两个用户分别配置模型密钥 | Agent / QQ / Scheduler 调用模型 | 各自只能使用自己的模型密钥 |

@@ -61,6 +61,11 @@ export function TodayView() {
 
         <div className="mt-12 max-w-4xl">
           <p className="text-sm uppercase tracking-[0.28em] text-emerald-300">Today</p>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-stone-950">
+            <span className="rounded-full bg-emerald-300 px-3 py-1">当前缺口</span>
+            <span className="rounded-full bg-white px-3 py-1">今日行动</span>
+            <span className="rounded-full bg-white/80 px-3 py-1">反馈更新</span>
+          </div>
           <h1 className="mt-4 text-5xl font-semibold leading-tight md:text-7xl">
             {action?.title || '还没有下一步行动'}
           </h1>
@@ -110,6 +115,7 @@ export function TodayView() {
           <p className="mt-4 rounded-2xl bg-stone-100 p-4 text-sm leading-6 text-stone-700">
             {action?.checkinQuestion || '没有今日行动时不需要打卡。'}
           </p>
+          <p className="mt-3 text-xs leading-5 text-stone-400">反馈后系统会更新行动、条件、KR 或诊断，不只是记录一次打卡。</p>
           <p className="mt-4 text-xs text-stone-400">目标：{goalTitle}</p>
         </section>
         <MomentumHeatmap defaultScope={heatmapScope} entries={apiData?.momentum || []} />

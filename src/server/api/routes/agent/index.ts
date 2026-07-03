@@ -204,6 +204,10 @@ const app = new Hono()
       assistantContent = formatAgentToolReply(pendingAction.toolName, execution)
       structuredOutputType = 'agent_tool_result'
       structuredOutput = {
+        natural_reply: assistantContent,
+        tool_intent: { toolName: pendingAction.toolName, input: pendingAction.input },
+        requires_confirmation: false,
+        tool_result: execution,
         confirmedActionId: pendingAction.id,
         executedActionId: execution.action?.id,
         toolName: pendingAction.toolName,
@@ -220,6 +224,10 @@ const app = new Hono()
         assistantContent = formatAgentToolReply(toolIntent.toolName, execution)
         structuredOutputType = 'agent_tool_result'
         structuredOutput = {
+          natural_reply: assistantContent,
+          tool_intent: toolIntent,
+          requires_confirmation: execution.needsConfirmation,
+          tool_result: execution,
           toolIntent,
           toolActionId: execution.action?.id,
           needsConfirmation: execution.needsConfirmation,
@@ -228,7 +236,10 @@ const app = new Hono()
     }
 
     if (!assistantContent) {
-      assistantContent = (await generateAssistantReply(userId, thread.id, input.content)).content
+      const reply = await generateAssistantReply(userId, thread.id, input.content)
+      assistantContent = reply.content
+      structuredOutputType = structuredOutputType || 'agent_reply'
+      structuredOutput = structuredOutput || reply.structuredOutput
     }
 
     const assistantMessage = await prisma.agentMessage.create({

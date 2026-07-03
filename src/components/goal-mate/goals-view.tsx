@@ -50,6 +50,9 @@ export function GoalsView() {
   const overallProgress = keyResults.length
     ? keyResults.reduce((sum: number, kr: any) => sum + (typeof kr.progress === 'number' ? kr.progress : 0), 0) / keyResults.length
     : 0
+  const satisfiedConditions = conditions.filter((condition: any) => String(condition.status).toUpperCase() === 'SATISFIED').length
+  const activeStageLabel = currentStage?.name || currentStage?.title || '等待阶段计划'
+  const actionLabel = currentAction?.title || '等待今日行动'
 
   return (
     <div className="min-h-[calc(100vh-4rem)] space-y-6 p-6">
@@ -59,6 +62,7 @@ export function GoalsView() {
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Objective</p>
               <h1 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">{title}</h1>
             <p className="mt-4 text-lg leading-8 text-stone-600">{objective}</p>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-stone-400">这是只读状态图：系统只展示目标如何被拆成证明结果、关键条件、当前阶段和今日行动，不要求你在这里维护计划。</p>
           </div>
           <div className="grid w-full max-w-md gap-3">
             <div className="rounded-2xl bg-stone-950 px-5 py-4 text-white">
@@ -86,6 +90,32 @@ export function GoalsView() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[32px] border border-stone-200 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">System State</p>
+            <h2 className="mt-2 text-2xl font-semibold text-stone-950">目标状态链路</h2>
+          </div>
+          <span className="rounded-full bg-stone-100 px-3 py-1 text-xs text-stone-500">目标 → KR → 条件 → 阶段 → 今日</span>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-5">
+          {[
+            { label: '目标', value: title, tone: 'bg-stone-950 text-white' },
+            { label: 'KR 证明', value: keyResults.length ? `${keyResults.length} 条 · ${Math.round(overallProgress * 100)}%` : '等待 KR', tone: 'bg-stone-100 text-stone-950' },
+            { label: '关键条件', value: conditions.length ? `${satisfiedConditions}/${conditions.length} 已满足` : '等待条件', tone: 'bg-stone-100 text-stone-950' },
+            { label: '当前阶段', value: activeStageLabel, tone: 'bg-stone-100 text-stone-950' },
+            { label: '今日行动', value: actionLabel, tone: 'bg-emerald-100 text-stone-950' },
+          ].map((item, index) => (
+            <div key={item.label} className={`relative rounded-3xl p-4 ${item.tone}`}>
+              {index > 0 && <span className="absolute -left-2 top-1/2 hidden h-px w-4 bg-stone-300 lg:block" />}
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-60">{item.label}</p>
+              <p className="mt-3 line-clamp-3 text-sm font-semibold leading-6">{item.value}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-sm leading-6 text-stone-500">用户只需要看懂这条链：今天的行动为什么存在，以及它正在补齐哪个目标缺口。</p>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">

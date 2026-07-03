@@ -29,6 +29,8 @@ pnpm verify:deployment-config:write
 | DEPLOY-README | systemd README | 包含安装、启动、状态、日志查看命令 |
 | DEPLOY-ENV-EXAMPLE | `.env.example` | 包含部署所需环境变量 |
 | DEPLOY-ENV-RECOMMENDED | `.env.example` 建议变量 | 包含 `QQ_ALLOWED_CONTEXT_IDS` 和 `QQ_SCHEDULER_REPLY_WINDOW_HOURS` |
+| DEPLOY-ENV-DEFAULTS | `.env.example` 默认变量 | 默认端口、Host、模型、QQ API 和 Scheduler 时间存在，但不要求用户必填 |
+| DEPLOY-SETTINGS-UI | Settings 部署状态 | Settings 能展示部署必填项、缺失项，并区分 env-only secrets 和 UI-managed 参数 |
 | DEPLOY-ENV-PLACEHOLDERS | `.env.example` 占位符 | 不使用真实 API Key 或 Bot Token 形状的占位符 |
 | DEPLOY-DESIGN-DOC | 部署事实文档 | 引用 `deploy/systemd` 并保留真实部署缺口 |
 | DEPLOY-RUNTIME-PLAN | 服务器运行验收计划 | `docs/plans/self-hosted-runtime-verification-plan.md` 说明真实长期运行验证步骤 |

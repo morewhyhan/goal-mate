@@ -64,6 +64,22 @@
 | INV-5 | API Key 不明文返回 | ModelConfig.apiKeyRef |
 | INV-6 | 日志不能覆盖用户手写内容 | LogEntry.content + log_patch write_mode 规则 |
 
-## 8. 当前未做
+## 8. 当前状态
 
-本次只完成 schema 设计，未执行迁移，未生成 Prisma Client，未接 Hono routes。旧迁移文件仍来自模板阶段，后续进入数据库落地时需要重新生成迁移或执行 reset 策略。
+当前 `src/prisma/schema.prisma` 已经承载 Goal Mate v0.1 的核心模型：
+
+- 目标推进核心模型。
+- MarkdownDocument 和 MarkdownDocumentLink。
+- AgentThread 和 AgentMessage。
+- ModelConfig 和 UserSetting。
+- QQ Bot 绑定和消息事件。
+- ReminderRule 和 SchedulerEvent。
+- AgentToolAction 审计。
+
+后续如果继续演进，需要优先同步：
+
+- schema。
+- API route。
+- seed / demo data。
+- `docs/designs/prisma-data-model.md`。
+- `docs/designs/database.sql`。

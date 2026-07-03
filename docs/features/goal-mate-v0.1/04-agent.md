@@ -4,6 +4,8 @@
 
 Agent 是用户和系统沟通的主要入口。它不是只聊天，也不是替用户自动推进一切；它负责理解目标、追问关键问题、生成结构化计划、诊断未完成原因，并帮助用户控制 Goal Mate。
 
+Agent 的核心边界是：用户只需要输入想达到的结果和每日完成情况；中间的规划、诊断、风险控制、下一步调整和主动追问策略由 AI 负责。
+
 ## 2. Agent 必须知道什么
 
 Agent 可以读取当前用户授权范围内的：
@@ -26,8 +28,10 @@ Agent 可以读取当前用户授权范围内的：
 | 生成目标草稿 | 把用户的一段目标表达落成 Goal、推理卡、KR、必要条件、阶段计划、今日行动和目标 Markdown。 |
 | 今日行动 | “今天只做这一步，因为它补齐当前缺口。” |
 | 未完成诊断 | “这更像动作太大，还是提醒不合适？” |
+| 自主干预 | 根据目标状态决定现在应该追问、提示风险、降难度还是建议重审 |
+| 元认知更新 | 根据干预是否有效，更新对用户动机、能力、风险点、提示时机和表达偏好的判断 |
 | 路径调整 | “连续三天没做，可能不是时间问题，而是目标吸引力不足。” |
-| 复盘生成 | “这周真正补齐的是学习节奏，而不是英语能力本身。” |
+| 复盘生成 | “这周真正补齐的是执行节奏，而不是能力结果本身。” |
 | 系统控制 | “把提醒改到晚上 8:30，并把日志写入本周周志。” |
 
 ## 4. 输出规则
@@ -39,6 +43,8 @@ Agent 重要输出必须能结构化保存。
 | goal_reasoning_card | purpose_summary, success_signals, key_results, necessary_conditions, current_gap |
 | daily_action | title, linked_condition, done_when, minimum_step, fallback_action |
 | diagnosis | category, evidence, adjustment_type, next_question |
+| intervention_decision | intervention_type, risk_point, message, fallback_action, reasoning_summary, verification_signal |
+| meta_cognition_hypothesis | hypothesis, scope, evidence, causal_explanation, decision_impact, verification_signal |
 | review | progress_summary, condition_changes, blocker_summary, next_focus |
 | setting_change_draft | setting_key, old_value, new_value, requires_confirmation |
 | log_patch | target_log, markdown_content, source_context |
@@ -75,3 +81,5 @@ Agent 重要输出必须能结构化保存。
 | AC-F3-2 | 用户说“今天没做” | Agent 回答 | 必须进入诊断，而不是简单鼓励 |
 | AC-F3-3 | Agent 建议改提醒 | 用户未确认 | 设置不得被实际修改 |
 | AC-F3-4 | 用户打开 Agent | 页面加载 | 输入框固定可见，历史记录存在 |
+| AC-F3-5 | Agent 主动或被动给出下一步 | 输出前 | 必须考虑方向、难度、提示、路径和当前风险点 |
+| AC-F3-6 | Agent 沉淀长期判断 | 保存前 | 必须符合 Memory Quality：充分、必要、因果明确、语言清晰、可验证或可证伪 |

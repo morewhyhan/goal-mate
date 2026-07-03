@@ -24,7 +24,7 @@ export function inferDiagnosis(input: {
       adjustmentType: 'SIMPLIFY' as AdjustmentType,
       evidence: input.feedback || '行动耗时较长或用户反馈执行成本过高。',
       nextQuestion: '这一步是太大、太难，还是不知道从哪里开始？',
-      proposedNextAction: '把下一步缩小到 10 到 20 分钟内可以完成的版本。',
+      proposedNextAction: '把下一步缩小到用户当下可承受的最小版本。',
     }
   }
 

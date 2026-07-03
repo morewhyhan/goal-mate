@@ -27,7 +27,7 @@
 | `BETTER_AUTH_URL` | 待填写 | 只记录域名/IP 是否正确，不记录敏感信息 |
 | `NEXT_PUBLIC_BETTER_AUTH_URL` | 待填写 | 只记录域名/IP 是否正确 |
 | `NEXT_PUBLIC_APP_URL` | 待填写 | 只记录域名/IP 是否正确 |
-| `DEEPSEEK_API_KEY` | 待填写 | 不记录值 |
+| 用户模型 API Key | 待填写 | 在 Settings 中按账号配置；报告只记录是否已配置，不记录值 |
 | `DEEPSEEK_API_BASE` | 待填写 | 不记录值 |
 | `DEEPSEEK_MODEL` | 待填写 | 不记录值 |
 | `QQ_BOT_APP_ID` | 待填写 | 不记录值 |

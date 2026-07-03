@@ -22,7 +22,7 @@ export function useSignIn() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auth-session'] })
       toast.success('登录成功')
-      router.push('/dashboard')
+      router.push('/dashboard/today')
     },
     onError: (error: Error) => {
       toast.error(error.message || '登录失败，请检查邮箱和密码')
@@ -49,7 +49,7 @@ export function useSignUp() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auth-session'] })
       toast.success('注册成功')
-      router.push('/dashboard')
+      router.push('/dashboard/today')
     },
     onError: (error: Error) => {
       toast.error(error.message || '注册失败，请稍后再试')
@@ -72,7 +72,7 @@ export function useSignOut() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auth-session'] })
       toast.success('已登出')
-      router.push('/')
+      router.push('/login')
     },
     onError: (error: Error) => {
       toast.error(error.message || '登出失败')

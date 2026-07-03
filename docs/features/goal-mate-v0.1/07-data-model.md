@@ -9,6 +9,8 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | 实体 | 说明 | v0.1 |
 | --- | --- | --- |
 | User | 用户 | 必须 |
+| Session | 登录会话 | 必须 |
+| Account | 登录方式 | 必须 |
 | Goal | 目标 | 必须 |
 | GoalReasoningCard | 目标推理卡 | 必须 |
 | KeyResult | 关键结果 | 必须 |
@@ -41,7 +43,24 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 
 ## 4. 关键字段
 
-### 4.1 Goal
+### 4.1 User / Session / Account
+
+认证模型由 Better Auth 持久化，业务表只使用当前 session 推导出的 user_id。
+
+| 实体 | 关键字段 | 说明 |
+| --- | --- | --- |
+| User | id, name, email, emailVerified, image, createdAt, updatedAt | 用户身份 |
+| Session | id, userId, token, expiresAt, ipAddress, userAgent | 当前登录会话 |
+| Account | id, userId, providerId, accountId, password | 邮箱密码或后续外部登录方式 |
+
+规则：
+
+```text
+前端不能传 userId。
+后端业务接口只能从 session 读取当前用户。
+```
+
+### 4.2 Goal
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -58,7 +77,7 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | created_at | datetime | 是 | 创建时间 |
 | updated_at | datetime | 是 | 更新时间 |
 
-### 4.2 GoalReasoningCard
+### 4.3 GoalReasoningCard
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -74,7 +93,7 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | evidence | json | 是 | 依据 |
 | status | enum | 是 | draft, pending_user_confirmation, confirmed, stale |
 
-### 4.3 KeyResult
+### 4.4 KeyResult
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -87,7 +106,7 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | progress | number | 是 | 0 到 1 |
 | status | enum | 是 | active, achieved, at_risk, abandoned |
 
-### 4.4 LogEntry
+### 4.5 LogEntry
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -102,7 +121,7 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | created_at | datetime | 是 | 创建时间 |
 | updated_at | datetime | 是 | 更新时间 |
 
-### 4.5 ModelConfig
+### 4.6 ModelConfig
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -111,7 +130,7 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | provider | string | 是 | DeepSeek 等 |
 | model | string | 是 | deepseek-v4-flash 等 |
 | api_base | string | 是 | API 地址 |
-| api_key_ref | string | 是 | 密钥安全引用 |
+| api_key_ref | string | 否 | 当前用户模型密钥的加密引用，或显式 env:KEY 兼容引用 |
 | usage | enum | 是 | chat, reasoning, summary |
 | is_default | boolean | 是 | 是否默认 |
 
@@ -127,3 +146,5 @@ v0.1 数据模型服务单主目标完整推进闭环，同时为后续多目标
 | D-R6 | LogEntry 的 path 必须防止路径穿越 |
 | D-R7 | API Key 不保存明文，只保存加密值或安全引用 |
 | D-R8 | AI 关键输出必须保存版本和依据 |
+| D-R9 | 用户身份只能来自 session，所有私有资源必须按当前用户隔离 |
+| D-R10 | ModelConfig 的密钥必须按 user_id 隔离；页面、导出、Agent 工具读取不能返回明文 |

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { zValidator } from '../../validator'
 import { prisma } from '@/lib/db'
 import { defaultDeepSeekModel, defaultUserSettings, getCurrentUserId, unauthorized } from '../../context'
+import { AGENT_SYSTEM_PROMPT_VERSION } from '@/lib/agent-prompts'
+import { maskModelConfig, resolveModelApiKey } from '@/lib/model-secret.mjs'
 
 const settingsSchema = z.object({
   general: z.record(z.string(), z.unknown()).optional(),
@@ -36,17 +38,9 @@ const defaultReminderRules = [
   { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
 ]
 
-function redactModel(config: any) {
-  return { ...config, apiKeyRef: config.apiKeyRef ? 'sk-••••••••••••' : '' }
-}
-
 function modelForSettings(config: any) {
   if (!config) return null
-  return {
-    ...config,
-    apiKeyRef: config.apiKeyRef || 'DEEPSEEK_API_KEY',
-    apiKeyConfigured: Boolean(process.env[config.apiKeyRef || 'DEEPSEEK_API_KEY'] || process.env.DEEPSEEK_API_KEY),
-  }
+  return maskModelConfig(config)
 }
 
 function maskContextId(contextId: string) {
@@ -61,6 +55,85 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function readBooleanSetting(value: unknown, fallback: boolean) {
   return typeof value === 'boolean' ? value : fallback
+}
+
+function envConfigured(key: string) {
+  return typeof process.env[key] === 'string' && process.env[key]!.trim().length > 0
+}
+
+function maskEnvValue(value?: string) {
+  if (!value) return ''
+  if (value.length <= 10) return 'configured'
+  return `${value.slice(0, 4)}...${value.slice(-4)}`
+}
+
+function deploymentEnvConfig() {
+  const minimumRequired = [
+    {
+      key: 'DATABASE_URL',
+      label: '数据库文件',
+      configured: envConfigured('DATABASE_URL'),
+      secret: false,
+      value: process.env.DATABASE_URL || 'file:./goal-mate.db',
+      reason: '保存目标、日志、对话、提醒和审计。',
+    },
+    {
+      key: 'NEXT_PUBLIC_APP_URL',
+      label: 'Web 访问地址',
+      configured: envConfigured('NEXT_PUBLIC_APP_URL'),
+      secret: false,
+      value: process.env.NEXT_PUBLIC_APP_URL || 'http://服务器IP:3000',
+      reason: '登录、前端 API 和回调统一使用这一项。',
+    },
+    {
+      key: 'QQ_BOT_APP_ID',
+      label: 'QQ App ID',
+      configured: envConfigured('QQ_BOT_APP_ID'),
+      secret: false,
+      value: maskEnvValue(process.env.QQ_BOT_APP_ID),
+      reason: 'QQ Worker 连接机器人必须有这一项。',
+    },
+    {
+      key: 'QQ_BOT_TOKEN',
+      label: 'QQ Token',
+      configured: envConfigured('QQ_BOT_TOKEN'),
+      secret: true,
+      value: maskEnvValue(process.env.QQ_BOT_TOKEN),
+      reason: 'QQ Worker 获取 access token 必须有这一项。',
+    },
+  ]
+
+  return {
+    profile: 'single-server-systemd',
+    minimumRequired,
+    missingKeys: minimumRequired.filter((item) => !item.configured).map((item) => item.key),
+    uiManaged: [
+      '模型 provider/model/apiBase/temperature',
+      '每个用户自己的模型 API Key',
+      '早中晚和周复盘提醒时间',
+      'Agent 读取 Goals/Logs/Memory 权限',
+      'Check-in/Review 自动写入日志',
+      '导出、清除记忆和清除工作区数据',
+    ],
+    defaulted: [
+      { key: 'PORT', value: process.env.PORT || '3000' },
+      { key: 'HOSTNAME', value: process.env.HOSTNAME || '0.0.0.0' },
+      { key: 'DEEPSEEK_API_BASE', value: process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com' },
+      { key: 'DEEPSEEK_MODEL', value: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash' },
+      { key: 'QQ_BOT_API_BASE', value: process.env.QQ_BOT_API_BASE || 'https://api.sgroup.qq.com' },
+      { key: 'QQ_BOT_INTENTS', value: process.env.QQ_BOT_INTENTS || '33554432' },
+      { key: 'SCHEDULER_TICK_SECONDS', value: process.env.SCHEDULER_TICK_SECONDS || '60' },
+      { key: 'SCHEDULER_TIMEZONE', value: process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai' },
+    ],
+    optionalOverrides: [
+      'BETTER_AUTH_URL',
+      'NEXT_PUBLIC_BETTER_AUTH_URL',
+      'GOAL_MATE_SECRET',
+      'QQ_DEFAULT_USER_EMAIL',
+      'QQ_ALLOWED_CONTEXT_IDS',
+      'QQ_SCHEDULER_REPLY_WINDOW_HOURS',
+    ],
+  }
 }
 
 async function ensureDefaultModel(userId: string) {
@@ -79,7 +152,7 @@ async function ensureDefaultReminderRules(userId: string) {
 }
 
 async function probeModelConnection(model: any) {
-  const apiKey = process.env.DEEPSEEK_API_KEY
+  const apiKey = resolveModelApiKey(model)
   const apiBase = String(model?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
   const modelName = String(model?.model || defaultDeepSeekModel.model)
 
@@ -88,7 +161,7 @@ async function probeModelConnection(model: any) {
       ok: false,
       provider: model?.provider || defaultDeepSeekModel.provider,
       model: modelName,
-      message: '缺少 DEEPSEEK_API_KEY，无法测试模型连接。',
+      message: '当前用户没有配置模型 API Key，无法测试连接。',
     }
   }
 
@@ -241,7 +314,42 @@ const app = new Hono()
     const enabledQqBindings = qqBindings.filter((binding) => binding.status === 'ENABLED')
     const pendingToolActions = toolActions.filter((action) => action.status === 'pending_confirmation')
     const failedToolActions = toolActions.filter((action) => action.status === 'failed')
+    const failedSchedulerEvents = schedulerEvents.filter((event) => event.status === 'failed')
     const latestSchedulerEvent = schedulerEvents[0]
+    const deploymentConfig = deploymentEnvConfig()
+    const recentQqPayload = recentQqEvent?.payload
+    const recentQqPayloadRecord =
+      recentQqPayload && typeof recentQqPayload === 'object' && !Array.isArray(recentQqPayload)
+        ? recentQqPayload as Record<string, unknown>
+        : {}
+    const recentQqErrorMessage = [
+      recentQqPayloadRecord.errorMessage,
+      recentQqPayloadRecord.error,
+      recentQqPayloadRecord.message,
+    ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    const recentErrors = [
+      ...failedToolActions.map((action) => ({
+        source: 'agent_tool',
+        id: action.id,
+        label: action.toolName,
+        message: action.errorMessage || '工具动作失败。',
+        createdAt: action.createdAt,
+      })),
+      ...failedSchedulerEvents.map((event) => ({
+        source: 'scheduler',
+        id: event.id,
+        label: `${event.eventType}/${event.channel}`,
+        message: event.errorMessage || '调度事件失败。',
+        createdAt: event.createdAt,
+      })),
+      ...(recentQqEvent?.status === 'failed' ? [{
+        source: 'qq',
+        id: recentQqEvent.id,
+        label: recentQqEvent.eventType,
+        message: recentQqErrorMessage || 'QQ 消息处理失败。',
+        createdAt: recentQqEvent.createdAt,
+      }] : []),
+    ].slice(0, 8)
 
     return c.json({
       data: {
@@ -282,7 +390,24 @@ const app = new Hono()
             label: failedToolActions.length ? '存在失败工具动作' : pendingToolActions.length ? '存在待确认动作' : '工具审计正常',
             evidence: `pending=${pendingToolActions.length}; failed=${failedToolActions.length}; recent=${toolActions.length}`,
           },
+          prompt: {
+            status: 'ok',
+            label: 'Agent Prompt 已版本化',
+            evidence: AGENT_SYSTEM_PROMPT_VERSION,
+          },
+          deployment: {
+            status: deploymentConfig.missingKeys.length ? 'missing' : 'ready',
+            label: deploymentConfig.missingKeys.length ? '部署参数未齐' : '部署参数已齐',
+            evidence: deploymentConfig.missingKeys.length ? deploymentConfig.missingKeys.join(', ') : `${deploymentConfig.minimumRequired.length}/${deploymentConfig.minimumRequired.length} ready`,
+          },
+          recentErrors: {
+            status: recentErrors.length ? 'attention' : 'ok',
+            label: recentErrors.length ? '存在最近错误' : '暂无最近错误',
+            evidence: `count=${recentErrors.length}`,
+          },
         },
+        deploymentConfig,
+        recentErrors,
         permissionPolicy: {
           read: '直接执行',
           draft: '生成草稿',
@@ -440,7 +565,7 @@ const app = new Hono()
         markdownDocuments,
         markdownLinks,
         agentThreads: threads,
-        models: models.map(redactModel),
+        models: models.map(maskModelConfig),
         settings,
         reminderRules,
         toolActions,

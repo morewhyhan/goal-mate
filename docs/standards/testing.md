@@ -45,6 +45,31 @@ pnpm verify:dashboard-browser:auth
 
 该命令会创建或登录本地验收用户，生成一套真实 seed 数据，把 session cookie 直接注入浏览器。报告不会写出 cookie。
 
+登录注册 UI 验收入口：
+
+```bash
+cd src
+pnpm verify:auth-ui
+```
+
+该命令会用真实浏览器检查 `/login`、未登录 Dashboard 门禁、注册、退出和再次登录。它不写出真实密码或 cookie，报告可通过 `pnpm verify:auth-ui:write` 写入 `docs/plans/auth-ui-last-run.md`。
+
+登录与数据隔离验收入口：
+
+```bash
+cd src
+pnpm verify:auth-isolation
+```
+
+该命令会创建两个临时真实登录用户，分别写入不同目标、日志、Agent 对话和模型配置，再用对方 session 尝试读取。预期只能读自己的列表，直读对方资源 ID 必须返回 `404`，未登录访问私有 API 必须返回 `401`。报告可通过 `pnpm verify:auth-isolation:write` 写入 `docs/plans/auth-isolation-last-run.md`。
+
+该验收还必须覆盖模型 API Key：
+
+- A / B 用户分别通过 `/api/models` 保存自己的 API Key。
+- API 响应、Settings 导出、Agent 工具读取都不能返回明文。
+- 数据库中保存的是加密引用，不是 `sk-...` 明文。
+- Web Agent、QQ Agent、Scheduler 必须按当前 userId 使用对应 ModelConfig。
+
 ## Agent 验收
 
 - 输入框始终可见。

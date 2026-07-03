@@ -29,7 +29,7 @@ const pages = [
     id: 'today',
     path: '/dashboard/today',
     requiredText: ['年度推进热力图'],
-    authenticatedText: ['走路 2 小时，并同步背单词', '完成 120 分钟步行'],
+    authenticatedText: ['Current focus', 'DONE WHEN', 'MINIMUM', 'FALLBACK', '退出登录'],
     evaluate: pageCheckExpression(`
       const cells = [...document.querySelectorAll('[title^="week "]')]
       const sample = cells[0]?.getBoundingClientRect()
@@ -45,7 +45,7 @@ const pages = [
     id: 'goals',
     path: '/dashboard/goals',
     requiredText: ['Key Results', 'Conditions', 'Cycle Plan'],
-    authenticatedText: ['2026 暑假主目标推进', '体重从 165 斤降到接近 130 斤'],
+    authenticatedText: ['8 周成果目标推进', '核心结果达到可验证标准'],
     evaluate: pageCheckExpression(`
       const appMain = document.querySelector('main')
       const text = appMain?.innerText || bodyText

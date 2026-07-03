@@ -6,6 +6,16 @@ import {
   getSharedCurrentGoal,
 } from './agent-tool-business-helpers.mjs'
 import { ensureLogPeriodRollups } from './log-period-rollup.mjs'
+import { applyReviewStateUpdate } from './review-state-update.mjs'
+import {
+  buildMetaCognitionFromReview,
+  evaluateInterventionEffectiveness,
+  evaluateMetaCognitionHypotheses,
+  loadMetaCognitionHypotheses,
+  persistMetaCognitionEvaluations,
+  persistMetaCognitionHypothesis,
+} from './meta-cognition-layer.mjs'
+import { maskModelConfig } from './model-secret.mjs'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const metricTypes = new Set(['BOOLEAN', 'COUNT', 'PERCENT', 'WEIGHT', 'TEXT'])
@@ -292,6 +302,10 @@ function buildSharedReviewMarkdown(input) {
   const notDoneCount = input.checkins.filter((item) => item.result === 'NOT_DONE').length
   const missingConditions = input.conditions.filter((item) => item.status === 'MISSING' || item.status === 'PARTIAL')
   const nextCondition = missingConditions[0]?.title || input.conditions[0]?.title || '继续确认当前关键条件'
+  const metaEvaluations = Array.isArray(input.metaEvaluations) ? input.metaEvaluations : []
+  const supported = metaEvaluations.filter((item) => item.evaluation_result === 'supported').length
+  const contradicted = metaEvaluations.filter((item) => item.evaluation_result === 'contradicted').length
+  const inconclusive = metaEvaluations.filter((item) => item.evaluation_result === 'inconclusive').length
 
   return [
     `# ${input.goalTitle} ${input.type} review`,
@@ -313,6 +327,12 @@ function buildSharedReviewMarkdown(input) {
     '## 未完成诊断',
     '',
     ...(input.diagnoses.length ? input.diagnoses.map((diagnosis) => `- ${diagnosis.category}：${diagnosis.nextQuestion}`) : ['- 暂无明确诊断。']),
+    '',
+    '## 控制回合有效性',
+    '',
+    input.interventionEffectiveness?.status ? `- 最近干预效果：${input.interventionEffectiveness.status}` : '- 最近干预效果：暂无可判断证据',
+    `- 元认知评估：supported ${supported} / contradicted ${contradicted} / inconclusive ${inconclusive}`,
+    ...(metaEvaluations.length ? metaEvaluations.slice(0, 5).map((item) => `- ${item.hypothesis_id || 'unknown'}：${item.evaluation_result}；${item.reason}`) : ['- 暂无活跃元认知可评估。']),
     '',
     '## 下周期重点',
     '',
@@ -539,25 +559,63 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
       include: {
         keyResults: true,
         conditions: true,
+        stagePlans: { orderBy: { sortOrder: 'asc' } },
+        reasoningCards: { orderBy: { version: 'desc' }, take: 1 },
         checkins: { orderBy: { createdAt: 'desc' }, take: 50 },
         diagnoses: { orderBy: { createdAt: 'desc' }, take: 20 },
       },
     })
     if (!detail) throw new Error('目标不存在。')
 
-    const markdown = buildSharedReviewMarkdown({
-      type,
-      goalTitle: detail.title,
-      keyResults: detail.keyResults,
-      conditions: detail.conditions,
-      checkins: detail.checkins,
-      diagnoses: detail.diagnoses,
-    })
     const logPath = buildSharedReviewLogPath(type, periodEnd)
     const logTitle = logPath.split('/').pop() || logPath
     const autoWriteReview = await readSharedLogBooleanSetting(prisma, userId, 'auto_write_review', true)
 
     const result = await prisma.$transaction(async (tx) => {
+      const stateUpdate = await applyReviewStateUpdate(tx, userId, detail.id)
+      const latestSchedulerEvent = await tx.schedulerEvent.findFirst({
+        where: { userId, status: { in: ['sent', 'responded', 'failed'] } },
+        orderBy: { createdAt: 'desc' },
+      })
+      const interventionDecision = latestSchedulerEvent?.payload?.intervention_decision || null
+      const interventionEffectiveness = evaluateInterventionEffectiveness({
+        interventionDecision,
+        checkins: detail.checkins,
+        diagnoses: detail.diagnoses,
+      })
+      const activeMetaCognition = await loadMetaCognitionHypotheses(tx, userId, { goalId: detail.id })
+      const metaEvaluations = evaluateMetaCognitionHypotheses(activeMetaCognition, {
+        checkin: detail.checkins[0],
+        diagnosis: detail.diagnoses[0],
+        interventionDecision,
+      })
+      const metaCognitionEvaluationWrite = await persistMetaCognitionEvaluations(tx, userId, metaEvaluations, {
+        goalId: detail.id,
+        source: 'review.generate',
+      })
+      const metaHypothesis = buildMetaCognitionFromReview({
+        userId,
+        goal: detail,
+        checkins: detail.checkins,
+        diagnoses: detail.diagnoses,
+        interventionDecision,
+        interventionEvaluation: interventionEffectiveness,
+      })
+      const metaCognition = await persistMetaCognitionHypothesis(tx, userId, metaHypothesis, {
+        goalId: detail.id,
+        source: 'review.generate',
+        evaluations: metaEvaluations,
+      })
+      const markdown = buildSharedReviewMarkdown({
+        type,
+        goalTitle: detail.title,
+        keyResults: detail.keyResults,
+        conditions: detail.conditions,
+        checkins: detail.checkins,
+        diagnoses: detail.diagnoses,
+        interventionEffectiveness,
+        metaEvaluations,
+      })
       let logEntry = null
       let markdownDocument = null
       if (autoWriteReview) {
@@ -592,6 +650,9 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
               kind: 'review',
               reviewType: type,
               goalTitle: detail.title,
+              interventionEffectiveness,
+              metaCognitionEvaluations: metaEvaluations,
+              metaCognitionHypothesis: metaCognition.saved ? metaCognition.hypothesis : null,
             },
           },
           create: {
@@ -607,6 +668,9 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
               kind: 'review',
               reviewType: type,
               goalTitle: detail.title,
+              interventionEffectiveness,
+              metaCognitionEvaluations: metaEvaluations,
+              metaCognitionHypothesis: metaCognition.saved ? metaCognition.hypothesis : null,
             },
           },
         })
@@ -630,14 +694,14 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
           periodStart,
           periodEnd,
           progressSummary: `本周期围绕「${detail.title}」生成复盘草案。`,
-          conditionChanges: detail.conditions.map((condition) => ({ title: condition.title, status: condition.status })),
-          blockerSummary: detail.diagnoses[0]?.nextQuestion || '暂无明确阻塞。',
-          nextFocus: detail.conditions.find((condition) => condition.status !== 'SATISFIED')?.title || '继续保持当前节奏。',
+          conditionChanges: stateUpdate.conditionChanges,
+          blockerSummary: stateUpdate.blockerSummary,
+          nextFocus: stateUpdate.nextFocus,
           logEntryId: logEntry?.id,
         },
       })
 
-      return { review, logEntry, markdownDocument, markdown, autoWriteReview }
+      return { review, logEntry, markdownDocument, markdown, autoWriteReview, stateUpdate, interventionEffectiveness, metaCognition, metaEvaluations, metaCognitionEvaluationWrite }
     })
     return { targetId: result.review.id, result }
   }
@@ -647,7 +711,7 @@ export async function runSharedReadDraftToolHandler(prisma, userId, toolName, in
       where: { userId, isDefault: true },
       orderBy: { createdAt: 'asc' },
     })
-    return { targetId: modelConfig?.id, result: modelConfig }
+    return { targetId: modelConfig?.id, result: maskModelConfig(modelConfig) }
   }
 
   throw new Error(`共享读取/草稿工具暂不支持：${toolName}`)

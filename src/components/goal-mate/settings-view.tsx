@@ -153,12 +153,16 @@ export function SettingsView() {
   const qqBindings = data?.qqBindings || []
   const toolActions = data?.toolActions || []
   const schedulerEvents = data?.schedulerEvents || []
+  const deploymentConfig = data?.deploymentConfig
+  const deploymentRequired = deploymentConfig?.minimumRequired || []
+  const deploymentMissing = deploymentConfig?.missingKeys || []
 
   const [modelDraft, setModelDraft] = useState({
     provider: 'DeepSeek',
     model: 'deepseek-v4-flash',
     reasoningModel: '',
     apiBase: 'https://api.deepseek.com',
+    apiKey: '',
     temperature: '0.3',
   })
   const [reminderDrafts, setReminderDrafts] = useState<ReminderDraft[]>(defaultReminderDrafts)
@@ -171,6 +175,7 @@ export function SettingsView() {
       model: model.model || 'deepseek-v4-flash',
       reasoningModel: model.reasoningModel || '',
       apiBase: model.apiBase || 'https://api.deepseek.com',
+      apiKey: '',
       temperature: String(model.temperature ?? 0.3),
     })
   }, [model?.id, model?.provider, model?.model, model?.reasoningModel, model?.apiBase, model?.temperature])
@@ -215,6 +220,7 @@ export function SettingsView() {
       model: modelDraft.model,
       reasoningModel: modelDraft.reasoningModel || undefined,
       apiBase: modelDraft.apiBase,
+      apiKey: modelDraft.apiKey.trim() || undefined,
       usage: 'CHAT',
       isDefault: true,
       temperature: Number.isFinite(temperature) ? temperature : 0.3,
@@ -290,10 +296,10 @@ export function SettingsView() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-stone-950 md:text-4xl">让 Agent 稳定工作</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">
-                这里配置 Agent 能不能工作：模型、提醒、QQ 通道、工具权限和数据导出。
+                设置页是系统控制参数，不是普通开关集合。这里决定 Agent 用什么模型思考、什么时候主动找你、能读取什么上下文、反馈如何写入日志，以及数据如何导出或清除。
               </p>
             </div>
-            <div className="grid min-w-0 grid-cols-3 gap-2 rounded-3xl bg-stone-950 p-3 text-white">
+            <div className="grid min-w-0 grid-cols-2 gap-2 rounded-3xl bg-stone-950 p-3 text-white sm:grid-cols-4">
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">Model</p>
                 <p className="mt-1 truncate text-sm font-semibold">{model?.model || '未配置'}</p>
@@ -306,9 +312,32 @@ export function SettingsView() {
                 <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">Tools</p>
                 <p className="mt-1 text-sm font-semibold">{toolActions.length} 条记录</p>
               </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">Deploy</p>
+                <p className="mt-1 text-sm font-semibold">{deploymentMissing.length ? `缺 ${deploymentMissing.length} 项` : '可部署'}</p>
+              </div>
             </div>
           </div>
         </header>
+
+        <section className="rounded-[32px] border border-stone-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Control Parameters</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-5">
+            {[
+              { label: '模型', value: '决定 Agent 怎么理解目标和诊断偏差' },
+              { label: '提醒', value: '决定控制信号何时触达用户' },
+              { label: '权限', value: '决定 Agent 能观察哪些状态' },
+              { label: '日志', value: '决定反馈如何沉淀为证据' },
+              { label: '数据', value: '决定记忆、导出和隐私边界' },
+            ].map((item, index) => (
+              <div key={item.label} className="relative rounded-3xl bg-stone-50 p-4">
+                {index > 0 && <span className="absolute -left-2 top-1/2 hidden h-px w-4 bg-stone-300 md:block" />}
+                <p className="text-sm font-semibold text-stone-950">{item.label}</p>
+                <p className="mt-2 text-xs leading-5 text-stone-500">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="grid gap-3 md:grid-cols-5">
           {Object.entries(runtimeStatus).map(([key, item]: [string, any]) => (
@@ -321,6 +350,58 @@ export function SettingsView() {
               <p className="mt-1 break-words text-xs text-stone-500">{item?.evidence || 'no evidence'}</p>
             </div>
           ))}
+        </section>
+
+        <section className="rounded-[36px] border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Deployment</p>
+              <h2 className="mt-2 text-2xl font-semibold">服务器部署</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">
+                目标是少填参数：服务器只放密钥和访问地址，模型细节、提醒节奏、权限和日志策略都在这个页面配置。
+              </p>
+            </div>
+            <span className={`rounded-full px-4 py-2 text-sm font-semibold ${deploymentMissing.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+              {deploymentMissing.length ? `缺 ${deploymentMissing.length} 项` : '必填项已齐'}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-5">
+            <div className="lg:col-span-5">
+              <p className="text-sm font-semibold text-stone-950">服务器必填项</p>
+            </div>
+            {deploymentRequired.map((item: any) => (
+              <div key={item.key} className="rounded-3xl bg-stone-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">{item.key}</p>
+                    <p className="mt-2 text-sm font-semibold text-stone-950">{item.label}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.configured ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                    {item.configured ? 'OK' : '缺失'}
+                  </span>
+                </div>
+                <p className="mt-3 break-words text-xs leading-5 text-stone-500">{item.secret ? '服务器 .env 保存，不在页面显示明文。' : (item.value || item.reason)}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-3xl border border-stone-100 p-4">
+              <p className="text-sm font-semibold text-stone-950">页面可配置</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(deploymentConfig?.uiManaged || []).map((item: string) => (
+                  <span key={item} className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600">{item}</span>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-3xl bg-stone-950 p-4 text-white">
+              <p className="text-sm font-semibold">默认项不用管</p>
+              <p className="mt-2 text-xs leading-5 text-stone-300">
+                端口、Host、DeepSeek Base、默认模型、QQ API Base、Gateway intents、Scheduler tick 和时区已有默认值；模型 API Key 在本页按用户配置。
+              </p>
+            </div>
+          </div>
         </section>
 
         <section className="rounded-[36px] border border-stone-200 bg-white p-6 shadow-sm">
@@ -359,7 +440,7 @@ export function SettingsView() {
 
             <div className="rounded-3xl border border-stone-100 p-4">
               <h3 className="font-semibold text-stone-950">Goals / Today</h3>
-              <p className="mt-1 text-xs leading-5 text-stone-500">决定目标上限、复盘节奏和今日行动生成方式。</p>
+              <p className="mt-1 text-xs leading-5 text-stone-500">控制目标系统的焦点、复盘频率和 Today 的当前控制输出。</p>
               <div className="mt-4 grid gap-3">
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Active Goals</span>
@@ -394,7 +475,7 @@ export function SettingsView() {
 
             <div className="rounded-3xl border border-stone-100 p-4">
               <h3 className="font-semibold text-stone-950">Logs</h3>
-              <p className="mt-1 text-xs leading-5 text-stone-500">决定 Markdown 根目录、命名规则和自动写入边界。</p>
+              <p className="mt-1 text-xs leading-5 text-stone-500">控制反馈证据如何写入 Markdown，并保证系统能追溯观察、偏差和调整。</p>
               <div className="mt-4 grid gap-3">
                 <label>
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Vault Root</span>
@@ -422,7 +503,7 @@ export function SettingsView() {
 
             <div className="rounded-3xl border border-stone-100 p-4 xl:col-span-2">
               <h3 className="font-semibold text-stone-950">Agent</h3>
-              <p className="mt-1 text-xs leading-5 text-stone-500">决定 Agent 能读取什么，以及哪些修改必须确认。</p>
+              <p className="mt-1 text-xs leading-5 text-stone-500">控制 Agent 的观察范围和执行边界：能读什么、能记什么、改动前是否必须确认。</p>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <ToggleRow label="读取 Goals" description="关闭后 Agent 不应基于目标结构回答。" checked={behaviorDraft.agent.can_read_goals} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, can_read_goals: checked } }))} />
                 <ToggleRow label="读取 Logs" description="关闭后 Agent 不应引用 Markdown 日志内容。" checked={behaviorDraft.agent.can_read_logs} onChange={(checked) => setBehaviorDraft((draft) => ({ ...draft, agent: { ...draft.agent, can_read_logs: checked } }))} />
@@ -472,10 +553,10 @@ export function SettingsView() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Model</p>
                 <h2 className="mt-2 text-2xl font-semibold">模型配置</h2>
-                <p className="mt-2 text-sm leading-6 text-stone-500">Agent 的所有推理、规划、复盘都走这个默认模型。</p>
+                <p className="mt-2 text-sm leading-6 text-stone-500">模型是控制器的大脑；每个用户使用自己的模型密钥，目标澄清、条件倒推、诊断和复盘都走当前账户的默认模型。</p>
               </div>
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${model?.apiKeyConfigured ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
-                {model?.apiKeyConfigured ? 'API Key 已配置' : '缺少 API Key'}
+                {model?.apiKeyConfigured ? '用户 API Key 已配置' : '缺少用户 API Key'}
               </span>
             </div>
 
@@ -499,7 +580,11 @@ export function SettingsView() {
               <label className="rounded-3xl bg-stone-50 p-4 md:col-span-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">API Base</span>
                 <input value={modelDraft.apiBase} onChange={(event) => setModelDraft((draft) => ({ ...draft, apiBase: event.target.value }))} className="mt-2 w-full min-w-0 bg-transparent text-base font-semibold outline-none" />
-                <span className="mt-2 block text-xs text-stone-500">API Key 只从服务器 `.env` 读取，页面不显示、不保存明文密钥。</span>
+              </label>
+              <label className="rounded-3xl bg-stone-50 p-4 md:col-span-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">API Key</span>
+                <input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={model?.apiKeyConfigured ? '已配置，留空则保留原密钥' : '填入你自己的模型 API Key'} className="mt-2 w-full min-w-0 bg-transparent text-base font-semibold outline-none" />
+                <span className="mt-2 block text-xs text-stone-500">密钥按当前用户保存，服务端加密存储；页面、导出和 Agent 工具读取都只返回脱敏状态。</span>
               </label>
             </div>
 
@@ -539,7 +624,7 @@ export function SettingsView() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Reminders</p>
               <h2 className="mt-2 text-2xl font-semibold">主动推进节奏</h2>
-              <p className="mt-2 text-sm leading-6 text-stone-500">早中晚和周复盘不是普通闹钟，而是 Scheduler 触发 Agent 去问一个关键问题。</p>
+              <p className="mt-2 text-sm leading-6 text-stone-500">提醒是控制信号，不是普通闹钟。早中晚和周复盘会触发 Agent 在合适时间问一个关键问题。</p>
             </div>
             <button disabled={updateReminderRules.isPending} onClick={saveReminderRules} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存提醒</button>
           </div>

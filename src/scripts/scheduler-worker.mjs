@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import {
   recordAgentToolActionWithPrisma,
 } from '../lib/agent-tool-executor.mjs'
+import { planIntervention } from '../lib/intervention-planner.mjs'
+import { resolveModelApiKey } from '../lib/model-secret.mjs'
 
 const prisma = new PrismaClient()
 
@@ -272,13 +274,13 @@ function fallbackReminderText(reminderType, goalContext) {
 
 async function generateReminderText(userId, reminderType) {
   const goalContext = await buildGoalContext(userId)
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) return fallbackReminderText(reminderType, goalContext)
-
   const modelConfig = await prisma.modelConfig.findFirst({
     where: { userId, isDefault: true },
     orderBy: { createdAt: 'asc' },
   })
+  const apiKey = resolveModelApiKey(modelConfig)
+  if (!apiKey) return fallbackReminderText(reminderType, goalContext)
+
   const modelName = String(modelConfig?.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
   const modelApiBase = String(modelConfig?.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
   const reminderInstruction = {
@@ -391,7 +393,16 @@ async function processRule(rule, options = {}) {
   }
 
   const thread = await findOrCreateSchedulerThread(rule.userId, binding)
-  const messageText = await generateReminderText(rule.userId, rule.reminderType)
+  const interventionDecision = await planIntervention(prisma, rule.userId, {
+    reminderType: rule.reminderType,
+    reminderRule: rule,
+    now: new Date(),
+  })
+  const messageText = interventionDecision.question_or_message || await generateReminderText(rule.userId, rule.reminderType)
+  const schedulerPayload = {
+    ...(event.payload || {}),
+    intervention_decision: interventionDecision,
+  }
   const assistantMessage = await prisma.agentMessage.create({
     data: {
       userId: rule.userId,
@@ -404,6 +415,8 @@ async function processRule(rule, options = {}) {
         reminderRuleId: rule.id,
         schedulerEventId: event.id,
         channel: rule.channel,
+        planner_source: interventionDecision.planner_source,
+        intervention_decision: interventionDecision,
       },
     },
   })
@@ -420,6 +433,7 @@ async function processRule(rule, options = {}) {
         agentThreadId: thread.id,
         agentMessageId: assistantMessage.id,
         externalMessageId: String(sent?.id || sent?.message_id || sent?.data?.id || ''),
+        payload: schedulerPayload,
       },
     })
     await recordAgentToolActionWithPrisma(prisma, {
@@ -427,8 +441,8 @@ async function processRule(rule, options = {}) {
       toolName: 'reminder.send',
       permission: 'execute',
       inputSummary: `${rule.reminderType} -> qq`,
-      input: { reminderRuleId: rule.id, schedulerEventId: event.id },
-      result: sent || {},
+      input: { reminderRuleId: rule.id, schedulerEventId: event.id, intervention_decision: interventionDecision },
+      result: { qq: sent || {}, intervention_decision: interventionDecision },
       targetType: 'reminder',
       targetId: rule.id,
       riskLevel: 'low',
@@ -444,6 +458,7 @@ async function processRule(rule, options = {}) {
         messageText,
         agentThreadId: thread.id,
         agentMessageId: assistantMessage.id,
+        payload: schedulerPayload,
         errorMessage: error instanceof Error ? error.message : String(error),
       },
     })
@@ -452,7 +467,7 @@ async function processRule(rule, options = {}) {
       toolName: 'reminder.send',
       permission: 'execute',
       inputSummary: `${rule.reminderType} -> qq`,
-      input: { reminderRuleId: rule.id, schedulerEventId: event.id },
+      input: { reminderRuleId: rule.id, schedulerEventId: event.id, intervention_decision: interventionDecision },
       targetType: 'reminder',
       targetId: rule.id,
       riskLevel: 'low',

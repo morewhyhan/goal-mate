@@ -1,6 +1,6 @@
 # Goal Mate Deployment Config Verification
 
-- Time: 2026-07-02T11:37:15.643Z
+- Time: 2026-07-02T20:18:29.860Z
 - Project root: /mnt/c/Users/why/Desktop/goal-mate
 
 | ID | Purpose | Result | Evidence |
@@ -19,6 +19,8 @@
 | DEPLOY-LOCAL-ARTIFACTS-IGNORED | local deployment bundles are ignored by git | PASS | .artifacts/ ignore rule present |
 | DEPLOY-ENV-EXAMPLE | .env.example documents required deployment variables | PASS | all required variables present |
 | DEPLOY-ENV-RECOMMENDED | .env.example documents recommended safety variables | PASS | all recommended variables present |
+| DEPLOY-ENV-DEFAULTS | .env.example documents defaulted variables users normally do not need to change | PASS | defaulted variables present |
+| DEPLOY-SETTINGS-UI | Settings exposes deployment readiness and separates env-only secrets from UI-managed parameters | PASS | Settings deployment readiness contract scanned |
 | DEPLOY-ENV-PLACEHOLDERS | .env.example does not use token-shaped placeholders | PASS | token-shaped placeholder scan completed |
 | DEPLOY-DESIGN-DOC | self-hosted worker deployment design references systemd templates and remaining gaps | PASS | deployment design updated |
 | DEPLOY-RUNTIME-PLAN | self-hosted runtime verification plan documents real long-running checks | PASS | runtime verification plan present |

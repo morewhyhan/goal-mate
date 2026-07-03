@@ -43,19 +43,18 @@ const runtimeScripts = [
 
 const requiredEnvVars = [
   'DATABASE_URL',
-  'PORT',
-  'HOSTNAME',
-  'BETTER_AUTH_URL',
-  'NEXT_PUBLIC_BETTER_AUTH_URL',
   'NEXT_PUBLIC_APP_URL',
-  'DEEPSEEK_API_KEY',
-  'DEEPSEEK_API_BASE',
-  'DEEPSEEK_MODEL',
   'QQ_BOT_APP_ID',
   'QQ_BOT_TOKEN',
+]
+
+const defaultedEnvVars = [
+  'PORT',
+  'HOSTNAME',
+  'DEEPSEEK_API_BASE',
+  'DEEPSEEK_MODEL',
   'QQ_BOT_API_BASE',
   'QQ_BOT_INTENTS',
-  'QQ_DEFAULT_USER_EMAIL',
   'SCHEDULER_TICK_SECONDS',
   'SCHEDULER_TIMEZONE',
   'SCHEDULER_MORNING_TIME',
@@ -65,6 +64,10 @@ const requiredEnvVars = [
 ]
 
 const recommendedEnvVars = [
+  'BETTER_AUTH_URL',
+  'NEXT_PUBLIC_BETTER_AUTH_URL',
+  'GOAL_MATE_SECRET',
+  'QQ_DEFAULT_USER_EMAIL',
   'QQ_ALLOWED_CONTEXT_IDS',
   'QQ_SCHEDULER_REPLY_WINDOW_HOURS',
 ]
@@ -167,6 +170,21 @@ record(
   '.env.example documents recommended safety variables',
   recommendedEnvCheck.ok,
   recommendedEnvCheck.ok ? 'all recommended variables present' : `missing=${recommendedEnvCheck.missing.join(', ')}`,
+)
+const defaultedEnvCheck = includesAll(envExample, defaultedEnvVars)
+record(
+  'DEPLOY-ENV-DEFAULTS',
+  '.env.example documents defaulted variables users normally do not need to change',
+  defaultedEnvCheck.ok,
+  defaultedEnvCheck.ok ? 'defaulted variables present' : `missing=${defaultedEnvCheck.missing.join(', ')}`,
+)
+const settingsRoute = readText(resolve(appRoot, 'server/api/routes/settings/index.ts'))
+const settingsView = readText(resolve(appRoot, 'components/goal-mate/settings-view.tsx'))
+record(
+  'DEPLOY-SETTINGS-UI',
+  'Settings exposes deployment readiness and separates env-only secrets from UI-managed parameters',
+  Boolean(settingsRoute.includes('deploymentEnvConfig') && settingsRoute.includes('minimumRequired') && settingsView.includes('Deployment') && settingsView.includes('服务器必填项')),
+  'Settings deployment readiness contract scanned',
 )
 record(
   'DEPLOY-ENV-PLACEHOLDERS',

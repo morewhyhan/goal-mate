@@ -4,6 +4,7 @@
 
 | 编号 | 场景 | 预期 |
 | --- | --- | --- |
+| E2E-0 | 用户首次打开产品 | 看到登录/注册入口；注册或登录后进入 Today |
 | E2E-1 | 用户输入一个模糊目标 | Agent 先澄清成功标准和时间范围 |
 | E2E-2 | 用户要求生成目标草稿 | 系统生成目标推理卡、KR、条件、阶段计划、今日启动行动和目标 Markdown |
 | E2E-2b | 用户确认目标 | 目标成为当前主目标，推理卡变为 confirmed，并接入 Today |
@@ -14,6 +15,10 @@
 | E2E-7 | 用户打开 Logs | 看到年/季/月/周/日文件树和 Markdown 编辑器 |
 | E2E-8 | 用户打开 Agent | 看到历史记录、消息区和固定输入框 |
 | E2E-9 | 用户打开 Settings | 能配置模型、提醒、日志、数据和隐私 |
+| E2E-10 | Scheduler 到达主动提醒时间 | 系统生成干预 | AI 根据目标状态决定问什么、怎么提醒风险点，而不是套固定模板 |
+| E2E-11 | 多次干预后有完成或失败反馈 | 系统复盘 | Meta-Cognition 更新用户模型和下一次干预策略 |
+| E2E-12 | 多次控制回合连续发生 | 系统学习 | 旧元认知被使用、验证、增强、削弱、修正或过期，并形成下一次 `policy_delta` |
+| E2E-13 | 旧干预被后续反馈证伪 | 系统学习 | AI 生成自我优化规则，下一次先改变自己的提问和推理顺序 |
 
 ## 2. AI 输出验收
 
@@ -22,6 +27,9 @@
 | goal_reasoning_card | purpose_summary, success_signals, key_results, necessary_conditions, sufficient_condition_set, current_gap |
 | daily_action | title, linked_condition, done_when, minimum_step, fallback_action |
 | diagnosis | category, evidence, adjustment_type, next_question |
+| intervention_decision | intervention_type, target_goal_id, risk_point, question_or_message, fallback_action, verification_signal |
+| meta_cognition_hypothesis | hypothesis, scope, evidence, causal_explanation, decision_impact, verification_signal |
+| ai_self_optimization_update | self_evaluation_result, previous_thinking_rule, reasoning_error, next_thinking_rule, avoid_next_time, verification_signal |
 | review | period, progress_summary, condition_changes, next_focus |
 | log_patch | target_log, markdown_content, source_context |
 
@@ -29,6 +37,7 @@
 
 | 页面 | 准出标准 |
 | --- | --- |
+| Login | 用户能注册、登录；未登录不能进入 Dashboard；无假第三方入口 |
 | Today | 用户 3 秒内知道下一步做什么 |
 | Goals | 用户能看懂目标如何从 O 拆到 KR、条件、阶段和进度 |
 | Logs | 层级关系清楚，Markdown 可直接编辑 |
@@ -46,14 +55,44 @@
 | T-R5 | Agent 修改设置 | 必须用户确认 |
 | T-R6 | 导出数据 | 不包含明文 API Key |
 | T-R7 | 用户删除记忆 | Agent 后续不得继续引用 |
+| T-R8 | Scheduler 主动消息 | 必须通过 Intervention Planner 或等价决策过程生成 |
+| T-R9 | 核心记忆写入 | 必须有依据、因果解释、决策影响和验证方式 |
+| T-R10 | Meta-Cognition 更新 | 必须能说明这次反馈如何影响下一次干预 |
+| T-R11 | Today / Agent / Channel 反馈 | 必须进入同一套 ControlLoopEpisode 语义 |
+| T-R12 | 元认知被 Planner 使用 | 后续反馈发生时必须评估该判断是否被支持、削弱或无法判断 |
+| T-R13 | Meta-Cognition 产生 `policy_delta` | 下一次 Intervention Planner / Agent Prompt 必须能消费该策略变化 |
+| T-R14 | AI 自我优化规则存在 | 下一次 Planner 必须先消费该规则，不能重复同一套无效推理 |
+| T-R15 | 私有页面访问 | 未登录用户不能进入 Dashboard 私有页面 |
+| T-R16 | 私有数据归属 | 业务 API 只能从 session 获取 userId，不能信任前端 userId |
+| T-R17 | 模型密钥归属 | 模型 API Key 必须按当前用户保存、加密、脱敏返回，不能作为服务器全局共享密钥 |
+
+## 4.1 涌现效果验收
+
+涌现效果不能通过单次截图或单次对话验收，必须通过连续回合证明。
+
+| 编号 | 必测链路 | 预期 |
+| --- | --- | --- |
+| EMG-1 | 用户连续 3 次反馈没做 | 系统不能重复同一句催促，必须改变诊断问题、行动难度、提醒时机或风险提示 |
+| EMG-2 | 某次策略调整后用户完成率改善 | 元认知必须增强该假设，并说明下一次如何继续使用 |
+| EMG-3 | 某次策略调整后仍无效 | 元认知必须削弱或修正该假设，不能继续盲信旧判断 |
+| EMG-4 | 用户主动打卡和 Agent 对话反馈表达同一事实 | 两个入口必须产生一致的 Checkin / Diagnosis / Meta-Cognition 语义 |
+| EMG-5 | Review 生成 | 必须压缩多个 ControlLoopEpisode 的有效性，而不是只总结日志文本 |
+| EMG-6 | 下一次 Planner 生成干预 | 必须能说明读取了哪些活跃元认知、哪些 `policy_delta` 改变了本次干预 |
+| EMG-7 | 旧元认知被证伪 | 必须生成 `AiSelfOptimizationUpdate`，说明 AI 上一次推理错误和下一次规则 |
+| EMG-8 | 下一次 Planner 消费自我优化 | 必须改变问题、推理顺序或行动安排，而不是复用旧策略 |
 
 ## 5. v0.1 准出标准
 
 ```text
-1. 单主目标完整链路可跑通。
-2. Today、Goals、Logs、Agent、Settings 五页可用。
-3. AI 关键输出结构化保存。
-4. Markdown 日志可读、可编辑、可导出。
-5. 模型配置和提醒配置真实可配置。
-6. 未完成时能诊断，而不是只鼓励或催促。
+1. 用户能登录、注册、退出；未登录不能进入私有 Dashboard。
+2. 单主目标完整链路可跑通。
+3. Today、Goals、Logs、Agent、Settings 五页可用。
+4. AI 关键输出结构化保存。
+5. Markdown 日志可读、可编辑、可导出。
+6. 模型配置和提醒配置真实可配置，模型 API Key 按用户隔离且不泄露明文。
+7. 未完成时能诊断，而不是只鼓励或催促。
+8. 主动提醒能体现 AI 自主干预，不是固定模板。
+9. 长期记忆和复盘判断符合充分、必要、因果明确、语言清晰、可验证或可证伪的质量标准。
+10. ControlLoopEpisode 和 Meta-Cognition 闭环可连续运行，能证明系统不是只记录反馈，而是在持续修正下一次干预策略。
+11. AI 自我优化闭环可运行：系统能判断自己上一次干预为什么失败，并让下一次 Planner 改变推理顺序。
 ```

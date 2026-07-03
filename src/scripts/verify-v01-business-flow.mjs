@@ -66,9 +66,9 @@ async function run() {
   const testedModel = await request('/api/settings/models/test', { method: 'POST' })
   record(
     'BF-MODEL-TEST',
-    'settings can trigger model connection test endpoint',
-    Boolean(testedModel.data?.ok && testedModel.data?.provider === 'DeepSeek'),
-    testedModel.data ? `${testedModel.data.provider}/${testedModel.data.model}` : 'missing',
+    'settings can trigger model connection test endpoint without leaking keys',
+    Boolean(typeof testedModel.data?.ok === 'boolean' && testedModel.data?.provider === 'DeepSeek' && noSecretLeak(testedModel)),
+    testedModel.data ? `${testedModel.data.provider}/${testedModel.data.model}; ok=${testedModel.data.ok}` : 'missing',
   )
 
   const updatedSettings = await request('/api/settings', {

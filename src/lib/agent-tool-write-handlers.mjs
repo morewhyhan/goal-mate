@@ -12,6 +12,9 @@ import {
   getSharedCurrentGoal,
 } from './agent-tool-business-helpers.mjs'
 import { ensureLogPeriodRollups } from './log-period-rollup.mjs'
+import { buildMetaCognitionHypothesis, persistMetaCognitionHypothesis } from './meta-cognition-layer.mjs'
+import { submitControlLoopFeedback } from './control-loop-episode.mjs'
+import { modelSecretWriteData } from './model-secret.mjs'
 
 const goalStatuses = new Set(['DRAFT', 'CLARIFYING', 'CONFIRMED', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ABANDONED', 'ARCHIVED'])
 const keyResultStatuses = new Set(['ACTIVE', 'ACHIEVED', 'AT_RISK', 'ABANDONED'])
@@ -215,7 +218,7 @@ function inferSharedDiagnosis(input) {
       adjustmentType: 'SIMPLIFY',
       evidence: input.feedback || '行动耗时较长或用户反馈执行成本过高。',
       nextQuestion: '这一步是太大、太难，还是不知道从哪里开始？',
-      proposedNextAction: '把下一步缩小到 10 到 20 分钟内可以完成的版本。',
+      proposedNextAction: '把下一步缩小到用户当下可承受的最小版本。',
     }
   }
 
@@ -261,6 +264,7 @@ function inferSharedDiagnosis(input) {
 function buildSharedCheckinLogBlock(input) {
   const createdAt = input.createdAt || new Date()
   const time = `${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`
+  const metaLines = buildSharedMetaCognitionLogLines(input.metaCognition)
   return [
     `## Check-in ${time}`,
     '',
@@ -273,8 +277,41 @@ function buildSharedCheckinLogBlock(input) {
     input.userFeedback ? `- 用户反馈：${input.userFeedback}` : '- 用户反馈：',
     input.diagnosisQuestion ? `- 诊断问题：${input.diagnosisQuestion}` : undefined,
     input.proposedNextAction ? `- 调整建议：${input.proposedNextAction}` : undefined,
+    metaLines.length ? '' : undefined,
+    ...metaLines,
     '',
   ].filter(Boolean).join('\n')
+}
+
+function readSharedReflectionString(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function readSharedMetaCognitionHypothesis(value) {
+  const wrapper = asObject(value)
+  return asObject(wrapper.hypothesis || value)
+}
+
+function buildSharedMetaCognitionLogLines(value) {
+  const hypothesis = readSharedMetaCognitionHypothesis(value)
+  const self = asObject(hypothesis.ai_self_reflection)
+  const claim = readSharedReflectionString(hypothesis.claim || hypothesis.hypothesis)
+  const userIntervention = readSharedReflectionString(hypothesis.decision_impact)
+  const aiReasoning = readSharedReflectionString(self.next_thinking_rule || self.reasoning_adjustment)
+  const policyDelta = readSharedReflectionString(self.intervention_policy_delta)
+  const verification = readSharedReflectionString(hypothesis.verification_signal || self.verification_signal)
+
+  if (!claim && !userIntervention && !aiReasoning && !verification) return []
+
+  return [
+    '### System Reflection',
+    '',
+    claim ? `- 对用户的判断：${claim}` : undefined,
+    userIntervention ? `- 下次怎么干预用户：${userIntervention}` : undefined,
+    aiReasoning ? `- AI 下次怎么思考：${aiReasoning}` : undefined,
+    policyDelta ? `- AI 策略权重：${policyDelta}` : undefined,
+    verification ? `- 下次验证信号：${verification}` : undefined,
+  ].filter(Boolean)
 }
 
 function progressSignalFromSharedResult(result) {
@@ -463,150 +500,16 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
 
   if (toolName === 'checkin.submit') {
     const actionId = readAgentToolString(input, 'actionId')
-    const action = actionId
-      ? await prisma.dailyAction.findFirst({ where: { id: actionId, userId }, include: { goal: true, condition: true } })
-      : await prisma.dailyAction.findFirst({ where: { userId }, orderBy: { actionDate: 'desc' }, include: { goal: true, condition: true } })
-    if (!action) throw new Error('没有找到可提交的今日行动。')
-
-    const result = normalizeAgentToolCheckinResult(readAgentToolString(input, 'result', 'no_response'))
-    const userFeedback = readAgentToolString(input, 'userFeedback')
-    const resultLabel = result === 'DONE' ? '完成' : result === 'PARTIAL' ? '部分完成' : result === 'NOT_DONE' ? '没做' : '未回应'
-    const autoWriteCheckin = await readSharedLogBooleanSetting(prisma, userId, 'auto_write_checkin', true)
-
-    const output = await prisma.$transaction(async (tx) => {
-      const checkin = await tx.checkin.create({
-        data: {
-          userId,
-          goalId: action.goalId,
-          actionId: action.id,
-          result,
-          reasonCategory: readAgentToolString(input, 'reasonCategory') || undefined,
-          userFeedback,
-          adjustment: readAgentToolString(input, 'adjustment'),
-        },
-      })
-      const updatedAction = await tx.dailyAction.update({ where: { id: action.id }, data: { status: normalizeAgentToolActionStatus(result) } })
-      const progressUpdate = await applySharedCheckinProgress(tx, action, result)
-
-      let diagnosis = null
-      if (result === 'NOT_DONE' || result === 'PARTIAL') {
-        const recentMisses = await tx.checkin.findMany({
-          where: {
-            userId,
-            goalId: action.goalId,
-            result: { in: ['NOT_DONE', 'PARTIAL'] },
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 3,
-        })
-        const inferred = inferSharedDiagnosis({
-          feedback: userFeedback,
-          consecutiveMissCount: recentMisses.length,
-          estimatedMinutes: action.estimatedMinutes,
-        })
-        diagnosis = await tx.diagnosis.create({
-          data: {
-            userId,
-            goalId: action.goalId,
-            actionId: action.id,
-            checkinId: checkin.id,
-            category: inferred.category,
-            evidence: inferred.evidence,
-            adjustmentType: inferred.adjustmentType,
-            nextQuestion: inferred.nextQuestion,
-            proposedNextAction: inferred.proposedNextAction,
-          },
-        })
-      }
-
-      let logEntry = null
-      let markdownDocument = null
-      if (autoWriteCheckin) {
-        const logPath = buildSharedDailyLogPath(action.actionDate)
-        const logTitle = logPath.split('/').pop() || logPath
-        const logBlock = buildSharedCheckinLogBlock({
-          goalTitle: action.goal.title,
-          actionTitle: action.title,
-          linkedCondition: action.condition.title,
-          resultLabel,
-          doneWhen: action.doneWhen,
-          minimumStep: action.minimumStep,
-          userFeedback,
-          diagnosisQuestion: diagnosis?.nextQuestion,
-          proposedNextAction: diagnosis?.proposedNextAction,
-          createdAt: new Date(),
-        })
-
-        const existingLog = await tx.logEntry.findUnique({ where: { userId_path: { userId, path: logPath } } })
-        logEntry = await tx.logEntry.upsert({
-          where: { userId_path: { userId, path: logPath } },
-          update: {
-            title: logTitle,
-            content: existingLog ? `${existingLog.content}\n\n${logBlock}` : logBlock,
-            linkedGoalIds: [action.goalId],
-            linkedActionIds: [action.id],
-          },
-          create: {
-            userId,
-            periodType: 'DAY',
-            title: logTitle,
-            path: logPath,
-            content: logBlock,
-            linkedGoalIds: [action.goalId],
-            linkedActionIds: [action.id],
-          },
-        })
-
-        markdownDocument = await tx.markdownDocument.upsert({
-          where: { userId_path: { userId, path: logPath } },
-          update: {
-            title: logTitle,
-            content: logEntry.content,
-            linkedGoalIds: [action.goalId],
-            linkedActionIds: [action.id],
-            source: 'AGENT',
-            frontmatter: {
-              kind: 'checkin',
-              goalTitle: action.goal.title,
-              actionTitle: action.title,
-            },
-          },
-          create: {
-            userId,
-            type: 'DAY',
-            title: logTitle,
-            path: logPath,
-            content: logEntry.content,
-            linkedGoalIds: [action.goalId],
-            linkedActionIds: [action.id],
-            source: 'AGENT',
-            frontmatter: {
-              kind: 'checkin',
-              goalTitle: action.goal.title,
-              actionTitle: action.title,
-            },
-          },
-        })
-
-        await ensureLogPeriodRollups(tx, {
-          userId,
-          date: action.actionDate,
-          sourcePath: logPath,
-          sourceKind: 'checkin',
-          goalId: action.goalId,
-          actionId: action.id,
-          goalTitle: action.goal.title,
-          actionTitle: action.title,
-          resultLabel,
-          conditionTitle: action.condition.title,
-          diagnosisQuestion: diagnosis?.nextQuestion,
-        })
-      }
-
-      return { action: updatedAction, checkin, diagnosis, progressUpdate, logEntry, markdownDocument, autoWriteCheckin }
+    const output = await submitControlLoopFeedback(prisma, userId, {
+      source: 'agent.checkin.submit',
+      trigger: 'agent_tool',
+      actionId,
+      result: normalizeAgentToolCheckinResult(readAgentToolString(input, 'result', 'no_response')),
+      reasonCategory: readAgentToolString(input, 'reasonCategory') || undefined,
+      userFeedback: readAgentToolString(input, 'userFeedback'),
+      adjustment: readAgentToolString(input, 'adjustment'),
     })
-
-    return { targetId: output.checkin.id, result: output }
+    return output
   }
 
   if (toolName === 'log.write_daily') {
@@ -691,16 +594,16 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
 
   if (toolName === 'settings.model.update') {
     const existing = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
-    const data = {
+    const data = modelSecretWriteData({
       provider: readAgentToolString(input, 'provider', existing?.provider || 'deepseek'),
       model: readAgentToolString(input, 'model', existing?.model || 'deepseek-v4-flash'),
       reasoningModel: readAgentToolString(input, 'reasoningModel', existing?.reasoningModel || ''),
       apiBase: readAgentToolString(input, 'apiBase', existing?.apiBase || 'https://api.deepseek.com'),
-      apiKeyRef: readAgentToolString(input, 'apiKeyRef', existing?.apiKeyRef || 'DEEPSEEK_API_KEY'),
+      apiKey: readAgentToolString(input, 'apiKey', ''),
       usage: 'CHAT',
       isDefault: true,
       temperature: readAgentToolNumber(input, 'temperature', existing?.temperature ?? 0.3),
-    }
+    }, existing)
     const modelConfig = existing
       ? await prisma.modelConfig.update({ where: { id: existing.id }, data })
       : await prisma.modelConfig.create({ data: { userId, ...data } })

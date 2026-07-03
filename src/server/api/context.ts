@@ -47,7 +47,7 @@ export const defaultDeepSeekModel = {
   model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
   reasoningModel: process.env.DEEPSEEK_REASONING_MODEL || '',
   apiBase: process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com',
-  apiKeyRef: 'env:DEEPSEEK_API_KEY',
+  apiKeyRef: '',
   usage: 'CHAT' as const,
   isDefault: true,
   temperature: 0.3,

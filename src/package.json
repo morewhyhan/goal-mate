@@ -21,10 +21,16 @@
     "verify:agent-loop": "node scripts/verify-agent-action-loop.mjs",
     "verify:agent-loop:static": "node scripts/verify-agent-action-loop.mjs --static-only",
     "verify:agent-loop:write": "node scripts/verify-agent-action-loop.mjs --write",
+    "verify:intervention-planner": "node scripts/verify-intervention-planner.mjs",
+    "verify:control-loop-emergence": "node scripts/verify-control-loop-emergence.mjs",
     "verify:dashboard-browser": "node scripts/verify-dashboard-browser.mjs",
     "verify:dashboard-browser:write": "node scripts/verify-dashboard-browser.mjs --write",
     "verify:dashboard-browser:auth": "node scripts/verify-dashboard-browser.mjs --prepare-auth --require-auth",
     "verify:dashboard-browser:auth:write": "node scripts/verify-dashboard-browser.mjs --prepare-auth --require-auth --write",
+    "verify:auth-ui": "node scripts/verify-auth-ui.mjs",
+    "verify:auth-ui:write": "node scripts/verify-auth-ui.mjs --write",
+    "verify:auth-isolation": "node scripts/verify-auth-isolation.mjs",
+    "verify:auth-isolation:write": "node scripts/verify-auth-isolation.mjs --write",
     "verify:deployment-config": "node scripts/verify-deployment-config.mjs",
     "verify:deployment-config:write": "node scripts/verify-deployment-config.mjs --write",
     "verify:secrets": "node scripts/verify-secret-hygiene.mjs",
@@ -32,7 +38,8 @@
     "deploy:bundle": "node scripts/create-deploy-bundle.mjs",
     "worker:qq": "node scripts/qq-bot-worker.mjs",
     "worker:scheduler": "node scripts/scheduler-worker.mjs",
-    "worker:scheduler:once": "node scripts/scheduler-worker.mjs --once --force-reminder=morning_planning"
+    "worker:scheduler:once": "node scripts/scheduler-worker.mjs --once --force-reminder=morning_planning",
+    "verify:ai-reply-quality": "node scripts/verify-ai-reply-quality.mjs"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.4.1",

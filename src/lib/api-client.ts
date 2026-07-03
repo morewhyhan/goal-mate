@@ -5,7 +5,7 @@ import ky from 'ky'
 const baseUrl =
   process.env.NODE_ENV === 'development'
     ? 'http://localhost:3000'
-    : process.env.NEXT_PUBLIC_APP_URL!
+    : process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BETTER_AUTH_URL || 'http://localhost:3000'
 
 export const fetch = ky.extend({
   credentials: 'include' as const,

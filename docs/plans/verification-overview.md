@@ -20,6 +20,11 @@
 - 本轮只做本地部署准备，没有继续上传服务器；部署文档和 `.env.example` 已补齐生产 Web URL、端口、systemd 用户权限、migrate/build/static-gate 顺序。
 - 本轮新增本地交付包能力：`pnpm deploy:bundle` 会生成 `.artifacts/deploy/goal-mate-*.tar.gz`，并排除真实 `.env`、Git 历史、依赖、构建产物、本地数据库和日志。
 - 本轮新增并执行 Dashboard 浏览器 smoke：`pnpm verify:dashboard-browser` 已覆盖无登录态布局/空状态，`pnpm verify:dashboard-browser:auth` 已覆盖登录态真实 seed 数据；两者都会检查五个页面的关键文本、横向溢出、Agent 输入框、Logs 编辑区、Settings 配置控件和 Today 热力图，且报告不写 cookie。
+- 2026-07-03 新增并执行登录注册 UI smoke：`pnpm verify:auth-ui:write` 已覆盖 `/login`、未登录 Dashboard 门禁、真实浏览器注册、退出和再次登录。
+- 2026-07-03 新增并执行登录数据隔离 smoke：`pnpm verify:auth-isolation:write` 已覆盖两个真实用户之间的 Goals、Logs、Agent Threads、Models 和 Export 隔离；跨用户直读 ID 返回 404；临时数据已清理。
+- 2026-07-03 模型密钥隔离已纳入 `pnpm verify:auth-isolation`：两个用户分别保存自己的 API Key，响应和导出不泄露明文，数据库保存加密引用，运行时按 userId 解析当前用户密钥。
+- 2026-07-03 模型密钥隔离改动后重新执行 `pnpm typecheck`、`pnpm verify:static`、`pnpm verify:auth-isolation:write`、`pnpm verify:dashboard-browser:auth:write`、`pnpm build`，最终均通过。
+- 2026-07-03 登录注册改动后重新执行 `pnpm typecheck`、`pnpm build`、`pnpm verify:auth-ui:write`、`pnpm verify:dashboard-browser:auth:write`，最终均通过。
 
 ## 2. 验收层级
 
@@ -38,6 +43,8 @@
 | Dashboard 截图 smoke | Edge headless screenshots | 是 | 否 | 2026-07-02 已执行，Today heatmap 问题已修复 |
 | Dashboard 浏览器 smoke | `pnpm verify:dashboard-browser` | 是 | 否 | 2026-07-02 已通过无登录态布局/空状态 smoke |
 | Dashboard 登录态浏览器 smoke | `pnpm verify:dashboard-browser:auth` | 是 | 否 | 2026-07-02 已通过，会自动准备登录态和真实 seed 数据 |
+| 登录注册 UI smoke | `pnpm verify:auth-ui` | 是 | 否 | 2026-07-03 已通过，覆盖登录页、未登录门禁、注册、退出和再次登录 |
+| 登录数据隔离 smoke | `pnpm verify:auth-isolation` | 是 | 否 | 2026-07-03 已通过，覆盖两用户私有数据隔离、跨用户直读阻断、模型密钥加密和导出脱敏 |
 | Scheduler 一次性验证 | `pnpm worker:scheduler:once` | 否 | 仅发送时需要 | 2026-07-02 本地已通过无绑定失败记录场景 |
 | 本地部署交付包 | `pnpm deploy:bundle` | 否 | 否 | 2026-07-02 已新增，待随静态门禁复验 |
 | 服务器长期运行验收 | `docs/plans/self-hosted-runtime-verification-plan.md` | 是 | 是 | 已规划，未执行 |

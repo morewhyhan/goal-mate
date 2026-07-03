@@ -2,9 +2,9 @@
 
 ## 1. 定位
 
-Scheduler Worker 是 Goal Mate 的主动推进层。
+Scheduler Worker 是 Goal Mate 的主动推进触发层。
 
-它负责在合适的时间主动联系用户，不是为了催促，而是为了围绕目标、关键条件和今日行动持续推进。
+它负责在合适的时间主动联系用户，但不应该把固定模板当作干预策略。真正决定问什么、怎么提示风险、是否降难度或是否建议重审目标的，是 Intervention Planner。
 
 ## 2. 当前事实
 
@@ -16,6 +16,9 @@ Scheduler Worker 是 Goal Mate 的主动推进层。
 - 系统已经新增 `worker:scheduler` 启动脚本。
 - 系统已经新增 `ReminderRule` 和 `SchedulerEvent` 数据模型。
 - Scheduler 可以按规则生成早晨规划、中午检查、晚上复盘和周复盘消息。
+- Scheduler 已接入 AI-first `Intervention Planner`：到点后先让 AI Policy Planner 判断问什么、为什么问、控制哪个风险点，再发送消息。
+- 模型不可用、输出不可解析或质量门禁未通过时，Scheduler 使用 `fallback_rule` 保底，不能中断主动推进。
+- SchedulerEvent、AgentMessage 和 AgentToolAction 会记录 `intervention_decision` 与 `planner_source`，用于审计和后续复盘。
 
 尚未完成：
 
@@ -44,7 +47,8 @@ worker:scheduler
   -> respect timezone and quiet hours
   -> skip duplicate events
   -> build goal and today context
-  -> ask Agent Runtime to draft prompt
+  -> ask Intervention Planner to decide intervention
+  -> ask Agent Runtime to render the message
   -> send through QQ
   -> store scheduler event
   -> store audit log
@@ -93,6 +97,21 @@ QQ reply
 - 不做无上下文催促。
 - 用户连续无响应时，不提高频率，触发诊断。
 - 没完成时同时判断行为原因和路径原因。
+- 必须识别当前风险点，并在必要时给出提前提示或止损动作。
+- 不能使用强制、羞辱或机械施压表达。
+- 主动消息必须能被后续反馈验证其有效性。
+
+## 6.1 与 Intervention Planner 的关系
+
+```text
+Scheduler = 何时触发
+Intervention Planner = 为什么此刻干预、问什么、控什么风险
+Agent Runtime = 用真人秘书式语言表达
+Agent Tools = 用户反馈后更新系统状态
+Meta-Cognition = 根据干预效果更新下一次策略
+```
+
+Scheduler 不应该硬编码每类提醒的完整话术。固定提醒类型只提供默认触达窗口；具体内容必须由目标状态、风险点、最近反馈和元认知判断生成。
 
 ## 7. QQ 主动消息边界
 
@@ -121,12 +140,47 @@ P0 需要新增或复用：
 
 Scheduler 不直接生成业务结论。
 
-Scheduler 只负责触发，具体内容由 Agent Runtime 基于当前目标、今日行动、日志和记忆生成。
+Scheduler 只负责触发，具体内容由 Intervention Planner 和 Agent Runtime 基于当前目标、今日行动、日志、记忆和元认知生成。
 
 Scheduler 主动发送提醒时会写入内部审计动作 `reminder.send`。该动作不暴露给用户调用，但必须通过 shared audit writer 写入 `AgentToolAction`，便于在 Settings 中看到主动提醒是否实际发送成功。
 
 ```text
 Scheduler = 什么时候问
-Agent Runtime = 问什么、怎么问、如何根据回答推进
+Intervention Planner = 问什么、为什么问、控制哪个风险点
+Agent Runtime = 怎么问、如何根据回答推进
 Agent Tools = 需要更新系统时执行什么
 ```
+
+相关规格：
+
+- `docs/features/goal-mate-v0.1/10-intervention-planner.md`
+- `docs/features/goal-mate-v0.1/11-meta-cognition.md`
+
+## 10. 验证
+
+本地不依赖服务器的验证入口：
+
+```bash
+pnpm verify:intervention-planner
+pnpm verify:agent-loop:static
+```
+
+`verify:intervention-planner` 用纯本地场景证明 Planner 不是固定模板：它能识别难度问题、关键风险点、连续无响应；能优先接受合法 AI Policy 输出；能在缺少 API Key、模型输出鸡汤话或缺少可验证信号时降级到 fallback；还能生成元认知假设和拒绝模糊记忆。
+
+## 11. 当前增量事实：Scheduler 到 ControlLoopEpisode
+
+Scheduler 负责触发主动干预，并在消息发送前记录 `intervention_decision`。
+
+后续用户通过 QQ / Agent / Today 反馈完成情况时，反馈必须进入 `submitControlLoopFeedback()` 代表的 ControlLoopEpisode 语义：
+
+```text
+Scheduler intervention_decision
+  -> 用户回复或打卡
+  -> ControlLoopEpisode
+  -> Checkin / Diagnosis / GoalStateTransition
+  -> LogProjection
+  -> MetaCognition evaluation / policy_delta
+  -> 下一次 Intervention Planner 消费
+```
+
+这意味着 Scheduler 不负责长期学习；它提供干预证据，学习由 ControlLoopEpisode 和 Meta-Cognition 完成。

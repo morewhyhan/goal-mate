@@ -85,27 +85,22 @@ test -f /opt/goal-mate/src/.env
 
 ```text
 DATABASE_URL
-PORT
-HOSTNAME
-BETTER_AUTH_URL
-NEXT_PUBLIC_BETTER_AUTH_URL
 NEXT_PUBLIC_APP_URL
 DEEPSEEK_API_KEY
-DEEPSEEK_API_BASE
-DEEPSEEK_MODEL
 QQ_BOT_APP_ID
 QQ_BOT_TOKEN
-QQ_BOT_API_BASE
-QQ_BOT_INTENTS
-QQ_DEFAULT_USER_EMAIL
-SCHEDULER_TIMEZONE
 ```
 
 没有域名时，`BETTER_AUTH_URL`、`NEXT_PUBLIC_BETTER_AUTH_URL` 和 `NEXT_PUBLIC_APP_URL` 可以先用：
+没有域名时，`NEXT_PUBLIC_APP_URL` 可以先用：
 
 ```text
 http://服务器IP:3000
 ```
+
+`PORT`、`HOSTNAME`、`DEEPSEEK_API_BASE`、`DEEPSEEK_MODEL`、`QQ_BOT_API_BASE`、`QQ_BOT_INTENTS`、Scheduler 时间和时区都有默认值。模型名称、提醒时间、Agent 权限、日志写入和数据导出在 Settings 页面配置。
+
+如果服务器只有一个 Goal Mate 用户，QQ Worker 会自动绑定第一个用户；多用户场景再设置 `QQ_DEFAULT_USER_EMAIL`。
 
 复制 service：
 
