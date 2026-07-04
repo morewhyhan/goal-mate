@@ -30,8 +30,8 @@
 | 用户模型 API Key | 待填写 | 在 Settings 中按账号配置；报告只记录是否已配置，不记录值 |
 | `DEEPSEEK_API_BASE` | 待填写 | 不记录值 |
 | `DEEPSEEK_MODEL` | 待填写 | 不记录值 |
-| `QQ_BOT_APP_ID` | 待填写 | 不记录值 |
-| `QQ_BOT_TOKEN` | 待填写 | 不记录值 |
+| Settings QQ Bot App ID | 待填写 | 只记录已配置，不记录值 |
+| Settings QQ Bot Token | 待填写 | 只记录已配置，不记录值 |
 | `QQ_BOT_API_BASE` | 待填写 | 不记录值 |
 | `QQ_BOT_INTENTS` | 待填写 | 不记录值 |
 | `QQ_DEFAULT_USER_EMAIL` | 待填写 | 可脱敏 |

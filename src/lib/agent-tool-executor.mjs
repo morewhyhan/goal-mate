@@ -11,6 +11,7 @@ import {
   canHandleSharedWriteTool,
   runSharedWriteToolHandler,
 } from './agent-tool-write-handlers.mjs'
+import { encryptModelApiKey } from './model-secret.mjs'
 
 const sharedToolDefinitions = listSharedAgentTools()
 
@@ -50,6 +51,18 @@ async function runSharedAgentTool(prisma, userId, toolName, input) {
   }
 
   throw new Error(`未知 Agent 工具：${toolName}`)
+}
+
+function secureAgentToolInput(toolName, input) {
+  const secured = { ...asAgentToolRecord(input) }
+  if (toolName === 'settings.model.update') {
+    const rawApiKey = typeof secured.apiKey === 'string' ? secured.apiKey.trim() : ''
+    if (rawApiKey) {
+      secured.apiKeyRef = encryptModelApiKey(rawApiKey)
+    }
+    delete secured.apiKey
+  }
+  return secured
 }
 
 function asRecord(value) {
@@ -93,7 +106,7 @@ export async function executeAgentToolWithPrisma(prisma, context, toolName, rawI
   const definition = sharedToolDefinitions.find((item) => item.name === toolName)
   if (!definition) throw new Error(`未知 Agent 工具：${toolName}`)
 
-  const input = asAgentToolRecord(rawInput)
+  const input = secureAgentToolInput(definition.name, rawInput)
   const confirmationPolicy = await loadAgentConfirmationPolicy(prisma, context.userId)
   const requiresConfirmation = !context.confirmed && shouldRequireConfirmation(definition, confirmationPolicy)
 

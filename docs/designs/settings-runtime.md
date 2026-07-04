@@ -79,6 +79,27 @@ defaultUserSettings
 
 Settings 中的通知字段不能形成第二套不会被 Scheduler 执行的假配置。
 
+Settings 也不能把“提醒规则已开启”误展示成“主动提醒已可送达”。主动提醒可送达至少需要：
+
+```text
+ReminderRule enabled
+  + QQ Bot 已配置
+  + 当前账号已有 enabled QqChatBinding
+```
+
+因此干净用户即使默认有早中晚规则，也必须看到 `待配置 QQ` 或 `待绑定 QQ`，直到 QQ 参数和绑定都完成后，才能显示为可发送状态。
+
+### Integrations / QQ
+
+| 字段/动作 | 影响 |
+| --- | --- |
+| `appId` / `token` / `apiBase` / `intents` | QQ Worker 是否能连接 QQ OpenAPI 和 Gateway |
+| `allowedContextIds` | 可选白名单；为空表示不限制上下文，但不决定用户归属 |
+| `generate_binding_code` | 生成 30 分钟有效的一次性绑定码 |
+| `binding_code` | 用户在 QQ 中发送“绑定 GM-XXXXXX”后，Worker 才写入 `QqChatBinding` |
+
+QQ 用户归属不能靠默认邮箱、第一用户或任意首次消息判断。未绑定 QQ 会话只能收到绑定引导，不能读取任何目标、日志、模型或 Agent 记忆。
+
 ## 5. Settings Control Center
 
 Settings 页面还承担运行观测功能。

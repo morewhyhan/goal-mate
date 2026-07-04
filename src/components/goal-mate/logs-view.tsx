@@ -166,14 +166,22 @@ export function LogsView() {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Logs</p>
         <div className="mt-2 flex items-start justify-between gap-3">
           <h1 className="text-2xl font-semibold text-stone-950">Markdown 推进记录</h1>
-          <button disabled={createLog.isPending} onClick={handleCreateTodayLog} className="shrink-0 rounded-full bg-stone-950 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
-            今日日志
+          <button disabled={createLog.isPending} onClick={handleCreateTodayLog} className="shrink-0 rounded-full bg-stone-100 px-3 py-2 text-xs font-semibold text-stone-600 ring-1 ring-stone-200 disabled:cursor-not-allowed disabled:opacity-45">
+            手动新建
           </button>
         </div>
         <div className="mt-6 space-y-1">
-          {tree.length ? tree.map((node) => <LogTreeNode key={node.label} node={node} onSelect={setSelectedId} />) : (
+          {treeQuery.isLoading ? (
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm leading-6 text-stone-500">
+              正在读取 Markdown 日志树。
+            </div>
+          ) : tree.length ? tree.map((node) => <LogTreeNode key={node.label} node={node} onSelect={setSelectedId} />) : (
             <div className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm leading-6 text-stone-500">
-              还没有日志文件。可以直接创建今日日志，也可以让 Agent 在 Check-in 或复盘后自动写入。
+              还没有日志文件。你可以先不用管这里；完成一次 Check-in 或复盘后，Agent 会把推进证据自动写入 Markdown。
+              <div className="mt-4 flex flex-wrap gap-2">
+                <a href="/dashboard/agent" className="rounded-full bg-stone-950 px-3 py-1.5 text-xs font-semibold text-white">去 Agent 反馈</a>
+                <a href="/dashboard/today" className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-700">查看 Today</a>
+              </div>
             </div>
           )}
         </div>
@@ -183,7 +191,7 @@ export function LogsView() {
         <div className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-4">
           <div>
             <h2 className="text-xl font-semibold text-stone-950">{title}</h2>
-            <p className="text-sm text-stone-500">{canSave ? `已连接日志 API · ${saveStatus}` : '选择或创建一篇真实日志后才可以编辑保存'}</p>
+            <p className="text-sm text-stone-500">{treeQuery.isLoading ? '正在读取日志 API' : canSave ? `已连接日志 API · ${saveStatus}` : '选择或创建一篇真实日志后才可以编辑保存'}</p>
             <p className="mt-1 text-xs text-stone-400">日志用于还原：系统观察、执行结果、偏差判断、下一步调整。</p>
           </div>
           <button disabled={!canSave || !isDirty || updateLog.isPending} onClick={handleSave} className="rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存</button>

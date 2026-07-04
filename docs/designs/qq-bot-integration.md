@@ -36,18 +36,17 @@ Worker 调 QQ OpenAPI sendMessage -> 回 QQ
 - 服务器可以访问 QQ OpenAPI
 - 服务器可以访问 DeepSeek API
 
-## 3. 环境变量
+## 3. 配置来源
 
-| 变量 | 用途 |
+| 配置项 | 来源 | 用途 |
 | --- | --- |
-| `QQ_BOT_APP_ID` | QQ 机器人 AppID |
-| `QQ_BOT_TOKEN` | QQ 机器人 Token |
-| `QQ_BOT_API_BASE` | 默认 `https://api.sgroup.qq.com` |
-| `QQ_BOT_INTENTS` | Gateway 事件订阅位，默认 `33554432` |
-| `QQ_DEFAULT_USER_EMAIL` | 默认绑定到哪个 Goal Mate 用户 |
-| `QQ_ALLOWED_CONTEXT_IDS` | 可选白名单，逗号分隔；为空表示不限制 |
+| App ID | Settings | QQ 机器人 AppID |
+| Token / Secret | Settings | QQ 机器人 Token，按当前用户加密保存 |
+| API Base | Settings，默认 `https://api.sgroup.qq.com` | QQ OpenAPI 地址 |
+| Gateway Intents | Settings，默认 `33554432` | Gateway 事件订阅位 |
+| 允许会话 | Settings，可留空 | 可选白名单，逗号分隔；为空表示不限制 |
 
-真实 token 只允许放 `.env`，不能写进代码或文档。
+v0.1 的用户路径不是让用户编辑 `.env`。QQ Bot App ID / Token 只能在 Settings 页面填写，并按当前登录用户加密保存。`.env` 只保留默认 API Base / intents 等非用户级参数。真实 token 不能写进代码、文档、`.env.example` 或提交记录。
 
 ## 4. 数据模型
 
@@ -62,6 +61,20 @@ Worker 调 QQ OpenAPI sendMessage -> 回 QQ
 | `contextId` | QQ OpenID、群 OpenID 或频道 ID |
 | `username` / `nickname` | QQ 侧展示信息 |
 | `status` | enabled / disabled / error |
+
+绑定规则：
+
+```text
+未绑定 QQ 会话
+  -> 不允许自动归属到第一个用户
+  -> 用户必须在 Settings 生成一次性绑定码
+  -> 在 QQ 中发送“绑定 GM-XXXXXX”
+  -> Worker 校验绑定码有效且未过期
+  -> 写入 QqChatBinding
+  -> 清空绑定码
+```
+
+绑定码默认 30 分钟有效。绑定码不是长期凭证，只用于证明“当前登录 Web 账号”和“当前 QQ 会话”属于同一个用户。
 
 ### QqMessageEvent
 
@@ -82,11 +95,13 @@ Worker 调 QQ OpenAPI sendMessage -> 回 QQ
 
 ## 5. Worker
 
-启动命令：
+Worker 是后台进程，不是普通用户要手动执行的操作。本地开发或排错时可以直接运行：
 
 ```bash
 pnpm worker:qq
 ```
+
+正式部署时应由 `goal-mate-qq-worker.service` 常驻运行，并随服务器启动。用户只需要在 Settings 保存 QQ Bot 配置并生成绑定码。
 
 Worker 做这些事：
 
@@ -150,15 +165,22 @@ QQ Bot 不可以：
 - QQ execute 工具待确认。
 - QQ 文本“确认执行”后执行工具动作。
 - Agent 工具审计。
+- Settings 生成 QQ 一次性绑定码。
+- QQ Worker 只通过有效绑定码绑定当前账号，不再把陌生 QQ 会话自动归属到全局账号或第一个用户。
+- 未绑定 QQ 会话会收到明确提示：先去 Settings 生成绑定码，再发送绑定命令。
 
 暂未实现：
 
 - QQ 开放平台参数自动配置。
-- 多用户自助绑定码。
 - QQ 图片/语音/文件消息。
-- QQ 主动定时提醒代码路径和 Scheduler Worker 资产已具备，但服务器长期运行验收未完成。
 - QQ 卡片消息。
 - 权限审批 UI。
+
+尚未完成验收：
+
+- 真实 QQ Gateway 长连接稳定性。
+- 服务器 systemd 长期运行。
+- 真实平台主动消息送达。
 
 ## 9. 与 Agent Tool Runtime 的关系
 
@@ -203,13 +225,13 @@ QQ 平台可能限制完全主动的 C2C 消息。系统必须记录发送失败
 
 ## 11. 下一步
 
-QQ 机器人参数已经作为运行环境配置项接入：
+QQ 机器人参数已经作为 Settings 配置项接入：
 
-- `QQ_BOT_APP_ID`
-- `QQ_BOT_TOKEN`
-- `QQ_BOT_API_BASE`
-- `QQ_DEFAULT_USER_EMAIL`
-- `QQ_ALLOWED_CONTEXT_IDS`
+- App ID
+- Token / Secret
+- API Base
+- Gateway Intents
+- 允许会话
 
 下一步不是继续找参数，也不是重新切换到 Telegram，而是完成服务器常驻运行验证：
 
@@ -218,17 +240,77 @@ QQ 机器人参数已经作为运行环境配置项接入：
 - Scheduler Worker 按规则触发早中晚和周复盘。
 - Settings 中能看到 `SchedulerEvent` 和 `AgentToolAction` 的成功/失败记录。
 
-然后写入 `.env`：
+## 12. 当前增量事实：QQ 不是用户手动启动项
 
-```bash
-QQ_BOT_APP_ID="..."
-QQ_BOT_TOKEN="..."
-QQ_BOT_INTENTS="33554432"
-QQ_DEFAULT_USER_EMAIL="demo@goalmate.local"
+QQ Bot 和 Scheduler 都是后台能力，不是用户要理解的命令。
+
+本地启动：
+
+```text
+pnpm dev
+  -> 启动 Web
+  -> 启动 QQ Worker
+  -> 启动 Scheduler Worker
 ```
 
-之后部署到服务器并运行：
+服务器部署：
 
-```bash
-pnpm worker:qq
+```text
+systemd
+  -> goal-mate-web.service
+  -> goal-mate-qq-worker.service
+  -> goal-mate-scheduler-worker.service
 ```
+
+如果 Settings 里还没有 QQ 配置，worker 不退出，保持等待；用户在页面填好 App ID / Token 后，worker 会在下一轮读取配置并连接。
+
+后台进程必须写入运行心跳：
+
+```text
+QQ Worker -> RuntimeHeartbeat(service=qq-worker)
+Scheduler Worker -> RuntimeHeartbeat(service=scheduler-worker)
+Web/API -> RuntimeHeartbeat(service=web)
+```
+
+Settings 不能只展示“QQ 已配置”或“提醒规则已开启”。它还必须让用户看到后台进程最近是否在线。配置状态、绑定状态、提醒规则和进程在线状态是四件不同的事：
+
+```text
+QQ 配置存在 != QQ 会话已绑定
+QQ 会话已绑定 != Scheduler 会主动触发
+Scheduler 有规则 != 后台 worker 在线
+worker 在线 != 真实 QQ 平台一定送达
+```
+
+真实送达仍要看 `SchedulerEvent` 和 QQ 平台返回结果。
+
+用户绑定 QQ 的前台流程：
+
+```text
+Settings 保存 QQ App ID / Token
+  -> 点击“生成绑定码”
+  -> 复制“绑定 GM-XXXXXX”
+  -> 发给 QQ 机器人
+  -> Settings 出现已绑定会话
+```
+
+这个流程替代旧的“给机器人发任意一条消息即可无绑定码归属账号”。旧流程不满足多用户数据隔离要求，已经废弃。
+
+晚上复盘场景已经接入日复盘生成：
+
+```text
+Scheduler evening_review
+  -> QQ 主动询问
+  -> 用户回复
+  -> checkin.submit
+  -> log.write_daily
+  -> review.generate daily
+  -> 下一次 Scheduler/Intervention Planner 消费这些反馈
+```
+
+当前增量事实：
+
+- QQ Worker 调用 `src/lib/qq-scheduler-reply.mjs` 处理 Scheduler 回复，不在 Worker 内单独维护一套回复闭环。
+- `pnpm verify:qq-scheduler-reply` 已证明本地 evening_review 回复链路可用：用户回复会进入 Check-in、Markdown、daily Review、SchedulerEvent responded 和 AgentToolAction 审计。
+- 该验证不访问 QQ 网络，因此不能替代真实 QQ Gateway、真实主动发送和服务器长期运行验收。
+
+旧的“写入 `.env` 后自动归属到某个邮箱账号”流程已经废弃。它不满足多用户隔离，也会让新用户误以为 QQ 会话可以自动归属。当前唯一正确前台流程是：登录 Web -> Settings 保存 QQ 配置 -> 生成绑定码 -> 在 QQ 发送绑定命令。

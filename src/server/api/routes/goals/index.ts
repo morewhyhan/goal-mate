@@ -29,6 +29,8 @@ const app = new Hono()
         conditions: true,
         stagePlans: true,
         dailyActions: { orderBy: { actionDate: 'desc' }, take: 1 },
+        checkins: { orderBy: { createdAt: 'desc' }, take: 5 },
+        diagnoses: { orderBy: { createdAt: 'desc' }, take: 5 },
         reasoningCards: { where: { status: 'CONFIRMED' }, orderBy: { version: 'desc' }, take: 1 },
       },
     })

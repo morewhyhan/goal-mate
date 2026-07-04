@@ -43,8 +43,8 @@ Agent 不做：
 | P0 | done | 将秘书式表达写入产品事实文档 | `02-system-control-model.md` 有明确表达规则 |
 | P0 | done | 接入 Agent Runtime | system prompt 包含职业秘书式表达、少寒暄、单问题追问、非泛化规则 |
 | P0 | done | 增加静态门禁 | `verify-agent-action-loop.mjs` 覆盖研究文档、计划文档、runtime 和规格文档 |
-| P1 | pending | 做真实对话样本评测 | 模糊目标、今日行动、没做反馈、复盘、设置读取 5 类样本都通过 |
-| P1 | pending | 把能力模块化 | 从内联 prompt 抽出为可组合 prompt module |
+| P1 | done | 做对话样本质量评测 | `pnpm verify:ai-reply-quality` 覆盖模糊目标、今日行动、没做反馈、复盘、设置读取 5 类样本；真实模型 live 评测仍按可选外部验收执行 |
+| P1 | done | 把能力模块化 | `src/lib/agent-prompts/index.ts` 作为可组合 prompt module，Agent Runtime 只通过 builder 组装 |
 
 ## 5. Prompt 设计原则
 
@@ -99,3 +99,12 @@ Agent 不做：
 先把秘书式表达能力作为 Agent 的基础能力，而不是作为可配置风格。
 
 理由：这是产品定位的一部分。Goal Mate 如果不像秘书，就会退化成普通 AI 聊天框。
+
+## 9. 当前增量事实
+
+截至 2026-07-04，秘书式表达已经不只停留在 prompt 文案：
+
+- `src/lib/agent-prompts/index.ts` 统一维护去 AI 味、控制闭环、权限边界和秘书式表达。
+- `pnpm verify:ai-reply-quality` 会静态检查 prompt / runtime 约束，并用样本门禁拒绝 AI 客服腔、泛鼓励、强制羞辱、未确认执行和隐私幻觉。
+- 样本门禁覆盖 5 个核心用户场景：模糊目标、今日行动、没做反馈、复盘、设置读取。
+- 真实模型 live 评测仍是独立外部验收；没有可用 DeepSeek 余额时，不能声明长期真实模型质量已通过。

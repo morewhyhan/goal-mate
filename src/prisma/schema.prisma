@@ -744,6 +744,21 @@ model SchedulerEvent {
   @@index([scheduledFor])
 }
 
+model RuntimeHeartbeat {
+  id         String   @id @default(uuid())
+  service    String   @unique
+  status     String   @default("starting")
+  pid        Int?
+  detail     String?
+  payload    Json?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+  @@index([lastSeenAt])
+}
+
 model user {
   id            String   @id @default(uuid())
   email         String   @unique

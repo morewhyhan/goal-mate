@@ -38,7 +38,7 @@
 | --- | --- | --- |
 | 新建 prompt system 入口 | done | `src/lib/agent-prompts/index.ts` |
 | 增加 prompt 版本 | done | `AGENT_SYSTEM_PROMPT_VERSION` |
-| 拆分 prompt section | done | `ANTI_AI_TONE_CHARTER`、`ANTI_AI_AUDIT_PROTOCOL`、`ROLE`、`CONTROL_LOOP`、`TOOL_AND_PERMISSION_POLICY`、`SECRETARY_TONE` |
+| 拆分 prompt section | done | `ANTI_AI_TONE_CHARTER`、`ANTI_AI_AUDIT_PROTOCOL`、`ROLE`、`CONTROL_LOOP`、`INTERVENTION_POLICY`、`META_COGNITION_POLICY`、`MEMORY_QUALITY_POLICY`、`SYSTEM_FACT_USAGE`、`TOOL_AND_PERMISSION_POLICY`、`SECRETARY_TONE` |
 | 增加去 AI 味总纲 | done | 顶层约束 Agent 不像 AI 客服、问答机器人或写作助手 |
 | 增加 AI 味审稿协议 | done | 回复前检查太完整、太礼貌、太抽象、太平滑等痕迹并重写 |
 | 删除 prompt 表层理论名词 | done | 不在 system prompt 中显式强调后台理论术语，只保留行为规则 |
@@ -46,7 +46,8 @@
 | 增加设计事实文档 | done | `docs/designs/agent-prompt-system.md` |
 | 更新静态门禁 | done | `AAL-PROMPT-SYSTEM-MODULAR-CONTRACT` |
 | 真实对话样本评测 | pending | 后续用真实模型跑 5 类样本 |
-| prompt snapshot | pending | 后续固定输出快照 |
+| prompt snapshot | done | `docs/designs/agent-prompt-snapshot.json` 固定当前 prompt 版本、section、源码 hash 和关键规则短语；`pnpm verify:agent-prompt-snapshot` 防止未记录漂移 |
+| 首次目标模型优先 | done | 有用户模型 Key 时，首次目标创建由模型路由优先判断；本地首目标 scaffold 只作为无 Key 兜底 |
 
 ## 5. 工程规则
 
@@ -55,6 +56,7 @@
 - 新增 prompt section 必须有清晰职责和优先级。
 - 用户可编辑内容只能进入 runtime context，不能进入 system rules。
 - prompt 修改必须同步设计文档和静态门禁。
+- prompt 修改必须同步 `docs/designs/agent-prompt-snapshot.json`；未更新 snapshot 的 prompt 漂移视为验收失败。
 - system prompt 不主动灌输后台理论名词，除非用户明确问产品原理或文档说明。
 - 去 AI 味必须包含内部审稿协议，不能只写“少寒暄、少废话”。
 
@@ -63,6 +65,7 @@
 本次验收依赖：
 
 - `pnpm verify:agent-loop:static`
+- `pnpm verify:agent-prompt-snapshot`
 - `pnpm typecheck`
 
 通过后说明：
@@ -70,4 +73,5 @@
 - prompt 模块存在。
 - runtime 已使用 builder。
 - 核心控制闭环和秘书式表达规则仍然存在。
+- prompt snapshot 与当前 system prompt 一致。
 - TypeScript 编译没有破坏。

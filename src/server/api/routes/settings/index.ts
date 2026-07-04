@@ -5,6 +5,9 @@ import { prisma } from '@/lib/db'
 import { defaultDeepSeekModel, defaultUserSettings, getCurrentUserId, unauthorized } from '../../context'
 import { AGENT_SYSTEM_PROMPT_VERSION } from '@/lib/agent-prompts'
 import { maskModelConfig, resolveModelApiKey } from '@/lib/model-secret.mjs'
+import { classifyModelProviderFailure, parseModelProviderError } from '@/lib/model-provider-errors'
+import { findQqBotAccount, issueQqBindingCode, maskQqBotConfig, resolveQqBotConfig, saveQqBotConfig } from '@/lib/qq-bot-config.mjs'
+import { summarizeRuntimeHeartbeat, touchRuntimeHeartbeat } from '@/lib/runtime-heartbeat.mjs'
 
 const settingsSchema = z.object({
   general: z.record(z.string(), z.unknown()).optional(),
@@ -30,6 +33,18 @@ const reminderRuleInputSchema = z.object({
 const reminderRulesSchema = z.object({
   rules: z.array(reminderRuleInputSchema).min(1),
 })
+
+const qqBotConfigSchema = z.object({
+  appId: z.string().trim().optional().default(''),
+  token: z.string().trim().optional().default(''),
+  apiBase: z.string().trim().optional().default('https://api.sgroup.qq.com'),
+  intents: z.coerce.number().int().positive().default(33554432),
+  allowedContextIds: z.string().trim().optional().default(''),
+  enabled: z.boolean().default(true),
+})
+
+const DEFAULT_QQ_MESSAGE_API_BASE = 'https://api.sgroup.qq.com'
+const DEFAULT_QQ_TOKEN_API_BASE = 'https://bots.qq.com'
 
 const defaultReminderRules = [
   { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
@@ -86,20 +101,12 @@ function deploymentEnvConfig() {
       reason: '登录、前端 API 和回调统一使用这一项。',
     },
     {
-      key: 'QQ_BOT_APP_ID',
-      label: 'QQ App ID',
-      configured: envConfigured('QQ_BOT_APP_ID'),
-      secret: false,
-      value: maskEnvValue(process.env.QQ_BOT_APP_ID),
-      reason: 'QQ Worker 连接机器人必须有这一项。',
-    },
-    {
-      key: 'QQ_BOT_TOKEN',
-      label: 'QQ Token',
-      configured: envConfigured('QQ_BOT_TOKEN'),
+      key: 'GOAL_MATE_SECRET',
+      label: '本机加密密钥',
+      configured: envConfigured('GOAL_MATE_SECRET'),
       secret: true,
-      value: maskEnvValue(process.env.QQ_BOT_TOKEN),
-      reason: 'QQ Worker 获取 access token 必须有这一项。',
+      value: maskEnvValue(process.env.GOAL_MATE_SECRET),
+      reason: '用于加密 Settings 中保存的模型密钥和机器人 token。',
     },
   ]
 
@@ -110,6 +117,7 @@ function deploymentEnvConfig() {
     uiManaged: [
       '模型 provider/model/apiBase/temperature',
       '每个用户自己的模型 API Key',
+      'QQ Bot App ID / Token / API Base / Gateway intents',
       '早中晚和周复盘提醒时间',
       'Agent 读取 Goals/Logs/Memory 权限',
       'Check-in/Review 自动写入日志',
@@ -128,8 +136,6 @@ function deploymentEnvConfig() {
     optionalOverrides: [
       'BETTER_AUTH_URL',
       'NEXT_PUBLIC_BETTER_AUTH_URL',
-      'GOAL_MATE_SECRET',
-      'QQ_DEFAULT_USER_EMAIL',
       'QQ_ALLOWED_CONTEXT_IDS',
       'QQ_SCHEDULER_REPLY_WINDOW_HOURS',
     ],
@@ -137,7 +143,9 @@ function deploymentEnvConfig() {
 }
 
 async function ensureDefaultModel(userId: string) {
-  const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultDeepSeekModel.provider, usage: defaultDeepSeekModel.usage } })
+  const existingDefault = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true, usage: defaultDeepSeekModel.usage }, orderBy: { updatedAt: 'desc' } })
+  if (existingDefault) return existingDefault
+  const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultDeepSeekModel.provider, usage: defaultDeepSeekModel.usage }, orderBy: { updatedAt: 'desc' } })
   if (existing) return existing
   return prisma.modelConfig.create({ data: { ...defaultDeepSeekModel, userId } })
 }
@@ -161,6 +169,7 @@ async function probeModelConnection(model: any) {
       ok: false,
       provider: model?.provider || defaultDeepSeekModel.provider,
       model: modelName,
+      reason: 'missing_api_key',
       message: '当前用户没有配置模型 API Key，无法测试连接。',
     }
   }
@@ -180,14 +189,18 @@ async function probeModelConnection(model: any) {
       }),
     })
 
-    if (!response.ok) {
-      const text = await response.text()
-      return {
-        ok: false,
+  if (!response.ok) {
+    const text = await response.text()
+    const rawMessage = parseModelProviderError(text)
+    const failure = classifyModelProviderFailure(response.status, rawMessage)
+    return {
+      ok: false,
         provider: model?.provider || defaultDeepSeekModel.provider,
         model: modelName,
         status: response.status,
-        message: text.slice(0, 240),
+        reason: failure.reason,
+        message: failure.message,
+        rawMessage: rawMessage.slice(0, 240),
       }
     }
 
@@ -195,13 +208,77 @@ async function probeModelConnection(model: any) {
       ok: true,
       provider: model?.provider || defaultDeepSeekModel.provider,
       model: modelName,
+      reason: 'ok',
       message: 'DeepSeek 连接成功。',
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     return {
       ok: false,
       provider: model?.provider || defaultDeepSeekModel.provider,
       model: modelName,
+      reason: 'network_error',
+      message: `模型连接失败：${message}`,
+    }
+  }
+}
+
+async function probeQqBotConnection(userId: string) {
+  const config = await resolveQqBotConfig(prisma, userId)
+  if (!config.configured) {
+    return {
+      ok: false,
+      status: 'missing_config',
+      message: 'QQ Bot 还没有配置 App ID 和 Token。',
+    }
+  }
+
+  try {
+    const apiBase = String(config.apiBase || DEFAULT_QQ_MESSAGE_API_BASE).replace(/\/+$/, '')
+    const tokenBase = apiBase === DEFAULT_QQ_MESSAGE_API_BASE ? DEFAULT_QQ_TOKEN_API_BASE : apiBase
+    const tokenResponse = await fetch(`${tokenBase}/app/getAppAccessToken`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ appId: config.appId, clientSecret: config.token }),
+    })
+    const tokenText = await tokenResponse.text()
+    let tokenData: any = null
+    try {
+      tokenData = tokenText ? JSON.parse(tokenText) : null
+    } catch {
+      tokenData = tokenText
+    }
+
+    if (!tokenResponse.ok || !tokenData?.access_token) {
+      return {
+        ok: false,
+        status: tokenResponse.status,
+        message: `QQ access token 获取失败：${tokenText.slice(0, 180)}`,
+      }
+    }
+
+    const binding = await prisma.qqChatBinding.findFirst({
+      where: { userId, status: 'ENABLED' },
+      orderBy: { updatedAt: 'desc' },
+    })
+
+    if (!binding) {
+      return {
+        ok: true,
+        status: 'token_ok_no_binding',
+        message: 'QQ 配置有效。还没有绑定会话，请先在 Settings 生成绑定码，再在 QQ 里发送绑定命令。',
+      }
+    }
+
+    return {
+      ok: true,
+      status: 'ready',
+      message: `QQ 配置有效，最近绑定：${binding.contextType}:${maskContextId(binding.contextId)}。`,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'request_failed',
       message: error instanceof Error ? error.message : String(error),
     }
   }
@@ -296,21 +373,31 @@ const app = new Hono()
   .get('/control-center', async (c) => {
     const userId = await getCurrentUserId(c)
     if (!userId) return unauthorized(c)
+    await touchRuntimeHeartbeat(prisma, {
+      service: 'web',
+      status: 'ok',
+      detail: 'Web/API 正常响应。',
+      payload: { route: '/api/settings/control-center' },
+    })
 
-    const [settings, model] = await Promise.all([
+    const [settings, model, runtimeHeartbeats] = await Promise.all([
       prisma.userSetting.findUnique({ where: { userId } }),
       ensureDefaultModel(userId),
+      prisma.runtimeHeartbeat.findMany(),
       ensureDefaultReminderRules(userId),
     ])
+    const heartbeatByService = Object.fromEntries(runtimeHeartbeats.map((item) => [item.service, summarizeRuntimeHeartbeat(item)]))
 
-    const [reminderRules, qqBindings, toolActions, schedulerEvents, recentQqEvent] = await Promise.all([
+    const [reminderRules, qqBindings, toolActions, schedulerEvents, recentQqEvent, qqBotAccount] = await Promise.all([
       prisma.reminderRule.findMany({ where: { userId }, orderBy: [{ channel: 'asc' }, { reminderType: 'asc' }] }),
       prisma.qqChatBinding.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
       prisma.agentToolAction.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 12 }),
       prisma.schedulerEvent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 8 }),
       prisma.qqMessageEvent.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' } }),
+      findQqBotAccount(prisma, userId),
     ])
     const modelStatus = modelForSettings(model)
+    const qqBotConfig = maskQqBotConfig(qqBotAccount)
     const enabledQqBindings = qqBindings.filter((binding) => binding.status === 'ENABLED')
     const pendingToolActions = toolActions.filter((action) => action.status === 'pending_confirmation')
     const failedToolActions = toolActions.filter((action) => action.status === 'failed')
@@ -364,19 +451,20 @@ const app = new Hono()
         schedulerEvents,
         runtimeStatus: {
           web: {
-            status: 'ok',
-            label: 'Web/API 正常响应',
-            evidence: 'Settings Control Center loaded.',
+            ...(heartbeatByService.web || summarizeRuntimeHeartbeat(null)),
+            label: heartbeatByService.web?.label || 'Web/API 正常响应',
           },
+          qqWorker: heartbeatByService['qq-worker'] || summarizeRuntimeHeartbeat(null),
+          schedulerWorker: heartbeatByService['scheduler-worker'] || summarizeRuntimeHeartbeat(null),
           model: {
             status: modelStatus?.apiKeyConfigured ? 'configured' : 'missing_key',
             label: modelStatus?.apiKeyConfigured ? '模型密钥已配置' : '模型密钥缺失',
             evidence: modelStatus ? `${modelStatus.provider}/${modelStatus.model}` : 'missing model config',
           },
           qq: {
-            status: enabledQqBindings.length ? 'bound' : 'not_bound',
-            label: enabledQqBindings.length ? 'QQ 已绑定' : 'QQ 未绑定',
-            evidence: recentQqEvent ? `last=${recentQqEvent.status} ${recentQqEvent.eventType}` : 'no qq message event',
+            status: qqBotConfig.configured ? enabledQqBindings.length ? 'bound' : 'configured' : 'missing_config',
+            label: qqBotConfig.configured ? enabledQqBindings.length ? 'QQ 已配置并已绑定' : 'QQ 已配置，等待绑定码确认' : 'QQ Bot 未配置',
+            evidence: recentQqEvent ? `last=${recentQqEvent.status} ${recentQqEvent.eventType}` : `config=${qqBotConfig.source}`,
             lastEventAt: recentQqEvent?.createdAt,
           },
           scheduler: {
@@ -407,6 +495,7 @@ const app = new Hono()
           },
         },
         deploymentConfig,
+        qqBotConfig,
         recentErrors,
         permissionPolicy: {
           read: '直接执行',
@@ -416,6 +505,31 @@ const app = new Hono()
         },
       },
     })
+  })
+  .put('/qq-bot', zValidator('json', qqBotConfigSchema), async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    const input = c.req.valid('json')
+    const saved = await saveQqBotConfig(prisma, userId, input)
+    return c.json({ data: saved })
+  })
+  .post('/qq-bot/binding-code', async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+
+    const qqBotAccount = await findQqBotAccount(prisma, userId)
+    const qqBotConfig = maskQqBotConfig(qqBotAccount)
+    if (!qqBotConfig.configured) {
+      return c.json({
+        error: {
+          code: 'QQ_BOT_CONFIG_REQUIRED',
+          message: '请先保存 QQ Bot App ID 和 Token，再生成绑定码。',
+        },
+      }, 400)
+    }
+
+    return c.json({ data: await issueQqBindingCode(prisma, userId) })
   })
   .put('/reminders', zValidator('json', reminderRulesSchema), async (c) => {
     const userId = await getCurrentUserId(c)
@@ -502,6 +616,11 @@ const app = new Hono()
     if (!userId) return unauthorized(c)
     const model = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
     return c.json({ data: await probeModelConnection(model) })
+  })
+  .post('/qq-bot/test', async (c) => {
+    const userId = await getCurrentUserId(c)
+    if (!userId) return unauthorized(c)
+    return c.json({ data: await probeQqBotConnection(userId) })
   })
   .delete('/agent-memory', async (c) => {
     const userId = await getCurrentUserId(c)

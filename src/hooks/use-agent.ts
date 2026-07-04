@@ -10,6 +10,16 @@ const $createThread = client.api.agent.threads.$post
 type CreateThreadRequest = InferRequestType<typeof $createThread>['json']
 type CreateThreadResponse = any
 
+const $updateThread = client.api.agent.threads[':id'].$patch
+type UpdateThreadRequest = InferRequestType<typeof $updateThread>['json'] & { id: string }
+type UpdateThreadResponse = any
+
+const $deleteThread = client.api.agent.threads[':id'].$delete
+type DeleteThreadResponse = any
+
+const $clearThreadMessages = client.api.agent.threads[':id'].messages.$delete
+type ClearThreadMessagesResponse = any
+
 const $messages = client.api.agent.threads[':id'].messages.$get
 type MessagesResponse = any
 
@@ -41,6 +51,44 @@ export function useCreateAgentThread() {
     mutationFn: async (json) => (await $createThread({ json })).json(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] }),
     onError: (error) => toast.error(error.message || '创建对话失败'),
+  })
+}
+
+export function useUpdateAgentThread() {
+  const queryClient = useQueryClient()
+  return useMutation<UpdateThreadResponse, Error, UpdateThreadRequest>({
+    mutationFn: async ({ id, ...json }) => (await $updateThread({ param: { id }, json })).json(),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
+      queryClient.invalidateQueries({ queryKey: ['agent', 'messages', variables.id] })
+    },
+    onError: (error) => toast.error(error.message || '对话更新失败'),
+  })
+}
+
+export function useDeleteAgentThread() {
+  const queryClient = useQueryClient()
+  return useMutation<DeleteThreadResponse, Error, string>({
+    mutationFn: async (id) => (await $deleteThread({ param: { id } })).json(),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
+      queryClient.removeQueries({ queryKey: ['agent', 'messages', id] })
+      toast.success('对话已删除')
+    },
+    onError: (error) => toast.error(error.message || '对话删除失败'),
+  })
+}
+
+export function useClearAgentThreadMessages() {
+  const queryClient = useQueryClient()
+  return useMutation<ClearThreadMessagesResponse, Error, string>({
+    mutationFn: async (id) => (await $clearThreadMessages({ param: { id } })).json(),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
+      queryClient.invalidateQueries({ queryKey: ['agent', 'messages', id] })
+      toast.success('当前对话已清空')
+    },
+    onError: (error) => toast.error(error.message || '对话清空失败'),
   })
 }
 

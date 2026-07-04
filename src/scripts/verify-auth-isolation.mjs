@@ -24,6 +24,10 @@ const modelProviderA = `AOnlyProvider${runId}`
 const modelProviderB = `BOnlyProvider${runId}`
 const modelSecretA = `sk-isolation-a-${runId}-secret-token`
 const modelSecretB = `sk-isolation-b-${runId}-secret-token`
+const qqAppIdA = `qq-app-a-${runId}`
+const qqAppIdB = `qq-app-b-${runId}`
+const qqTokenA = `qq-token-a-${runId}-secret`
+const qqTokenB = `qq-token-b-${runId}-secret`
 const results = []
 
 function record(id, purpose, ok, evidence = '') {
@@ -252,6 +256,52 @@ async function run() {
     && !storedB.apiKeyRef.includes(modelSecretB),
   )
   record('ISO-MODEL-KEY-AT-REST', 'per-user model API keys are encrypted at rest and differ by user', encryptedAtRest, `aRef=${storedA?.apiKeyRef?.slice(0, 6) || 'missing'}; bRef=${storedB?.apiKeyRef?.slice(0, 6) || 'missing'}`)
+
+  const qqConfigA = await apiJson('/api/settings/qq-bot', authA.cookie, 'PUT', {
+    appId: qqAppIdA,
+    token: qqTokenA,
+    apiBase: 'https://api.sgroup.qq.com',
+    intents: 33554432,
+    allowedContextIds: '',
+    enabled: true,
+  })
+  const qqConfigB = await apiJson('/api/settings/qq-bot', authB.cookie, 'PUT', {
+    appId: qqAppIdB,
+    token: qqTokenB,
+    apiBase: 'https://api.sgroup.qq.com',
+    intents: 33554432,
+    allowedContextIds: '',
+    enabled: true,
+  })
+  const qqConfigLeak = textIncludes(qqConfigA.json, qqTokenA) || textIncludes(qqConfigA.json, qqTokenB) || textIncludes(qqConfigB.json, qqTokenA) || textIncludes(qqConfigB.json, qqTokenB)
+  record('ISO-QQ-CONFIG', 'two users can save separate QQ bot configs without leaking raw tokens', qqConfigA.response.ok && qqConfigB.response.ok && qqConfigA.json?.data?.configured === true && qqConfigB.json?.data?.configured === true && !qqConfigLeak, `a=${qqConfigA.response.status}; b=${qqConfigB.response.status}`)
+
+  const qqBindingA = await apiJson('/api/settings/qq-bot/binding-code', authA.cookie, 'POST', {})
+  const qqBindingB = await apiJson('/api/settings/qq-bot/binding-code', authB.cookie, 'POST', {})
+  const codeA = qqBindingA.json?.data?.code || ''
+  const codeB = qqBindingB.json?.data?.code || ''
+  const distinctCodes = /^GM-[A-Z0-9]{6}$/.test(codeA) && /^GM-[A-Z0-9]{6}$/.test(codeB) && codeA !== codeB
+  record('ISO-QQ-BINDING-CODE', 'QQ binding codes are generated per current user and are not shared across accounts', qqBindingA.response.ok && qqBindingB.response.ok && distinctCodes, `a=${codeA || 'missing'}; b=${codeB || 'missing'}`)
+
+  const qqAccounts = await prisma.integrationAccount.findMany({
+    where: { userId: { in: [authA.user.id, authB.user.id] }, provider: 'qq_bot' },
+  })
+  const qqAccountA = qqAccounts.find((item) => item.userId === authA.user.id)
+  const qqAccountB = qqAccounts.find((item) => item.userId === authB.user.id)
+  const qqPermissionsA = qqAccountA?.permissions || {}
+  const qqPermissionsB = qqAccountB?.permissions || {}
+  const qqEncryptedAtRest = Boolean(
+    qqPermissionsA.tokenRef?.startsWith?.('enc:v1:')
+    && qqPermissionsB.tokenRef?.startsWith?.('enc:v1:')
+    && qqPermissionsA.tokenRef !== qqPermissionsB.tokenRef
+    && qqPermissionsA.bindingCode === codeA
+    && qqPermissionsB.bindingCode === codeB
+    && !JSON.stringify(qqPermissionsA).includes(qqTokenA)
+    && !JSON.stringify(qqPermissionsA).includes(qqTokenB)
+    && !JSON.stringify(qqPermissionsB).includes(qqTokenA)
+    && !JSON.stringify(qqPermissionsB).includes(qqTokenB)
+  )
+  record('ISO-QQ-SECRET-AT-REST', 'QQ tokens are encrypted and binding codes are stored under the correct user account', qqEncryptedAtRest, `aRef=${qqPermissionsA.tokenRef?.slice?.(0, 6) || 'missing'}; bRef=${qqPermissionsB.tokenRef?.slice?.(0, 6) || 'missing'}`)
 
   const unauthGoals = await apiGet('/api/goals')
   record('ISO-UNAUTH-GUARD', 'private goals API rejects unauthenticated access', unauthGoals.response.status === 401, `GET /api/goals status=${unauthGoals.response.status}`)

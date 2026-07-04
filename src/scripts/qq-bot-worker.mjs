@@ -13,6 +13,14 @@ import {
   executeAgentToolWithPrisma,
 } from '../lib/agent-tool-executor.mjs'
 import { resolveModelApiKey } from '../lib/model-secret.mjs'
+import {
+  clearQqBindingCode,
+  findQqAccountByBindingCode,
+  normalizeQqBindingCode,
+  resolveQqBotConfig,
+} from '../lib/qq-bot-config.mjs'
+import { processQqSchedulerReply } from '../lib/qq-scheduler-reply.mjs'
+import { touchRuntimeHeartbeat } from '../lib/runtime-heartbeat.mjs'
 
 const prisma = new PrismaClient()
 
@@ -33,31 +41,69 @@ function loadLocalEnv() {
 
 loadLocalEnv()
 
-const apiBase = (process.env.QQ_BOT_API_BASE || 'https://api.sgroup.qq.com').replace(/\/+$/, '')
-const appId = process.env.QQ_BOT_APP_ID || ''
-const token = process.env.QQ_BOT_TOKEN || ''
-const defaultUserEmail = process.env.QQ_DEFAULT_USER_EMAIL || ''
-const intents = Number(process.env.QQ_BOT_INTENTS || '33554432')
-const allowedContextIds = new Set(
-  (process.env.QQ_ALLOWED_CONTEXT_IDS || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean),
-)
-
 let lastSeq = null
 let heartbeatTimer = null
 let cachedAccessToken = ''
 let accessTokenExpiresAt = 0
+let currentQqConfig = null
+let currentQqConfigSignature = ''
+let lastMissingConfigLogAt = 0
 
-function assertConfig() {
-  if (!appId || !token) {
-    throw new Error('QQ_BOT_APP_ID and QQ_BOT_TOKEN are required')
-  }
+function qqConfigSignature(config) {
+  return JSON.stringify({
+    source: config?.source || '',
+    appId: config?.appId || '',
+    token: config?.token || '',
+    apiBase: config?.apiBase || '',
+    intents: config?.intents || '',
+    allowedContextIds: config?.allowedContextIds || [],
+  })
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function refreshQqConfig() {
+  const config = await resolveQqBotConfig(prisma)
+  if (!config.configured) {
+    await touchRuntimeHeartbeat(prisma, {
+      service: 'qq-worker',
+      status: 'waiting_config',
+      detail: 'QQ Worker 在线，等待 Settings 保存 QQ 配置。',
+      payload: { source: config.source || 'settings_required' },
+    })
+    currentQqConfig = null
+    currentQqConfigSignature = ''
+    cachedAccessToken = ''
+    accessTokenExpiresAt = 0
+    const now = Date.now()
+    if (now - lastMissingConfigLogAt > 60_000) {
+      console.warn('[qq] QQ Bot config missing; worker is alive and waiting for Settings -> QQ configuration.')
+      lastMissingConfigLogAt = now
+    }
+    return null
+  }
+
+  const nextSignature = qqConfigSignature(config)
+  if (nextSignature !== currentQqConfigSignature) {
+    cachedAccessToken = ''
+    accessTokenExpiresAt = 0
+    currentQqConfigSignature = nextSignature
+    console.log(`[qq] loaded config from ${config.source}; apiBase=${config.apiBase}; intents=${config.intents}`)
+  }
+  await touchRuntimeHeartbeat(prisma, {
+    service: 'qq-worker',
+    status: 'configured',
+    detail: 'QQ Worker 已读取 QQ 配置，准备连接 Gateway。',
+    payload: { source: config.source, apiBase: config.apiBase, intents: config.intents },
+  })
+  currentQqConfig = config
+  return config
+}
+
+async function requireQqConfig() {
+  return currentQqConfig || await refreshQqConfig()
 }
 
 function trimForPrompt(value, max = 900) {
@@ -70,11 +116,13 @@ const qqToolCatalog = sharedAgentToolCatalog
 
 async function getAppAccessToken() {
   if (cachedAccessToken && Date.now() < accessTokenExpiresAt - 60_000) return cachedAccessToken
+  const config = await requireQqConfig()
+  if (!config) throw new Error('QQ Bot config missing')
 
   const response = await fetch('https://bots.qq.com/app/getAppAccessToken', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ appId, clientSecret: token }),
+    body: JSON.stringify({ appId: config.appId, clientSecret: config.token }),
   })
   const text = await response.text()
   let data = null
@@ -105,8 +153,10 @@ function stripBotMention(content = '') {
 }
 
 async function qqRequest(method, path, body) {
+  const config = await requireQqConfig()
+  if (!config) throw new Error('QQ Bot config missing')
   const authorization = await getAuthHeader()
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetch(`${config.apiBase}${path}`, {
     method,
     headers: {
       authorization,
@@ -154,54 +204,72 @@ function extractContext(eventType, payload) {
 }
 
 function isAllowedContext(contextId) {
+  const allowedContextIds = new Set((currentQqConfig?.allowedContextIds || []).map((item) => String(item)))
   return allowedContextIds.size === 0 || allowedContextIds.has(String(contextId))
 }
 
-async function resolveUser(contextType, contextId, payload) {
-  const existing = await prisma.qqChatBinding.findUnique({ where: { contextType_contextId: { contextType, contextId } } })
-  if (existing?.status === 'ENABLED') return existing.userId
+function readQqUserProfile(payload) {
+  return {
+    username: payload.author?.username || payload.member?.nick || payload.author?.id || '',
+    nickname: payload.author?.nickname || payload.member?.nick || payload.author?.username || '',
+  }
+}
 
-  const user = defaultUserEmail
-    ? await prisma.user.findUnique({ where: { email: defaultUserEmail } })
-    : await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } })
-  if (!user) return null
-
+async function bindContextToUser(userId, contextType, contextId, payload) {
+  const profile = readQqUserProfile(payload)
   await prisma.qqChatBinding.upsert({
     where: { contextType_contextId: { contextType, contextId } },
     update: {
-      userId: user.id,
-      username: payload.author?.username || payload.member?.nick,
-      nickname: payload.author?.nickname || payload.member?.nick,
+      userId,
+      username: profile.username,
+      nickname: profile.nickname,
       status: 'ENABLED',
     },
     create: {
-      userId: user.id,
+      userId,
       contextType,
       contextId,
-      username: payload.author?.username || payload.member?.nick,
-      nickname: payload.author?.nickname || payload.member?.nick,
+      username: profile.username,
+      nickname: profile.nickname,
       status: 'ENABLED',
     },
   })
 
   await prisma.integrationAccount.upsert({
-    where: { id: `qq-${user.id}-${contextType}-${contextId}` },
+    where: { id: `qq-${userId}-${contextType}-${contextId}` },
     update: {
       accountLabel: `${contextType}:${contextId}`,
       status: 'ENABLED',
       permissions: { contextType, contextId, canReceiveMessage: true, canSendMessage: true },
     },
     create: {
-      id: `qq-${user.id}-${contextType}-${contextId}`,
-      userId: user.id,
+      id: `qq-${userId}-${contextType}-${contextId}`,
+      userId,
       provider: 'qq',
       accountLabel: `${contextType}:${contextId}`,
       status: 'ENABLED',
       permissions: { contextType, contextId, canReceiveMessage: true, canSendMessage: true },
     },
   })
+}
 
-  return user.id
+async function resolveUser(contextType, contextId, payload, text) {
+  const existing = await prisma.qqChatBinding.findUnique({ where: { contextType_contextId: { contextType, contextId } } })
+  if (existing?.status === 'ENABLED') return { userId: existing.userId, justBound: false }
+
+  const bindingCode = normalizeQqBindingCode(text)
+  if (!bindingCode) return { userId: null, justBound: false, reason: 'missing_binding_code' }
+
+  const qqBotAccount = await findQqAccountByBindingCode(prisma, bindingCode)
+  if (!qqBotAccount) return { userId: null, justBound: false, reason: 'invalid_or_expired_binding_code' }
+
+  const user = await prisma.user.findUnique({ where: { id: qqBotAccount.userId } })
+  if (!user) return { userId: null, justBound: false, reason: 'binding_user_missing' }
+
+  await bindContextToUser(user.id, contextType, contextId, payload)
+  await clearQqBindingCode(prisma, qqBotAccount.id, { contextType, contextId })
+
+  return { userId: user.id, justBound: true, bindingCode }
 }
 
 async function findOrCreateThread(userId, contextType, contextId) {
@@ -415,6 +483,15 @@ async function processSchedulerReply(userId, thread, userMessage, context) {
     toolResults.push({ toolName: 'review.generate', execution: reviewExecution })
   }
 
+  if (schedulerEvent.eventType === 'evening_review') {
+    const reviewExecution = await executeQqAgentTool(
+      { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
+      'review.generate',
+      { type: 'daily', nextFocus: feedback.adjustment },
+    )
+    toolResults.push({ toolName: 'review.generate', execution: reviewExecution })
+  }
+
   await prisma.schedulerEvent.update({
     where: { id: schedulerEvent.id },
     data: {
@@ -574,8 +651,21 @@ async function processDispatch(eventType, payload) {
     return
   }
 
-  const userId = await resolveUser(context.contextType, context.contextId, payload)
-  if (!userId) {
+  const resolvedUser = await resolveUser(context.contextType, context.contextId, payload, context.text)
+  if (!resolvedUser.userId) {
+    const prompt = resolvedUser.reason === 'invalid_or_expired_binding_code'
+      ? '这条绑定码无效或已过期。请在 Goal Mate 网页 Settings -> QQ 主动助手重新生成绑定码，然后发送：绑定 GM-XXXXXX。'
+      : '我还没有绑定到你的 Goal Mate 账号。请打开 Goal Mate 网页 Settings -> QQ 主动助手，生成绑定码，然后在这里发送：绑定 GM-XXXXXX。'
+    let sent = null
+    let status = 'REPLIED'
+    let errorMessage = ''
+    try {
+      sent = await sendQqMessage(context.contextType, context.contextId, prompt, context.messageId)
+    } catch (error) {
+      status = 'FAILED'
+      errorMessage = error instanceof Error ? error.message : String(error)
+    }
+
     await prisma.qqMessageEvent.create({
       data: {
         eventId,
@@ -583,12 +673,14 @@ async function processDispatch(eventType, payload) {
         contextType: context.contextType,
         contextId: context.contextId,
         messageText: context.text,
-        payload,
-        status: 'FAILED',
+        payload: { ...payload, bindingResolution: resolvedUser.reason || 'missing_binding_code', errorMessage },
+        status,
+        replyMessageId: String(sent?.id || sent?.message_id || sent?.data?.id || ''),
       },
     })
     return
   }
+  const userId = resolvedUser.userId
 
   const thread = await findOrCreateThread(userId, context.contextType, context.contextId)
   const userMessage = await prisma.agentMessage.create({
@@ -606,7 +698,15 @@ async function processDispatch(eventType, payload) {
       })
     : null
 
-  if (pendingAction) {
+  if (resolvedUser.justBound) {
+    reply = '绑定成功。以后你可以直接在 QQ 里和我说目标、反馈进度，早中晚提醒也会发到这个会话。'
+    structuredOutputType = 'qq_binding'
+    structuredOutput = {
+      ...structuredOutput,
+      bound: true,
+      bindingCode: resolvedUser.bindingCode,
+    }
+  } else if (pendingAction) {
     await prisma.agentToolAction.update({ where: { id: pendingAction.id }, data: { status: 'approved' } })
     const execution = await executeQqAgentTool(
       { userId, confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
@@ -623,13 +723,21 @@ async function processDispatch(eventType, payload) {
       needsConfirmation: execution.needsConfirmation,
     }
   } else {
-    const schedulerReply = await processSchedulerReply(userId, thread, userMessage, context)
+    const schedulerReply = await processQqSchedulerReply(prisma, {
+      userId,
+      thread,
+      userMessage,
+      context,
+      executeAgentTool: executeQqAgentTool,
+    })
     if (schedulerReply) {
-      reply = schedulerReply
+      reply = schedulerReply.reply
       structuredOutputType = 'qq_scheduler_reply'
       structuredOutput = {
         ...structuredOutput,
         handledAsSchedulerReply: true,
+        feedback: schedulerReply.feedback,
+        schedulerEventId: schedulerReply.schedulerEventId,
       }
     } else {
       const toolIntent = await generateToolIntent(userId, context.text)
@@ -706,11 +814,30 @@ async function processDispatch(eventType, payload) {
 }
 
 async function connectGateway() {
-  assertConfig()
+  const config = await refreshQqConfig()
+  if (!config) {
+    await sleep(15_000)
+    return connectGateway()
+  }
   const gatewayUrl = await getGatewayUrl()
   console.log(`[qq] connecting gateway ${gatewayUrl}`)
+  await touchRuntimeHeartbeat(prisma, {
+    service: 'qq-worker',
+    status: 'connecting',
+    detail: 'QQ Worker 正在连接 Gateway。',
+    payload: { apiBase: config.apiBase, intents: config.intents },
+  })
 
   const ws = new WebSocket(gatewayUrl)
+
+  ws.on('open', () => {
+    touchRuntimeHeartbeat(prisma, {
+      service: 'qq-worker',
+      status: 'connected',
+      detail: 'QQ Worker Gateway WebSocket 已连接。',
+      payload: { apiBase: config.apiBase, intents: config.intents },
+    })
+  })
 
   ws.on('message', async (raw) => {
     try {
@@ -720,13 +847,21 @@ async function connectGateway() {
       if (packet.op === 10) {
         const interval = packet.d?.heartbeat_interval || 45000
         heartbeatTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: 1, d: lastSeq }))
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ op: 1, d: lastSeq }))
+            touchRuntimeHeartbeat(prisma, {
+              service: 'qq-worker',
+              status: 'heartbeat',
+              detail: 'QQ Worker Gateway 心跳正常。',
+              payload: { lastSeq },
+            })
+          }
         }, interval)
         ws.send(JSON.stringify({
           op: 2,
           d: {
             token: await getAuthHeader(),
-            intents,
+            intents: config.intents,
             shard: [0, 1],
             properties: { os: 'linux', browser: 'goal-mate', device: 'goal-mate' },
           },
@@ -749,28 +884,65 @@ async function connectGateway() {
   ws.on('close', async () => {
     if (heartbeatTimer) clearInterval(heartbeatTimer)
     console.error('[qq] gateway closed; reconnecting in 5s')
+    await touchRuntimeHeartbeat(prisma, {
+      service: 'qq-worker',
+      status: 'reconnecting',
+      detail: 'QQ Worker Gateway 已断开，准备重连。',
+    })
     await sleep(5000)
     connectGateway().catch((error) => console.error('[qq] reconnect failed', error))
   })
 
   ws.on('error', (error) => {
     console.error('[qq] websocket error', error)
+    touchRuntimeHeartbeat(prisma, {
+      service: 'qq-worker',
+      status: 'error',
+      detail: error instanceof Error ? error.message : String(error),
+    })
   })
 }
 
 process.on('SIGINT', async () => {
   if (heartbeatTimer) clearInterval(heartbeatTimer)
+  await touchRuntimeHeartbeat(prisma, {
+    service: 'qq-worker',
+    status: 'stopping',
+    detail: 'QQ Worker 正在停止。',
+  })
   await prisma.$disconnect()
   process.exit(0)
 })
 
 process.on('SIGTERM', async () => {
   if (heartbeatTimer) clearInterval(heartbeatTimer)
+  await touchRuntimeHeartbeat(prisma, {
+    service: 'qq-worker',
+    status: 'stopping',
+    detail: 'QQ Worker 正在停止。',
+  })
   await prisma.$disconnect()
   process.exit(0)
 })
 
-connectGateway().catch(async (error) => {
+async function main() {
+  await touchRuntimeHeartbeat(prisma, {
+    service: 'qq-worker',
+    status: 'started',
+    detail: 'QQ Worker 已启动。',
+  })
+  while (true) {
+    try {
+      await connectGateway()
+      return
+    } catch (error) {
+      console.error('[qq] connect failed; retrying in 15s', error)
+      await sleep(15_000)
+    }
+  }
+}
+
+main().catch(async (error) => {
   console.error('[qq] fatal', error)
   await prisma.$disconnect()
   process.exit(1)

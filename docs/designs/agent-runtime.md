@@ -69,6 +69,13 @@ prompt_version
 
 Markdown 和用户输入都只能作为数据注入，不能覆盖 system prompt。
 
+当前运行时验证：
+
+- `pnpm verify:agent-context` 会注册两个用户，给当前用户写入 Goal、Markdown、Meta-Cognition 和对话记忆，给另一个用户写入冲突 Markdown。
+- 验证脚本用本地 fake model 捕获 Web Agent 实际 `/chat/completions` 请求，而不是只检查数据库。
+- 捕获到的 runtime system prompt 必须包含当前用户上下文，不能包含其他用户上下文。
+- 关闭 `agent.can_read_logs` 后，runtime system prompt 必须显示 Logs 读取关闭，并且不能再包含 Markdown 日志内容。
+
 ## 5. Prompt 组装
 
 当前 system prompt 由以下模块统一组装：
@@ -113,6 +120,21 @@ user default ModelConfig
 | --- | --- |
 | Model JSON router | 让模型把自然语言映射成工具名和参数 |
 | Conservative fallback | 模型路由失败时，对明确命令做本地兜底 |
+
+首次目标生成的优先级必须符合用户体感：
+
+```text
+当前用户已配置可用模型 Key
+  -> 先让 Model JSON router 判断是否创建 goal.create_draft
+
+当前用户没有模型 Key
+  -> 才允许使用本地 first-goal scaffold 兜底
+```
+
+这样能同时满足两个边界：
+
+- 用户没配模型时，仍能验证从零到一的最小产品闭环。
+- 用户已经配置模型时，首次目标不会被硬编码关键词模板抢先接管，而是由真实 Agent 判断目标、KR、条件、阶段和今日行动。
 
 本地兜底只覆盖明确意图：
 

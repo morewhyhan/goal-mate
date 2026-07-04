@@ -8,9 +8,11 @@ import WebSocket from 'ws'
 
 const shouldWrite = process.argv.includes('--write')
 const shouldPrepareAuth = process.argv.includes('--prepare-auth')
+const shouldPrepareEmptyAuth = process.argv.includes('--prepare-empty-auth')
 const requireAuth = process.argv.includes('--require-auth')
-const baseUrl = process.env.GOAL_MATE_BASE_URL || (shouldPrepareAuth || requireAuth ? 'http://localhost:3000' : 'http://127.0.0.1:3000')
-const authOrigin = process.env.BETTER_AUTH_URL || 'http://localhost:3000'
+const isEmptyAuthMode = shouldPrepareEmptyAuth
+const baseUrl = process.env.GOAL_MATE_BASE_URL || (shouldPrepareAuth || shouldPrepareEmptyAuth || requireAuth ? 'http://localhost:3000' : 'http://127.0.0.1:3000')
+const authOrigin = process.env.BETTER_AUTH_URL || baseUrl
 let cookieHeader = process.env.GOAL_MATE_COOKIE || ''
 const browserOverride = process.env.GOAL_MATE_BROWSER_PATH || ''
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -20,18 +22,21 @@ const artifactDir = resolve(projectRoot, '.artifacts/browser-smoke')
 const runId = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-')
 const runDir = resolve(artifactDir, runId)
 const debugPort = Number(process.env.GOAL_MATE_BROWSER_DEBUG_PORT || 9222 + Math.floor(Math.random() * 1000))
-const authEmail = process.env.GOAL_MATE_DASHBOARD_BROWSER_EMAIL || 'dashboard-browser@goalmate.local'
+const cdpCommandTimeoutMs = Number(process.env.GOAL_MATE_CDP_COMMAND_TIMEOUT_MS || 30000)
+const authEmail = process.env.GOAL_MATE_DASHBOARD_BROWSER_EMAIL || (isEmptyAuthMode ? `dashboard-empty-${runId}@goalmate.local` : 'dashboard-browser@goalmate.local')
 const authPassword = process.env.GOAL_MATE_DASHBOARD_BROWSER_PASSWORD || 'dashboard-browser-pass-123'
-const authName = process.env.GOAL_MATE_DASHBOARD_BROWSER_NAME || 'Dashboard Browser User'
+const authName = process.env.GOAL_MATE_DASHBOARD_BROWSER_NAME || (isEmptyAuthMode ? 'Dashboard Empty User' : 'Dashboard Browser User')
 
 const pages = [
   {
     id: 'today',
     path: '/dashboard/today',
     requiredText: ['年度推进热力图'],
-    authenticatedText: ['Current focus', 'DONE WHEN', 'MINIMUM', 'FALLBACK', '退出登录'],
+    authenticatedText: ['Current focus', '主行动', '最小启动', '风险预案', '反馈更新', '退出登录'],
+    emptyRequiredText: ['TODAY · 空工作区', '还没有今日行动', '不展示任何伪任务', '当前状态', '暂无'],
+    emptyAuthenticatedText: ['Today · 空工作区', '还没有今日行动', '不展示假任务', '当前状态', '目标', '暂无'],
     evaluate: pageCheckExpression(`
-      const cells = [...document.querySelectorAll('[title^="week "]')]
+      const cells = [...document.querySelectorAll('[aria-label="Momentum heatmap"] span')]
       const sample = cells[0]?.getBoundingClientRect()
       const scopeButtons = ['Year', 'Quarter', 'Month', 'Week'].every((label) => bodyText.includes(label))
       const squareCell = sample ? Math.abs(sample.width - sample.height) <= 1 : false
@@ -44,8 +49,10 @@ const pages = [
   {
     id: 'goals',
     path: '/dashboard/goals',
-    requiredText: ['Key Results', 'Conditions', 'Cycle Plan'],
-    authenticatedText: ['8 周成果目标推进', '核心结果达到可验证标准'],
+    requiredText: ['Goals', 'OKR', 'Gantt'],
+    authenticatedText: ['Objective', 'Key Results', 'Necessary Conditions', 'Progress'],
+    emptyRequiredText: ['Goals', 'OKR', 'Gantt', '先让 Agent 具备思考能力', '这里等待真实目标生成', '不渲染假的 KR'],
+    emptyAuthenticatedText: ['还没有目标结构', '目标页是只读仪表盘', '这里等待真实目标生成', '不渲染假的 KR'],
     evaluate: pageCheckExpression(`
       const appMain = document.querySelector('main')
       const text = appMain?.innerText || bodyText
@@ -61,7 +68,9 @@ const pages = [
     id: 'logs',
     path: '/dashboard/logs',
     requiredText: ['Logs', 'Markdown'],
-    authenticatedText: ['2026-07-01.md'],
+    authenticatedText: ['已连接日志 API'],
+    emptyRequiredText: ['Logs', 'Markdown 推进记录', '还没有日志文件', '未选择日志'],
+    emptyAuthenticatedText: ['还没有日志文件', '未选择日志'],
     evaluate: pageCheckExpression(`
       const textarea = document.querySelector('textarea')
       const saveButton = [...document.querySelectorAll('button')].find((button) => button.innerText.includes('保存'))
@@ -79,10 +88,12 @@ const pages = [
     id: 'agent',
     path: '/dashboard/agent',
     requiredText: ['Agent', '对话', '发送'],
-    authenticatedText: ['暑假主目标拆解', '我已经读取当前主目标'],
+    authenticatedText: ['目标、日志和 Today', '发送'],
+    emptyRequiredText: ['Agent', '对话历史', '还没有对话', '先配置模型，再让 Agent 拆目标', '目标、日志和 Today', '配置模型'],
+    emptyAuthenticatedText: ['还没有对话', '先配置模型，再让 Agent 拆目标', '目标、日志和 Today'],
     evaluate: pageCheckExpression(`
       const textarea = document.querySelector('textarea')
-      const sendButton = [...document.querySelectorAll('button')].find((button) => button.innerText.includes('发送'))
+      const sendButton = [...document.querySelectorAll('button')].find((button) => button.innerText.includes('发送') || button.innerText.includes('先配置'))
       const textareaRect = textarea?.getBoundingClientRect()
       const sendRect = sendButton?.getBoundingClientRect()
       const inputVisible = Boolean(textareaRect && textareaRect.bottom <= window.innerHeight && textareaRect.top >= 0 && textareaRect.height >= 60)
@@ -97,14 +108,16 @@ const pages = [
   {
     id: 'settings',
     path: '/dashboard/settings',
-    requiredText: ['Settings', '模型配置', '消息通道', '主动推进节奏', '工具权限与审计', '数据与隐私'],
+    requiredText: ['Settings', '模型配置', 'QQ 主动助手', '主动推进节奏', '系统行为', '账号与数据'],
     authenticatedText: ['deepseek-v4-flash', 'DeepSeek'],
+    emptyRequiredText: ['Settings', '系统控制台', '模型配置', '账号与数据', '未配置', '待绑定', '待配置 QQ', 'QQ Worker', 'Scheduler'],
+    emptyAuthenticatedText: ['系统控制台', '模型', '未配置', 'QQ', '待绑定', '提醒', '待配置 QQ', 'QQ Worker', 'Scheduler'],
     evaluate: pageCheckExpression(`
       const inputs = [...document.querySelectorAll('input')]
       const buttons = [...document.querySelectorAll('button')]
       const inputValues = inputs.map((input) => input.value)
       const hasModelFields = inputValues.includes('DeepSeek') && inputValues.includes('deepseek-v4-flash') && inputValues.includes('https://api.deepseek.com')
-      const hasActionButtons = ['保存模型', '测试连接', '保存提醒', '导出数据'].every((label) => buttons.some((button) => button.innerText.includes(label)))
+      const hasActionButtons = ['保存模型', '测试连接', '保存提醒', '导出当前账号数据'].every((label) => buttons.some((button) => button.innerText.includes(label)))
       const overflowingInputs = inputs.filter((input) => {
         const rect = input.getBoundingClientRect()
         return rect.right > window.innerWidth + 2 || rect.left < -2
@@ -182,11 +195,18 @@ function seedAuthenticatedData() {
 }
 
 async function prepareAuthenticatedSession() {
-  if (!shouldPrepareAuth) return
+  if (!shouldPrepareAuth && !shouldPrepareEmptyAuth) return
   const auth = await signUpOrSignIn()
-  const seedEvidence = seedAuthenticatedData()
+  const seedEvidence = shouldPrepareEmptyAuth ? 'seed skipped for clean empty workspace' : seedAuthenticatedData()
   cookieHeader = auth.cookie
-  record('BROWSER-AUTH-PREPARE', 'authenticated browser smoke prepares a real seeded user without writing the cookie to reports', true, `mode=${auth.mode}; user=${maskEmail(authEmail)}; ${seedEvidence}`)
+  record(
+    'BROWSER-AUTH-PREPARE',
+    shouldPrepareEmptyAuth
+      ? 'empty authenticated browser smoke prepares a clean user without demo seed data'
+      : 'authenticated browser smoke prepares a real seeded user without writing the cookie to reports',
+    true,
+    `mode=${auth.mode}; user=${maskEmail(authEmail)}; ${seedEvidence}`,
+  )
 }
 
 function pageCheckExpression(extraChecks) {
@@ -230,6 +250,11 @@ function tempRootForBrowser(browserPath) {
 
 function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
+}
+
+function isAuthGuardPending(bodyText) {
+  const text = String(bodyText || '')
+  return text.includes('正在确认登录状态') || text.includes('确认登录状态') || /authenticating|checking session/i.test(text)
 }
 
 async function waitForDevTools(userDataDir) {
@@ -279,21 +304,37 @@ function connectToTarget(wsUrl) {
   let nextId = 1
   const pending = new Map()
 
+  function rejectPending(error) {
+    for (const handler of pending.values()) {
+      clearTimeout(handler.timer)
+      handler.reject(error)
+    }
+    pending.clear()
+  }
+
   socket.on('message', (raw) => {
     const message = JSON.parse(String(raw))
     if (!message.id) return
     const handler = pending.get(message.id)
     if (!handler) return
     pending.delete(message.id)
+    clearTimeout(handler.timer)
     if (message.error) handler.reject(new Error(message.error.message || JSON.stringify(message.error)))
     else handler.resolve(message.result)
   })
+
+  socket.once('close', () => rejectPending(new Error('Browser DevTools socket closed while a command was pending.')))
+  socket.once('error', (error) => rejectPending(error))
 
   function send(method, params = {}) {
     const id = nextId++
     socket.send(JSON.stringify({ id, method, params }))
     return new Promise((resolveSend, rejectSend) => {
-      pending.set(id, { resolve: resolveSend, reject: rejectSend })
+      const timer = setTimeout(() => {
+        pending.delete(id)
+        rejectSend(new Error(`Browser DevTools command timed out: ${method}`))
+      }, cdpCommandTimeoutMs)
+      pending.set(id, { resolve: resolveSend, reject: rejectSend, timer })
     })
   }
 
@@ -325,13 +366,14 @@ async function authenticatedApiPreflight() {
   const response = await fetch(`${baseUrl}/api/today`, {
     headers: { cookie: cookieHeader },
   })
+  const ok = response.ok || (isEmptyAuthMode && response.status === 404)
   record(
     'BROWSER-AUTH-PREFLIGHT',
     'session cookie can read authenticated API before browser navigation',
-    response.ok,
+    ok,
     `GET /api/today status=${response.status}`,
   )
-  return response.ok
+  return ok
 }
 
 function toBrowserPath(path, browserPath) {
@@ -432,7 +474,7 @@ async function browserSignIn(send) {
 async function navigate(send, url) {
   await send('Page.navigate', { url })
   const started = Date.now()
-  while (Date.now() - started < 12000) {
+  while (Date.now() - started < 25000) {
     const ready = await send('Runtime.evaluate', {
       expression: 'document.readyState',
       returnByValue: true,
@@ -460,12 +502,21 @@ async function waitForPageCheck(send, page, requiredText) {
   let lastCheck = null
   let lastMissingText = requiredText
 
-  while (Date.now() - started < 10000) {
+  while (Date.now() - started < 60000) {
     const check = await evaluate(send, page.evaluate)
     const bodyText = String(check?.bodyText || '')
     const missingText = requiredText.filter((text) => !bodyText.includes(text))
     lastCheck = check
     lastMissingText = missingText
+    if (isAuthGuardPending(bodyText)) {
+      lastCheck = {
+        ...check,
+        ok: false,
+        evidence: `${check?.evidence || ''}; authGuard=pending`,
+      }
+      await sleep(500)
+      continue
+    }
     if (check?.ok && missingText.length === 0) {
       return { check, missingText }
     }
@@ -491,6 +542,7 @@ function toMarkdown() {
     `- Base URL: ${baseUrl}`,
     `- Authenticated: ${cookieHeader ? 'yes' : 'no'}`,
     `- Require auth: ${requireAuth ? 'yes' : 'no'}`,
+    `- Empty workspace mode: ${isEmptyAuthMode ? 'yes' : 'no'}`,
     `- Screenshots: ${runDir}`,
     '',
     '| ID | Purpose | Result | Evidence |',
@@ -576,12 +628,14 @@ try {
     mobile: false,
   })
 
-  if (shouldPrepareAuth) {
+  if (shouldPrepareAuth || shouldPrepareEmptyAuth) {
     const browserAuth = await browserSignIn(client.send)
     record(
       'BROWSER-COOKIE',
-      'browser verification signs in through the real browser auth flow',
-      browserAuth.signInStatus === 200 && browserAuth.todayStatus === 200,
+      shouldPrepareEmptyAuth
+        ? 'empty workspace browser verification signs in through the real browser auth flow'
+        : 'browser verification signs in through the real browser auth flow',
+      browserAuth.signInStatus === 200 && (browserAuth.todayStatus === 200 || (isEmptyAuthMode && browserAuth.todayStatus === 404)),
       `signIn=${browserAuth.signInStatus}; today=${browserAuth.todayStatus}`,
     )
   } else {
@@ -596,10 +650,12 @@ try {
   for (const page of pages) {
     const url = `${baseUrl}${page.path}`
     await navigate(client.send, url)
-    const requiredText = [
-      ...page.requiredText,
-      ...(requireAuth ? page.authenticatedText || [] : []),
-    ]
+    const requiredText = isEmptyAuthMode
+      ? page.emptyRequiredText || [...page.requiredText, ...(page.emptyAuthenticatedText || [])]
+      : [
+          ...page.requiredText,
+          ...(requireAuth ? page.authenticatedText || [] : []),
+        ]
     const { check, missingText } = await waitForPageCheck(client.send, page, requiredText)
     const textOk = missingText.length === 0
     const shotPath = resolve(runDir, `${page.id}.png`)

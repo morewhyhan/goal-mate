@@ -17,6 +17,16 @@ const $reminders = client.api.settings.reminders.$put
 type UpdateReminderRulesRequest = InferRequestType<typeof $reminders>['json']
 type UpdateReminderRulesResponse = any
 
+const $qqBot = client.api.settings['qq-bot'].$put
+type UpdateQqBotConfigRequest = InferRequestType<typeof $qqBot>['json']
+type UpdateQqBotConfigResponse = any
+
+const $qqBindingCode = client.api.settings['qq-bot']['binding-code'].$post
+type GenerateQqBindingCodeResponse = any
+
+const $testQqBot = client.api.settings['qq-bot'].test.$post
+type TestQqBotResponse = any
+
 const $test = client.api.settings.models.test.$post
 type TestModelResponse = any
 
@@ -68,10 +78,51 @@ export function useUpdateReminderRules() {
   })
 }
 
+export function useUpdateQqBotConfig() {
+  const queryClient = useQueryClient()
+  return useMutation<UpdateQqBotConfigResponse, Error, UpdateQqBotConfigRequest>({
+    mutationFn: async (json) => (await $qqBot({ json })).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
+      toast.success('QQ Bot 配置已保存')
+    },
+    onError: (error) => toast.error(error.message || 'QQ Bot 配置保存失败'),
+  })
+}
+
+export function useGenerateQqBindingCode() {
+  const queryClient = useQueryClient()
+  return useMutation<GenerateQqBindingCodeResponse, Error>({
+    mutationFn: async () => (await $qqBindingCode()).json(),
+    onSuccess: (response: any) => {
+      queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
+      const command = response?.data?.command
+      toast.success(command ? `绑定码已生成：${command}` : '绑定码已生成')
+    },
+    onError: (error: any) => toast.error(error?.error?.message || error?.message || '生成 QQ 绑定码失败'),
+  })
+}
+
+export function useTestQqBotConnection() {
+  return useMutation<TestQqBotResponse, Error>({
+    mutationFn: async () => (await $testQqBot()).json(),
+    onSuccess: (response: any) => {
+      const ok = response?.data?.ok
+      const message = response?.data?.message || 'QQ Bot 测试完成'
+      ok ? toast.success(message) : toast.error(message)
+    },
+    onError: (error) => toast.error(error.message || 'QQ Bot 测试失败'),
+  })
+}
+
 export function useTestModelConnection() {
   return useMutation<TestModelResponse, Error>({
     mutationFn: async () => (await $test()).json(),
-    onSuccess: () => toast.success('模型连接测试已提交'),
+    onSuccess: (response: any) => {
+      const ok = response?.data?.ok
+      const message = response?.data?.message || '模型连接测试完成'
+      ok ? toast.success(message) : toast.error(message)
+    },
     onError: (error) => toast.error(error.message || '模型连接测试失败'),
   })
 }

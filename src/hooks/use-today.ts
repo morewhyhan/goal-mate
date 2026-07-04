@@ -10,10 +10,26 @@ const $checkin = client.api.today.checkin.$post
 type CheckinRequest = InferRequestType<typeof $checkin>['json']
 type CheckinResponse = any
 
+const $executeTool = client.api.agent.tools.execute.$post
+type GenerateTodayActionResponse = any
+
 export function useToday() {
   return useQuery<TodayResponse, Error>({
     queryKey: ['today'],
     queryFn: async () => (await $get()).json(),
+  })
+}
+
+export function useGenerateTodayAction() {
+  const queryClient = useQueryClient()
+  return useMutation<GenerateTodayActionResponse, Error>({
+    mutationFn: async () => (await $executeTool({ json: { toolName: 'today.get', input: {}, confirmed: true } })).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['today'] })
+      queryClient.invalidateQueries({ queryKey: ['goals'] })
+      toast.success('今日行动已生成')
+    },
+    onError: (error) => toast.error(error.message || '今日行动生成失败'),
   })
 }
 

@@ -55,9 +55,9 @@ Scheduler Worker
 | 环境变量 | `.env` 只在服务器本地保存 |
 | 数据库 | `DATABASE_URL` 指向持久化数据库文件 |
 | Web 地址 | `BETTER_AUTH_URL`、`NEXT_PUBLIC_BETTER_AUTH_URL`、`NEXT_PUBLIC_APP_URL` 指向实际访问地址 |
-| QQ | `QQ_BOT_APP_ID`、`QQ_BOT_TOKEN` 已配置 |
+| QQ | 当前登录用户已在 Settings 保存 QQ Bot App ID / Token，并在 QQ 中完成绑定码绑定 |
 | 模型 | DeepSeek 配置可用 |
-| 用户 | `QQ_DEFAULT_USER_EMAIL` 能映射到系统用户 |
+| 用户 | Web 账号和 QQ 会话通过 `QqChatBinding` 绑定，不能依赖全局邮箱或第一个用户 |
 
 ## 5. 验收步骤
 
@@ -69,6 +69,7 @@ Scheduler Worker
 | Todo | 启动 Web systemd service | `systemctl status goal-mate-web` active |
 | Todo | 启动 QQ Worker systemd service | 日志出现 Gateway 连接或心跳 |
 | Todo | 启动 Scheduler Worker systemd service | 日志出现 tick started |
+| Todo | 打开 Settings 部署状态 | `RuntimeHeartbeat` 显示 Web、QQ Worker、Scheduler Worker 最近心跳 |
 | Todo | QQ 发一条普通消息 | AgentThread / AgentMessage 有新增 |
 | Todo | 执行一次性 Scheduler 验证 | `pnpm worker:scheduler:once` 创建 SchedulerEvent，状态为 `sent` 或 `failed` 且失败有原因 |
 | Todo | 触发一次真实提醒规则 | SchedulerEvent 出现 `sent` 或 `failed` |
@@ -81,6 +82,7 @@ Scheduler Worker
 必须同时满足：
 
 - 三个 systemd service 都能启动。
+- Settings 能看到 Web、QQ Worker、Scheduler Worker 的最近心跳；心跳过期时必须显示为待确认或过期，不能伪装在线。
 - QQ Worker 不因 token、intent、网络或 Gateway 鉴权立即退出。
 - Scheduler Worker 能创建 `SchedulerEvent`。
 - `pnpm worker:scheduler:once` 能立即创建一条 `SchedulerEvent`，不用等待真实提醒时间。

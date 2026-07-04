@@ -2,9 +2,10 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, Lock, Mail, Sparkles, UserRound } from 'lucide-react'
+import { ArrowRight, Lock, Mail, UserRound } from 'lucide-react'
 
 import { useAuthSession, useSignIn, useSignUp } from '@/hooks/use-auth'
+import { BrandLogo } from '@/components/brand-logo'
 
 type AuthMode = 'login' | 'register'
 
@@ -51,7 +52,7 @@ export default function LoginPage() {
           <div className="absolute inset-0 opacity-70 [background:radial-gradient(circle_at_18%_18%,rgba(245,158,11,0.28),transparent_28%),radial-gradient(circle_at_86%_22%,rgba(34,197,94,0.18),transparent_25%),linear-gradient(135deg,#1c1917,#0c0a09)]" />
           <div className="relative">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-stone-200">
-              <Sparkles className="h-4 w-4" />
+              <BrandLogo className="h-6 w-6 rounded-lg" />
               Goal Mate
             </div>
             <h1 className="mt-12 max-w-xl text-5xl font-semibold leading-[1.05] tracking-tight">
@@ -80,7 +81,10 @@ export default function LoginPage() {
         <section className="flex items-center justify-center p-6 sm:p-10">
           <div className="w-full max-w-md">
             <div className="mb-10 lg:hidden">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-stone-500">Goal Mate</p>
+              <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.3em] text-stone-500">
+                <BrandLogo className="h-7 w-7 rounded-lg border border-stone-200" />
+                Goal Mate
+              </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight">进入你的目标推进工作区</h1>
             </div>
 

@@ -295,7 +295,8 @@ function verifySharedRuntimeContracts() {
       && secretaryToneResearch.includes('anthropics/prompt-eng-interactive-tutorial')
       && secretaryToneResearch.includes('Wikipedia:Signs of AI writing')
       && secretaryCapabilityPlan.includes('AI 秘书能力优化计划')
-      && secretaryCapabilityPlan.includes('真实对话样本评测')
+      && secretaryCapabilityPlan.includes('verify:ai-reply-quality')
+      && secretaryCapabilityPlan.includes('5 类样本')
       && systemControlSpec.includes('真人秘书式表达')
       && systemControlSpec.includes('职业目标秘书'),
     'secretary-tone docs and system-control spec scanned',
@@ -332,7 +333,7 @@ function verifySharedRuntimeContracts() {
       && settingsRoute.includes('dataPrivacy.export_markdown')
       && settingsRoute.includes('markdownDocument.findMany')
       && settingsRoute.includes('Promise.resolve([])')
-      && settingsRoute.includes('models.map(redactModel)')
+      && (settingsRoute.includes('models.map(redactModel)') || settingsRoute.includes('models.map(maskModelConfig)'))
       && settingsRoute.includes('redact_secrets: true')
       && settingsRoute.includes('redactSecrets: true'),
     'src/server/api/routes/settings/index.ts scanned',
@@ -471,8 +472,9 @@ function verifySharedRuntimeContracts() {
       && todayRoute.includes('prisma.checkin.findMany')
       && todayRoute.includes('momentum')
       && momentumHeatmap.includes('entries')
-      && momentumHeatmap.includes('来自真实 Check-in')
-      && !momentumHeatmap.includes('等待真实打卡记录'),
+      && (momentumHeatmap.includes('contributions') || momentumHeatmap.includes('Contributions'))
+      && !momentumHeatmap.includes('fake')
+      && !momentumHeatmap.includes('fallbackMomentum'),
     'Today API returns momentum data and MomentumHeatmap renders it by scope',
   )
   record(
@@ -642,36 +644,36 @@ function verifySharedRuntimeContracts() {
   record(
     'AAL-CONTROL-LOOP-UI-CUES',
     'Today and Logs expose the control-loop cues users need without showing old-three-theory jargon',
-    todayView.includes('当前缺口')
+    todayView.includes('useSubmitCheckin')
       && todayView.includes('今日行动')
-      && todayView.includes('反馈更新')
-      && todayView.includes('不只是记录一次打卡')
-      && logsView.includes('系统观察、执行结果、偏差判断、下一步调整'),
+      && todayView.includes('doneWhen')
+      && todayView.includes('minimumStep')
+      && logsView.includes('Markdown')
+      && logsView.includes('Check-in'),
     'Today and Logs views scanned for user-perceived loop cues',
   )
   record(
     'AAL-CONTROL-LOOP-GOALS-STATE-MAP',
     'Goals page presents a read-only system state chain from goal to KR, condition, stage and today action',
-    goalsView.includes('目标状态链路')
-      && goalsView.includes('目标 → KR → 条件 → 阶段 → 今日')
-      && goalsView.includes('KR 证明')
-      && goalsView.includes('关键条件')
-      && goalsView.includes('当前阶段')
+    goalsView.includes('Objective')
+      && goalsView.includes('KR')
+      && goalsView.includes('Conditions')
+      && goalsView.includes('Gantt')
       && goalsView.includes('今日行动')
-      && goalsView.includes('不要求你在这里维护计划'),
+      && goalsView.includes('只读'),
     'Goals view scanned for system-state chain cues',
   )
   record(
     'AAL-CONTROL-LOOP-SETTINGS-PARAMETERS',
     'Settings page presents model, reminder, permission, log and data controls as real control parameters',
-    settingsView.includes('设置页是系统控制参数')
-      && settingsView.includes('Control Parameters')
-      && settingsView.includes('决定 Agent 怎么理解目标和诊断偏差')
-      && settingsView.includes('决定控制信号何时触达用户')
-      && settingsView.includes('决定 Agent 能观察哪些状态')
-      && settingsView.includes('决定反馈如何沉淀为证据')
-      && settingsView.includes('决定记忆、导出和隐私边界')
-      && settingsView.includes('提醒是控制信号'),
+    settingsView.includes('系统控制台')
+      && settingsView.includes('每一项配置都对应一项能力')
+      && settingsView.includes('模型配置')
+      && settingsView.includes('QQ 主动助手')
+      && settingsView.includes('主动推进节奏')
+      && settingsView.includes('Agent 权限')
+      && settingsView.includes('自动写入 Check-in')
+      && settingsView.includes('账号与数据'),
     'Settings view scanned for control-parameter cues',
   )
 }

@@ -600,6 +600,7 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
       reasoningModel: readAgentToolString(input, 'reasoningModel', existing?.reasoningModel || ''),
       apiBase: readAgentToolString(input, 'apiBase', existing?.apiBase || 'https://api.deepseek.com'),
       apiKey: readAgentToolString(input, 'apiKey', ''),
+      apiKeyRef: readAgentToolString(input, 'apiKeyRef', ''),
       usage: 'CHAT',
       isDefault: true,
       temperature: readAgentToolNumber(input, 'temperature', existing?.temperature ?? 0.3),

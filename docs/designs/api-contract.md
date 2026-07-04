@@ -67,6 +67,8 @@ API 使用 Hono RPC。成功响应统一返回 `{ data }`，列表可附带 `{ m
 
 返回目标摘要列表。v0.1 可有多个目标，但 Today 只使用 current_focus_goal。
 
+列表项必须包含目标页能解释推进状态的最小只读上下文：KR、条件、阶段、最近今日行动、最近 Check-in、最近 Diagnosis 和 confirmed ReasoningCard。否则 Today 反馈虽然已经入库，Goals 页面也无法解释“为什么进度变成这样”。
+
 ### GET /api/goals/:id
 
 返回目标详情：Goal、ReasoningCard、KR、Condition、StagePlan、DailyAction、进度。

@@ -8,6 +8,7 @@
 | E2E-1 | 用户输入一个模糊目标 | Agent 先澄清成功标准和时间范围 |
 | E2E-2 | 用户要求生成目标草稿 | 系统生成目标推理卡、KR、条件、阶段计划、今日启动行动和目标 Markdown |
 | E2E-2b | 用户确认目标 | 目标成为当前主目标，推理卡变为 confirmed，并接入 Today |
+| E2E-2c | 新用户自然语言说明一个足够具体的目标 | Agent 不要求用户填表 | 系统自动创建目标草案，并生成待确认激活动作 |
 | E2E-3 | 用户打开 Today | 只看到一个主行动、完成标准、最小启动和反馈入口 |
 | E2E-4 | 用户完成行动 | 系统更新 Checkin、KR/条件证据，并写入当日日志 |
 | E2E-5 | 用户未完成行动 | Agent 诊断动机、能力、提示或路径问题 |
@@ -19,6 +20,11 @@
 | E2E-11 | 多次干预后有完成或失败反馈 | 系统复盘 | Meta-Cognition 更新用户模型和下一次干预策略 |
 | E2E-12 | 多次控制回合连续发生 | 系统学习 | 旧元认知被使用、验证、增强、削弱、修正或过期，并形成下一次 `policy_delta` |
 | E2E-13 | 旧干预被后续反馈证伪 | 系统学习 | AI 生成自我优化规则，下一次先改变自己的提问和推理顺序 |
+| E2E-14 | 用户在 Settings 配置 QQ Bot | 生成绑定码并在 QQ 发送“绑定 GM-XXXXXX” | QQ 会话绑定到当前登录账号；未绑定会话不能自动读取任何用户数据 |
+| E2E-15 | QQ evening_review 主动提醒后用户回复 | 用户回复“没完成，太难了” | 系统写入 Check-in、Diagnosis、Markdown 日志、daily Review、SchedulerEvent responded 和 scheduler 审计 |
+| E2E-16 | 本地从零到一产品闭环 | 执行 `pnpm verify:zero-to-one` | 新用户隔离、配置边界、Agent 首次目标、Today 接入、QQ 回复入库和回复质量门禁被组合验收证明 |
+| E2E-17 | 干净新用户打开 Dashboard | 执行 `pnpm verify:dashboard-browser:empty-auth` | Today、Goals、Logs、Agent、Settings 展示空状态和配置边界，不出现假任务、假目标、假日志或 demo 数据 |
+| E2E-18 | 用户配置 DeepSeek 后 Agent 真实调用 AI | 执行 `pnpm verify:live-model-agent`，并提供真实模型 Key | 当前用户模型 Key 加密保存且不泄露；Settings 测试成功；Agent 回复来自当前用户模型配置，不是缺 key 或模型错误兜底 |
 
 ## 2. AI 输出验收
 
@@ -65,6 +71,9 @@
 | T-R15 | 私有页面访问 | 未登录用户不能进入 Dashboard 私有页面 |
 | T-R16 | 私有数据归属 | 业务 API 只能从 session 获取 userId，不能信任前端 userId |
 | T-R17 | 模型密钥归属 | 模型 API Key 必须按当前用户保存、加密、脱敏返回，不能作为服务器全局共享密钥 |
+| T-R18 | QQ 会话归属 | 陌生 QQ 会话必须通过当前用户生成的一次性绑定码绑定，不能自动归属到全局账号或第一个用户 |
+| T-R19 | 首次目标输入 | 模糊目标只允许追问，不允许伪造目标；具体目标必须能生成目标草案、KR、条件、阶段、今日行动和目标 Markdown |
+| T-R20 | 模型测试失败 | DeepSeek 余额不足、Key 无效、限流或网络错误必须显示明确原因，不能让用户看到原始错误 JSON |
 
 ## 4.1 涌现效果验收
 
@@ -95,4 +104,6 @@
 9. 长期记忆和复盘判断符合充分、必要、因果明确、语言清晰、可验证或可证伪的质量标准。
 10. ControlLoopEpisode 和 Meta-Cognition 闭环可连续运行，能证明系统不是只记录反馈，而是在持续修正下一次干预策略。
 11. AI 自我优化闭环可运行：系统能判断自己上一次干预为什么失败，并让下一次 Planner 改变推理顺序。
+12. 本地从零到一产品闭环可被 `pnpm verify:zero-to-one` 一次性组合验证，且包含干净新用户页面空状态浏览器 smoke；真实 QQ Gateway 长连接、服务器 systemd 长期运行和真实模型长期质量仍按独立验收执行。
+13. 真实模型链路必须由 `pnpm verify:live-model-agent` 单独证明；默认本地验收不能替代真实 DeepSeek Key、网络和 Agent live reply 验收。
 ```

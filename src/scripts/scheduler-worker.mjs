@@ -1,10 +1,15 @@
 import { PrismaClient } from '@prisma/client'
 import { existsSync, readFileSync } from 'node:fs'
+import { resolve as resolvePath } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   recordAgentToolActionWithPrisma,
 } from '../lib/agent-tool-executor.mjs'
 import { planIntervention } from '../lib/intervention-planner.mjs'
 import { resolveModelApiKey } from '../lib/model-secret.mjs'
+import { resolveQqBotConfig } from '../lib/qq-bot-config.mjs'
+import { touchRuntimeHeartbeat } from '../lib/runtime-heartbeat.mjs'
+import { ensureTodayAction } from '../lib/today-action-planner.mjs'
 
 const prisma = new PrismaClient()
 
@@ -25,11 +30,10 @@ function loadLocalEnv() {
 
 loadLocalEnv()
 
-const apiBase = (process.env.QQ_BOT_API_BASE || 'https://api.sgroup.qq.com').replace(/\/+$/, '')
-const appId = process.env.QQ_BOT_APP_ID || ''
-const token = process.env.QQ_BOT_TOKEN || ''
 const tickSeconds = Number(process.env.SCHEDULER_TICK_SECONDS || '60')
 const defaultTimezone = process.env.SCHEDULER_TIMEZONE || 'Asia/Shanghai'
+const defaultQqMessageApiBase = 'https://api.sgroup.qq.com'
+const defaultQqAuthBase = 'https://bots.qq.com'
 const runOnce = process.argv.includes('--once') || process.env.SCHEDULER_RUN_ONCE === '1'
 const forceReminderArg = process.argv.find((arg) => arg.startsWith('--force-reminder='))
 const forcedReminderType = forceReminderArg?.split('=')[1] || process.env.SCHEDULER_FORCE_REMINDER || ''
@@ -43,6 +47,10 @@ const defaultRules = [
 let cachedAccessToken = ''
 let accessTokenExpiresAt = 0
 let stopping = false
+let currentQqConfig = null
+let currentQqConfigSignature = ''
+let currentQqConfigUserId = ''
+let lastMissingConfigLogAt = 0
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -52,23 +60,74 @@ function trimForPrompt(value, max = 900) {
   return value.length > max ? `${value.slice(0, max)}...` : value
 }
 
-function assertConfig() {
-  if (!appId || !token) {
-    throw new Error('QQ_BOT_APP_ID and QQ_BOT_TOKEN are required')
+function qqConfigSignature(config) {
+  return JSON.stringify({
+    source: config?.source || '',
+    userId: config?.userId || '',
+    appId: config?.appId || '',
+    token: config?.token || '',
+    apiBase: config?.apiBase || '',
+  })
+}
+
+function qqAuthBase(config) {
+  const explicit = String(process.env.QQ_BOT_AUTH_BASE || '').trim().replace(/\/+$/, '')
+  if (explicit) return explicit
+  const apiBase = String(config?.apiBase || '').trim().replace(/\/+$/, '')
+  if (!apiBase || apiBase === defaultQqMessageApiBase) return defaultQqAuthBase
+  return apiBase
+}
+
+async function refreshQqConfig(userId = '') {
+  const config = await resolveQqBotConfig(prisma, userId)
+  if (!config.configured) {
+    currentQqConfig = null
+    currentQqConfigSignature = ''
+    currentQqConfigUserId = ''
+    cachedAccessToken = ''
+    accessTokenExpiresAt = 0
+    const now = Date.now()
+    if (now - lastMissingConfigLogAt > 60_000) {
+      console.warn('[scheduler] QQ Bot config missing; scheduler is alive and waiting for Settings -> QQ configuration.')
+      lastMissingConfigLogAt = now
+    }
+    return null
   }
+
+  const nextSignature = qqConfigSignature(config)
+  if (nextSignature !== currentQqConfigSignature) {
+    cachedAccessToken = ''
+    accessTokenExpiresAt = 0
+    currentQqConfigSignature = nextSignature
+    console.log(`[scheduler] loaded QQ config from ${config.source}; apiBase=${config.apiBase}`)
+  }
+  currentQqConfig = config
+  currentQqConfigUserId = userId
+  return config
 }
 
-function hasQqConfig() {
-  return Boolean(appId && token)
+async function requireQqConfig(userId = '') {
+  if (
+    currentQqConfig
+    && (
+      currentQqConfigUserId === userId
+      || (!userId && currentQqConfig.source === 'server_env_fallback')
+    )
+  ) {
+    return currentQqConfig
+  }
+  return refreshQqConfig(userId)
 }
 
-async function getAppAccessToken() {
-  if (cachedAccessToken && Date.now() < accessTokenExpiresAt - 60_000) return cachedAccessToken
+async function getAppAccessToken(userId = '') {
+  const config = await requireQqConfig(userId)
+  if (!config) throw new Error('QQ Bot config missing')
+  if (cachedAccessToken && currentQqConfigUserId === userId && Date.now() < accessTokenExpiresAt - 60_000) return cachedAccessToken
 
-  const response = await fetch('https://bots.qq.com/app/getAppAccessToken', {
+  const response = await fetch(`${qqAuthBase(config)}/app/getAppAccessToken`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ appId, clientSecret: token }),
+    body: JSON.stringify({ appId: config.appId, clientSecret: config.token }),
   })
   const text = await response.text()
   let data = null
@@ -86,9 +145,11 @@ async function getAppAccessToken() {
   return cachedAccessToken
 }
 
-async function qqRequest(method, path, body) {
-  const accessToken = await getAppAccessToken()
-  const response = await fetch(`${apiBase}${path}`, {
+async function qqRequest(method, path, body, userId = '') {
+  const config = await requireQqConfig(userId)
+  if (!config) throw new Error('QQ Bot config missing')
+  const accessToken = await getAppAccessToken(userId)
+  const response = await fetch(`${config.apiBase}${path}`, {
     method,
     headers: {
       authorization: `QQBot ${accessToken}`,
@@ -127,15 +188,15 @@ async function sendQqMessage(binding, content) {
   const sourceMessageId = latestEvent?.payload?.id || latestEvent?.replyMessageId || undefined
 
   if (binding.contextType === 'c2c') {
-    return qqRequest('POST', `/v2/users/${binding.contextId}/messages`, messageBody(content, sourceMessageId))
+    return qqRequest('POST', `/v2/users/${binding.contextId}/messages`, messageBody(content, sourceMessageId), binding.userId)
   }
   if (binding.contextType === 'group') {
-    return qqRequest('POST', `/v2/groups/${binding.contextId}/messages`, messageBody(content, sourceMessageId))
+    return qqRequest('POST', `/v2/groups/${binding.contextId}/messages`, messageBody(content, sourceMessageId), binding.userId)
   }
   return qqRequest('POST', `/channels/${binding.contextId}/messages`, {
     content,
     msg_id: sourceMessageId,
-  })
+  }, binding.userId)
 }
 
 function localParts(date, timezone) {
@@ -259,6 +320,68 @@ async function buildGoalContext(userId) {
   ].join('\n')
 }
 
+function shouldEnsureTodayAction(reminderType) {
+  return reminderType === 'morning_planning'
+    || reminderType === 'midday_check'
+    || reminderType === 'evening_review'
+}
+
+async function loadTodayAction(userId) {
+  const dayStart = new Date()
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+  return prisma.dailyAction.findFirst({
+    where: {
+      userId,
+      actionDate: { gte: dayStart, lt: dayEnd },
+    },
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    include: { goal: true, condition: true },
+  })
+}
+
+function formatScheduledMessage(reminderType, rawMessage, action) {
+  if (!action) return rawMessage
+
+  const title = action.title || '今天的下一步'
+  const doneWhen = action.doneWhen || '留下一个可以证明推进过的结果。'
+  const minimumStep = action.minimumStep || '先做最小启动版本。'
+  const fallbackAction = action.fallbackAction || '如果状态差，就把动作缩小。'
+
+  if (reminderType === 'morning_planning') {
+    return [
+      `早上好。今天只做：${title}`,
+      `完成标准：${doneWhen}`,
+      `最小启动：${minimumStep}`,
+      '',
+      rawMessage,
+    ].filter(Boolean).join('\n')
+  }
+
+  if (reminderType === 'midday_check') {
+    return [
+      `中午检查一下：今天这一步是「${title}」。`,
+      '现在是：已开始、已完成、还没开始，还是需要缩小？',
+      `做不动的话就执行：${fallbackAction}`,
+      '',
+      rawMessage,
+    ].filter(Boolean).join('\n')
+  }
+
+  if (reminderType === 'evening_review') {
+    return [
+      `晚上复盘：今天这一步是「${title}」。`,
+      '完成了吗？如果没完成，更像是动机、能力、提醒，还是路径问题？',
+      `完成标准：${doneWhen}`,
+      '',
+      rawMessage,
+    ].filter(Boolean).join('\n')
+  }
+
+  return rawMessage
+}
+
 function fallbackReminderText(reminderType, goalContext) {
   if (reminderType === 'morning_planning') {
     return `早上好。我们今天只确认一件事：基于当前目标，今天最小可推进的一步是什么？\n\n${trimForPrompt(goalContext, 500)}`
@@ -334,7 +457,7 @@ async function findOrCreateSchedulerThread(userId, binding) {
   return prisma.agentThread.create({ data: { userId, goalId: goal?.id, title } })
 }
 
-async function createPendingEvent(rule, info) {
+async function createPendingEvent(rule, info, now = new Date()) {
   try {
     return await prisma.schedulerEvent.create({
       data: {
@@ -343,7 +466,7 @@ async function createPendingEvent(rule, info) {
         eventType: rule.reminderType,
         channel: rule.channel,
         dueKey: info.dueKey,
-        scheduledFor: new Date(),
+        scheduledFor: now,
         status: 'pending',
         payload: { schedule: rule.schedule, timezone: info.timezone, localDate: info.localDate },
       },
@@ -355,14 +478,15 @@ async function createPendingEvent(rule, info) {
 }
 
 async function processRule(rule, options = {}) {
-  const info = dueInfo(rule, new Date(), options.forceReminderType || '')
+  const now = options.now || new Date()
+  const info = dueInfo(rule, now, options.forceReminderType || '')
   if (!info.due) return
   if (info.quiet && !info.forced) {
     console.log(`[scheduler] skipped ${rule.reminderType}; quietHours=${quietHoursRange(rule.quietHours)}`)
     return
   }
 
-  const sentSince = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const sentSince = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   const sentCount = await prisma.schedulerEvent.count({
     where: {
       userId: rule.userId,
@@ -377,8 +501,12 @@ async function processRule(rule, options = {}) {
     return
   }
 
-  const event = await createPendingEvent(rule, info)
+  const event = await createPendingEvent(rule, info, now)
   if (!event) return
+
+  if (shouldEnsureTodayAction(rule.reminderType)) {
+    await ensureTodayAction(prisma, rule.userId)
+  }
 
   const binding = await prisma.qqChatBinding.findFirst({
     where: { userId: rule.userId, status: 'ENABLED' },
@@ -396,9 +524,11 @@ async function processRule(rule, options = {}) {
   const interventionDecision = await planIntervention(prisma, rule.userId, {
     reminderType: rule.reminderType,
     reminderRule: rule,
-    now: new Date(),
+    now,
   })
-  const messageText = interventionDecision.question_or_message || await generateReminderText(rule.userId, rule.reminderType)
+  const todayAction = await loadTodayAction(rule.userId)
+  const rawMessageText = interventionDecision.question_or_message || await generateReminderText(rule.userId, rule.reminderType)
+  const messageText = formatScheduledMessage(rule.reminderType, rawMessageText, todayAction)
   const schedulerPayload = {
     ...(event.payload || {}),
     intervention_decision: interventionDecision,
@@ -480,6 +610,12 @@ async function processRule(rule, options = {}) {
 }
 
 async function tick(options = {}) {
+  await touchRuntimeHeartbeat(prisma, {
+    service: 'scheduler-worker',
+    status: options.forceReminderType ? 'forced_tick' : 'running',
+    detail: options.forceReminderType ? `强制触发 ${options.forceReminderType}` : 'Scheduler Worker 正在扫描提醒规则。',
+    payload: { tickSeconds, timezone: defaultTimezone, forceReminderType: options.forceReminderType || '' },
+  })
   await ensureDefaultRulesForBoundUsers()
   const rules = await prisma.reminderRule.findMany({
     where: { enabled: true, channel: 'qq' },
@@ -491,14 +627,21 @@ async function tick(options = {}) {
 }
 
 async function main() {
-  if (!runOnce || !forcedReminderType) {
-    assertConfig()
-  } else if (!hasQqConfig()) {
-    console.warn('[scheduler] QQ config missing; forced one-shot run can still record no-binding failures, but send attempts will fail.')
-  }
   console.log(`[scheduler] started; tick=${tickSeconds}s timezone=${defaultTimezone}${runOnce ? ' mode=once' : ''}${forcedReminderType ? ` force=${forcedReminderType}` : ''}`)
+  await touchRuntimeHeartbeat(prisma, {
+    service: 'scheduler-worker',
+    status: runOnce ? 'run_once' : 'started',
+    detail: runOnce ? 'Scheduler Worker 正在执行一次性验证。' : 'Scheduler Worker 已启动。',
+    payload: { tickSeconds, timezone: defaultTimezone, runOnce, forcedReminderType },
+  })
   if (runOnce) {
     await tick({ forceReminderType: forcedReminderType })
+    await touchRuntimeHeartbeat(prisma, {
+      service: 'scheduler-worker',
+      status: 'run_once_done',
+      detail: 'Scheduler Worker 一次性验证已结束。',
+      payload: { forcedReminderType },
+    })
     await prisma.$disconnect()
     return
   }
@@ -512,20 +655,47 @@ async function main() {
   }
 }
 
-process.on('SIGINT', async () => {
-  stopping = true
-  await prisma.$disconnect()
-  process.exit(0)
-})
+function isDirectRun() {
+  const entry = process.argv[1]
+  return Boolean(entry && import.meta.url === pathToFileURL(resolvePath(entry)).href)
+}
 
-process.on('SIGTERM', async () => {
-  stopping = true
-  await prisma.$disconnect()
-  process.exit(0)
-})
+export {
+  dueInfo,
+  processRule,
+  tick,
+}
 
-main().catch(async (error) => {
-  console.error('[scheduler] fatal', error)
+export async function closeSchedulerWorker() {
   await prisma.$disconnect()
-  process.exit(1)
-})
+}
+
+if (isDirectRun()) {
+  process.on('SIGINT', async () => {
+    stopping = true
+    await touchRuntimeHeartbeat(prisma, {
+      service: 'scheduler-worker',
+      status: 'stopping',
+      detail: 'Scheduler Worker 正在停止。',
+    })
+    await prisma.$disconnect()
+    process.exit(0)
+  })
+
+  process.on('SIGTERM', async () => {
+    stopping = true
+    await touchRuntimeHeartbeat(prisma, {
+      service: 'scheduler-worker',
+      status: 'stopping',
+      detail: 'Scheduler Worker 正在停止。',
+    })
+    await prisma.$disconnect()
+    process.exit(0)
+  })
+
+  main().catch(async (error) => {
+    console.error('[scheduler] fatal', error)
+    await prisma.$disconnect()
+    process.exit(1)
+  })
+}

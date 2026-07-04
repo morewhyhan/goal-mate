@@ -90,6 +90,32 @@ QQ reply
 
 待确认工具优先级高于 Scheduler 回复。也就是说，如果用户回复“确认执行”，系统会优先确认工具动作，不会把它误判为提醒反馈。
 
+当前增量事实：
+
+```text
+QQ Scheduler Reply Runtime
+  -> classify QQ reply
+  -> checkin.submit
+  -> log.write_daily
+  -> review.generate when evening_review / weekly_review
+  -> SchedulerEvent.status = responded
+  -> AgentToolAction audit
+```
+
+`src/lib/qq-scheduler-reply.mjs` 是 QQ Worker 和本地验证共用的回复处理模块。  
+`pnpm verify:qq-scheduler-reply` 已覆盖 evening_review 回复场景：用户回复“没完成，太难了”后，会产生 `Checkin(NOT_DONE)`、`Diagnosis(ABILITY)`、当日 Markdown、daily Review、`AgentToolAction(source=scheduler)`，把原 `SchedulerEvent` 标记为 `responded`，并写入 `system/meta-cognition/<goal>.md`，使下一次 Planner 能读取新的干预假设、AI 下次思考规则和 `policy_delta`。
+
+`pnpm verify:scheduler-rules` 已覆盖提醒规则消费和发送内容场景：用户保存的 `ReminderRule` 会被 Scheduler 读取；另一个用户更新更晚但 disabled 的 QQ 配置不会阻断当前用户规则；关闭的规则不会触发；当天达到 `maxPerDay` 后不会重复触发；命中 `quietHours` 时不会创建事件；没有 QQ 绑定时会留下 failed `SchedulerEvent`，而不是静默丢失；有 QQ 绑定时会通过本地 fake QQ API 完成 token + send，捕获到的消息必须包含今日行动、fallback、Planner 决策和后续审计。
+
+这个验证证明回复闭环的本地运行时可用；它不证明真实 QQ Gateway 长连、平台主动消息权限或服务器长期运行已经通过。
+
+当前新增边界：
+
+- 官方默认消息 API 仍使用 `https://api.sgroup.qq.com`。
+- 官方默认 token API 使用 `https://bots.qq.com`。
+- 当用户在 Settings 配置自定义 `apiBase` 时，Scheduler 会对该 base 调用 `/app/getAppAccessToken` 和消息发送接口，便于自部署网关、代理或本地 fake QQ 验证。
+- 该能力证明“Settings 中的 QQ API Base 会真实影响 Scheduler 发送链路”，不是只影响部分请求。
+
 ## 6. 发送内容原则
 
 - 一次只问一个关键问题。
@@ -167,6 +193,8 @@ pnpm verify:agent-loop:static
 
 `verify:intervention-planner` 用纯本地场景证明 Planner 不是固定模板：它能识别难度问题、关键风险点、连续无响应；能优先接受合法 AI Policy 输出；能在缺少 API Key、模型输出鸡汤话或缺少可验证信号时降级到 fallback；还能生成元认知假设和拒绝模糊记忆。
 
+`verify:scheduler-rules` 用本地 fake QQ API 证明 Scheduler 发送出去的主动消息不是空提醒：它必须指向当前 DailyAction，包含 fallback 行动，持久化 `intervention_decision`，并写入 `AgentMessage` 与 `AgentToolAction(reminder.send)`。
+
 ## 11. 当前增量事实：Scheduler 到 ControlLoopEpisode
 
 Scheduler 负责触发主动干预，并在消息发送前记录 `intervention_decision`。
@@ -184,3 +212,43 @@ Scheduler intervention_decision
 ```
 
 这意味着 Scheduler 不负责长期学习；它提供干预证据，学习由 ControlLoopEpisode 和 Meta-Cognition 完成。
+
+## 12. 当前增量事实：启动与主动推进体验
+
+用户不应该手动理解或分别启动 `worker:qq`、`worker:scheduler`。
+
+本地开发下，`pnpm dev` 已经改为启动 supervisor：
+
+```text
+pnpm dev
+  -> Web
+  -> QQ Worker
+  -> Scheduler Worker
+```
+
+生产部署下，systemd 安装脚本会 enable 并 restart：
+
+```text
+goal-mate-web.service
+goal-mate-qq-worker.service
+goal-mate-scheduler-worker.service
+```
+
+用户体验应该是：
+
+```text
+启动 Goal Mate
+  -> 在 Settings 配置模型和 QQ
+  -> QQ Worker 自动连接或等待配置
+  -> Scheduler Worker 自动读取提醒规则
+  -> 到点主动发送早中晚/周复盘消息
+```
+
+Scheduler 到点前会自动调用 Today 行动规划，确保早晨/中午/晚上消息不是空提醒，而是带有：
+
+- 今天只做什么
+- 完成标准
+- 最小启动
+- 风险兜底
+
+晚上复盘回复后，QQ Worker 不只写 check-in 和日记，还会触发 `review.generate` 生成日复盘，用于第二天的干预策略。

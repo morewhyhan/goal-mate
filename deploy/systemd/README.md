@@ -8,7 +8,7 @@
 - QQ Worker
 - Scheduler Worker
 
-这些模板不会包含任何真实密钥。真实配置必须放在服务器本地：
+这些模板不会包含任何真实密钥。服务器启动前只需要少量基础配置放在本地：
 
 ```text
 /opt/goal-mate/src/.env
@@ -21,6 +21,7 @@
 | `goal-mate-web.service` | Web Console / API |
 | `goal-mate-qq-worker.service` | QQ Gateway 常驻 worker |
 | `goal-mate-scheduler-worker.service` | 主动提醒调度 worker |
+| `../install-systemd.sh` | 在服务器上安装、启用并启动以上三个 service |
 
 ## 3. 默认假设
 
@@ -86,23 +87,62 @@ test -f /opt/goal-mate/src/.env
 ```text
 DATABASE_URL
 NEXT_PUBLIC_APP_URL
-DEEPSEEK_API_KEY
-QQ_BOT_APP_ID
-QQ_BOT_TOKEN
+GOAL_MATE_SECRET
 ```
 
-没有域名时，`BETTER_AUTH_URL`、`NEXT_PUBLIC_BETTER_AUTH_URL` 和 `NEXT_PUBLIC_APP_URL` 可以先用：
 没有域名时，`NEXT_PUBLIC_APP_URL` 可以先用：
 
 ```text
 http://服务器IP:3000
 ```
 
-`PORT`、`HOSTNAME`、`DEEPSEEK_API_BASE`、`DEEPSEEK_MODEL`、`QQ_BOT_API_BASE`、`QQ_BOT_INTENTS`、Scheduler 时间和时区都有默认值。模型名称、提醒时间、Agent 权限、日志写入和数据导出在 Settings 页面配置。
+`PORT`、`HOSTNAME`、`DEEPSEEK_API_BASE`、`DEEPSEEK_MODEL`、Scheduler tick 和时区都有默认值。QQ Bot App ID、QQ Token、QQ API Base、Gateway intents、模型名称、模型 API Key、提醒时间、Agent 权限、日志写入和数据导出都在 Settings 页面配置。
 
-如果服务器只有一个 Goal Mate 用户，QQ Worker 会自动绑定第一个用户；多用户场景再设置 `QQ_DEFAULT_USER_EMAIL`。
+QQ Bot App ID、QQ Token 和模型 API Key 全部在 Settings 页面配置。`.env` 不保存这些用户级业务密钥；`QQ_ALLOWED_CONTEXT_IDS` 只用于限制机器人响应的 QQ 会话范围。
 
-复制 service：
+QQ 会话归属不能依赖全局邮箱、单用户假设或第一个用户。正确流程是：
+
+```text
+登录 Web
+  -> Settings 保存 QQ 配置
+  -> 生成绑定码
+  -> 在 QQ 里发送绑定命令
+  -> 写入 QqChatBinding
+```
+
+未绑定的 QQ 会话只会收到绑定提示，不会自动归属到任何账号。
+
+推荐方式：一键安装 service：
+
+```bash
+cd /opt/goal-mate/src
+pnpm deploy:systemd:install
+```
+
+这个命令会：
+
+```text
+1. 确认 /opt/goal-mate/src/.env 存在。
+2. 确认 goalmate 系统用户存在。
+3. 把 deploy/systemd/goal-mate-*.service 安装到 /etc/systemd/system/。
+4. 执行 systemctl daemon-reload。
+5. enable 三个服务。
+6. restart 三个服务。
+```
+
+如果你只想安装并 enable，不立刻启动：
+
+```bash
+GOAL_MATE_START_SERVICES=0 pnpm deploy:systemd:install
+```
+
+如果服务器路径或用户不同：
+
+```bash
+GOAL_MATE_APP_ROOT=/data/goal-mate GOAL_MATE_SERVICE_USER=goalmate pnpm deploy:systemd:install
+```
+
+手动方式：
 
 ```bash
 sudo cp /opt/goal-mate/deploy/systemd/goal-mate-*.service /etc/systemd/system/
@@ -116,6 +156,10 @@ sudo systemctl enable --now goal-mate-web.service
 sudo systemctl enable --now goal-mate-qq-worker.service
 sudo systemctl enable --now goal-mate-scheduler-worker.service
 ```
+
+正常部署以后，不需要手动进入目录运行 `pnpm worker:qq`。QQ Worker 和 Scheduler Worker 会由 systemd 在后台长期运行；服务器重启后自动启动；进程崩溃后按 `Restart=always` 自动拉起。
+
+如果 Settings 里还没有 QQ Bot 配置，QQ Worker 和 Scheduler Worker 不会退出；它们会常驻等待配置。打开 Web Console 后在 Settings -> QQ 填入 App ID 和 Token，服务会读取数据库中的配置并开始工作。
 
 ## 5. 查看状态
 
@@ -165,6 +209,6 @@ pnpm worker:scheduler:once
 | --- | --- |
 | `pnpm` 找不到 | 确认 systemd 环境下 `/usr/bin/env pnpm` 可用 |
 | `.env` 未加载 | 检查 `EnvironmentFile` 路径 |
-| QQ 无回复 | 检查 QQ token、Gateway 权限、worker 日志 |
+| QQ 无回复 | 检查 Settings -> QQ 的 App ID / Token、Gateway 权限、worker 日志 |
 | Scheduler 不发 | 检查提醒规则、时区、QQ 绑定和 `SchedulerEvent.errorMessage` |
-| DeepSeek 失败 | 检查 `DEEPSEEK_API_KEY` 和 Settings 模型测试 |
+| DeepSeek 失败 | 检查 Settings 模型 API Key 和模型测试 |

@@ -20,7 +20,7 @@ export function useSignIn() {
       return response
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['auth-session'] })
+      queryClient.clear()
       toast.success('登录成功')
       router.push('/dashboard/today')
     },
@@ -47,7 +47,7 @@ export function useSignUp() {
       return response
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['auth-session'] })
+      queryClient.clear()
       toast.success('注册成功')
       router.push('/dashboard/today')
     },
@@ -70,7 +70,7 @@ export function useSignOut() {
       return response
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['auth-session'] })
+      queryClient.clear()
       toast.success('已登出')
       router.push('/login')
     },

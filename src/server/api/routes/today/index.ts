@@ -56,13 +56,6 @@ const app = new Hono()
     })
     const momentum = buildMomentumDays(checkins)
 
-    if (!today.goal) {
-      return c.json(
-        { error: { code: 'ACTIVE_GOAL_REQUIRED', message: '还没有当前主目标。' } },
-        404,
-      )
-    }
-
     return c.json({ data: { ...today, momentum } })
   })
   .post('/checkin', zValidator('json', checkinSchema), async (c) => {

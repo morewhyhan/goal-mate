@@ -12,6 +12,7 @@
 - 模块化：身份、控制闭环、工具权限、表达风格分段维护。
 - 单入口：运行时只能通过 `buildAgentSystemPrompt` 组装提示词。
 - 可验证：静态门禁检查关键规则是否存在，避免后续改坏。
+- 可追踪：snapshot 固定当前 prompt 版本、section、源码 hash 和关键短语，避免无意漂移。
 - 可演进：后续可以把不同 section 拆成独立文件或按场景组合。
 
 ## 2. 当前实现
@@ -35,6 +36,14 @@ listAgentPromptSectionIds()
 `agent-runtime.ts` 只负责准备运行时上下文，然后调用 `buildAgentSystemPrompt`。
 
 `buildAgentSystemPrompt` 内部由稳定前缀和动态上下文组成。稳定前缀用于版本、身份、权限和表达规则；动态上下文用于 Goals、Memory 和 Markdown Logs。这样后续可以继续压缩动态上下文，也更利于模型供应商的 prompt cache。
+
+当前 snapshot：
+
+```text
+docs/designs/agent-prompt-snapshot.json
+```
+
+prompt 变更必须同步更新 snapshot。否则 `pnpm verify:agent-prompt-snapshot` 会失败。
 
 ## 3. Prompt Section
 
@@ -176,6 +185,15 @@ src/scripts/verify-agent-action-loop.mjs
 - prompt 模块保留控制闭环规则。
 - prompt 模块保留真人秘书式表达规则。
 - prompt / design docs 保留自主干预、风险控制和元认知迭代规则。
+- `docs/designs/agent-prompt-snapshot.json` 与当前 prompt version、section、源码 hash 和关键规则短语一致。
+
+组合验收入口：
+
+```text
+pnpm verify:agent-prompt-snapshot
+```
+
+该门禁证明当前 Agent system prompt 没有发生未记录漂移。它不证明真实模型长期回复质量，真实质量仍由 `pnpm verify:ai-reply-quality` 和 live model 验收覆盖。
 
 ## 7. 后续演进
 
@@ -184,4 +202,4 @@ src/scripts/verify-agent-action-loop.mjs
 - 将 `index.ts` 拆成 `base.ts`、`control-loop.ts`、`tool-policy.ts`、`tone.ts`。
 - 增加真实对话样本评测。
 - 为不同通道提供轻微适配，例如 Web 长一点、QQ 更短一点。
-- 增加 prompt snapshot，防止无意改动导致能力漂移。
+- 后续如果 prompt 继续变长，需要拆分 `base.ts`、`control-loop.ts`、`tool-policy.ts`、`tone.ts`，但 snapshot 仍作为外层防漂移门禁。

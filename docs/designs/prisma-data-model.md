@@ -75,6 +75,7 @@
 - QQ Bot 绑定和消息事件。
 - ReminderRule 和 SchedulerEvent。
 - AgentToolAction 审计。
+- QQ 一次性绑定码不新增独立表，保存在当前用户 `IntegrationAccount(provider=qq_bot).permissions` 中；绑定成功后清空绑定码，并写入 `QqChatBinding`。
 
 后续如果继续演进，需要优先同步：
 

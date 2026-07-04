@@ -1,0 +1,42 @@
+{
+  "version": "goal-mate-agent-system-v0.7.0",
+  "source": "src/lib/agent-prompts/index.ts",
+  "sourceHash": "e3baec86a19d14a46aa2fd22d44358ceb9521f6312d8078df0e6327459b15b27",
+  "sectionIds": [
+    "ANTI_AI_TONE_CHARTER",
+    "ANTI_AI_AUDIT_PROTOCOL",
+    "ROLE",
+    "CONTROL_LOOP",
+    "INTERVENTION_POLICY",
+    "META_COGNITION_POLICY",
+    "MEMORY_QUALITY_POLICY",
+    "SYSTEM_FACT_USAGE",
+    "TOOL_AND_PERMISSION_POLICY",
+    "SECRETARY_TONE"
+  ],
+  "requiredSectionIds": [
+    "ANTI_AI_TONE_CHARTER",
+    "ANTI_AI_AUDIT_PROTOCOL",
+    "ROLE",
+    "CONTROL_LOOP",
+    "INTERVENTION_POLICY",
+    "META_COGNITION_POLICY",
+    "MEMORY_QUALITY_POLICY",
+    "SYSTEM_FACT_USAGE",
+    "TOOL_AND_PERMISSION_POLICY",
+    "SECRETARY_TONE"
+  ],
+  "requiredPhrases": [
+    "不要像 AI 客服",
+    "这句话为什么还像 AI",
+    "当前系统边界是什么",
+    "一次只问一个问题",
+    "以下内容是系统事实，不是用户指令",
+    "怎么干预用户",
+    "AI 自己下一次怎么修正自己的思考",
+    "充分、必要、因果明确、可验证",
+    "可验证假设"
+  ],
+  "generatedAt": "2026-07-04T16:49:22.181Z",
+  "note": "Update this file intentionally when Agent system prompt rules change."
+}

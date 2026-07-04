@@ -80,6 +80,8 @@ function evaluateAgentReplyQuality(reply, expectation = {}) {
 
 const promptSource = readFileSync(resolve(process.cwd(), 'lib/agent-prompts/index.ts'), 'utf8')
 const runtimeSource = readFileSync(resolve(process.cwd(), 'lib/agent-runtime.ts'), 'utf8')
+const settingsSource = readFileSync(resolve(process.cwd(), 'server/api/routes/settings/index.ts'), 'utf8')
+const modelProviderErrorSource = readFileSync(resolve(process.cwd(), 'lib/model-provider-errors.ts'), 'utf8')
 
 record(
   'ARQ-PROMPT-ANTI-AI-TONE',
@@ -114,6 +116,18 @@ record(
   'agent runtime source scanned',
 )
 
+record(
+  'ARQ-MODEL-FAILURE-SHARED-CLASSIFIER',
+  'Agent and Settings share model-provider failure classification instead of diverging error handling',
+  runtimeSource.includes('model-provider-errors')
+    && settingsSource.includes('model-provider-errors')
+    && modelProviderErrorSource.includes('classifyModelProviderFailure')
+    && ['insufficient_balance', 'invalid_api_key', 'rate_limited', 'provider_unavailable', 'network_error'].every((reason) => runtimeSource.includes(reason) || modelProviderErrorSource.includes(reason))
+    && !runtimeSource.includes('错误摘要')
+    && !runtimeSource.includes('模型调用失败，当前未改动任何计划。状态码'),
+  'model provider error handling source scanned',
+)
+
 const positiveCases = [
   {
     id: 'ARQ-SAMPLE-NOT-DONE',
@@ -133,6 +147,36 @@ const positiveCases = [
       mustAskOneQuestion: true,
       mustBeActionable: true,
       mustMentionAny: [/可验证变化|先不排计划/u],
+    },
+  },
+  {
+    id: 'ARQ-SAMPLE-TODAY-ACTION',
+    purpose: 'A good today-action reply reads the current state and gives one next action',
+    reply: '今天只做一件事：完成当前核心推进动作。完成标准是留下一个可验证结果；启动不了，就先做最小版本并反馈原因。',
+    expectation: {
+      mustBeActionable: true,
+      mustMentionAny: [/今天只做一件事|完成标准|最小版本|反馈原因/u],
+    },
+  },
+  {
+    id: 'ARQ-SAMPLE-REVIEW',
+    purpose: 'A good review reply summarizes control evidence and chooses next focus',
+    reply: '这周先看三件证据：完成了几次、哪类原因最常出现、哪个条件还没补齐。下周不要加目标，先改最影响推进的那个条件。',
+    expectation: {
+      mustBeActionable: true,
+      mustMentionAny: [/证据|哪类原因|哪个条件|下周/u],
+    },
+  },
+  {
+    id: 'ARQ-SAMPLE-SETTINGS-READ',
+    purpose: 'A good settings-read reply reports configuration facts without inventing',
+    reply: '当前默认模型是 DeepSeek / deepseek-v4-flash，API Key 已配置但不会明文显示。下一步只需要点一次测试连接，确认它能真实调用。',
+    expectation: {
+      mustBeActionable: true,
+      mustUseKnownFact: true,
+      knownFactPattern: /DeepSeek \/ deepseek-v4-flash/u,
+      mustMentionAny: [/API Key 已配置|测试连接|真实调用/u],
+      mustAvoidClaimingExecution: true,
     },
   },
   {
@@ -174,6 +218,17 @@ const positiveCases = [
       mustUseKnownFact: true,
       knownFactPattern: /8 周内完成一个可验证成果/u,
       mustMentionAny: [/核心推进动作|反馈结果/u],
+    },
+  },
+  {
+    id: 'ARQ-SAMPLE-MODEL-FAILURE',
+    purpose: 'A model failure reply is explicit, non-fake and points to Settings instead of dumping provider JSON',
+    reply: '模型现在不可用，我已经保存了你的消息，但不会假装已经完成思考，也不会改动任何计划。\nDeepSeek 账户余额不足。请充值，或者换一个可用的 API Key 后再试。\n先去 Settings 测试连接；修好后再让我继续。',
+    expectation: {
+      mustBeActionable: true,
+      mustMentionAny: [/模型现在不可用|不会假装|Settings 测试连接/u],
+      forbidMentionAny: [/\{"error"|错误摘要|choices|chat\/completions/u],
+      mustAvoidClaimingExecution: true,
     },
   },
 ]

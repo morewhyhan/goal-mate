@@ -5,6 +5,7 @@ import { parseAgentToolIntentJson } from '@/lib/agent-tool-shared.mjs'
 import { AGENT_SYSTEM_PROMPT_VERSION, buildAgentSystemPrompt } from '@/lib/agent-prompts'
 import { loadMetaCognitionHypotheses } from '@/lib/meta-cognition-layer.mjs'
 import { resolveModelApiKey } from '@/lib/model-secret.mjs'
+import { classifyModelProviderFailure, formatAgentModelFailureMessage, formatAgentModelNetworkFailureMessage, parseModelProviderError } from '@/lib/model-provider-errors'
 
 function toChatRole(role: string) {
   const normalized = role.toLowerCase()
@@ -18,6 +19,192 @@ export function trimForPrompt(value: string, max = 900) {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function compactLines(lines: Array<string | null | undefined>, empty = '暂无。') {
+  const normalized = lines.map((line) => line?.trim()).filter(Boolean) as string[]
+  return normalized.length ? normalized.join('\n') : empty
+}
+
+function formatDate(value: unknown) {
+  if (!value) return '未定'
+  const date = value instanceof Date ? value : new Date(String(value))
+  if (Number.isNaN(date.getTime())) return '未定'
+  return date.toISOString().slice(0, 10)
+}
+
+function formatDateRange(start: unknown, end: unknown) {
+  return `${formatDate(start)} -> ${formatDate(end)}`
+}
+
+function formatProgress(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value * 100)}%` : '未记录'
+}
+
+function formatJsonItems(value: unknown, max = 4) {
+  const items = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? [value]
+      : []
+
+  return items.map((item) => {
+    if (typeof item === 'string') return item.trim()
+    if (item && typeof item === 'object') return trimForPrompt(JSON.stringify(item), 120)
+    return String(item || '').trim()
+  }).filter(Boolean).slice(0, max)
+}
+
+function buildGoalPromptContext(goal: any) {
+  if (!goal) return '当前还没有主目标。用户如果询问当前目标，只能说明系统尚未建立主目标，并追问他想达到的结果。'
+
+  const reasoningCard = goal.reasoningCards?.[0]
+  const successSignals = formatJsonItems(reasoningCard?.successSignals)
+  const evidence = formatJsonItems(reasoningCard?.evidence, 3)
+
+  const keyResults = compactLines((goal.keyResults || []).map((kr: any, index: number) => {
+    return [
+      `- KR${index + 1}: ${kr.title}`,
+      `进度 ${formatProgress(kr.progress)}`,
+      `${kr.currentValue || '当前值未记录'} -> ${kr.targetValue || '目标值未记录'}`,
+      kr.status ? `状态 ${kr.status}` : '',
+      kr.whyNecessary ? `必要性：${trimForPrompt(kr.whyNecessary, 180)}` : '',
+    ].filter(Boolean).join('；')
+  }))
+
+  const conditions = compactLines((goal.conditions || []).map((condition: any, index: number) => {
+    return [
+      `- 条件${index + 1}: ${condition.title}`,
+      `类型 ${condition.type}`,
+      `状态 ${condition.status}`,
+      `原因：${trimForPrompt(condition.whyRequired || '', 180)}`,
+    ].filter(Boolean).join('；')
+  }))
+
+  const stagePlans = compactLines((goal.stagePlans || []).map((stage: any, index: number) => {
+    const signals = formatJsonItems(stage.successSignals, 3)
+    return [
+      `- 阶段${index + 1}: ${stage.title}`,
+      `时间 ${formatDateRange(stage.startDate, stage.endDate)}`,
+      stage.status ? `状态 ${stage.status}` : '',
+      `目标：${trimForPrompt(stage.stageGoal || '', 180)}`,
+      signals.length ? `验收信号：${signals.join(' / ')}` : '',
+    ].filter(Boolean).join('；')
+  }))
+
+  const dailyActions = compactLines((goal.dailyActions || []).map((action: any) => {
+    return [
+      `- ${formatDate(action.actionDate)} ${action.title}`,
+      action.status ? `状态 ${action.status}` : '',
+      action.doneWhen ? `完成标准：${trimForPrompt(action.doneWhen, 160)}` : '',
+      action.minimumStep ? `最小动作：${trimForPrompt(action.minimumStep, 140)}` : '',
+      action.fallbackAction ? `兜底：${trimForPrompt(action.fallbackAction, 140)}` : '',
+      action.checkinQuestion ? `反馈问题：${trimForPrompt(action.checkinQuestion, 140)}` : '',
+    ].filter(Boolean).join('；')
+  }))
+
+  const checkins = compactLines((goal.checkins || []).map((checkin: any) => {
+    return [
+      `- ${formatDate(checkin.createdAt)} ${checkin.result}`,
+      checkin.reasonCategory ? `原因 ${checkin.reasonCategory}` : '',
+      checkin.userFeedback ? `反馈：${trimForPrompt(checkin.userFeedback, 180)}` : '',
+      checkin.adjustment ? `调整：${trimForPrompt(checkin.adjustment, 180)}` : '',
+    ].filter(Boolean).join('；')
+  }))
+
+  const diagnoses = compactLines((goal.diagnoses || []).map((diagnosis: any) => {
+    return [
+      `- ${diagnosis.category}`,
+      diagnosis.evidence ? `证据：${trimForPrompt(diagnosis.evidence, 160)}` : '',
+      diagnosis.adjustmentType ? `调整类型 ${diagnosis.adjustmentType}` : '',
+      diagnosis.nextQuestion ? `下个问题：${trimForPrompt(diagnosis.nextQuestion, 160)}` : '',
+      diagnosis.proposedNextAction ? `建议动作：${trimForPrompt(diagnosis.proposedNextAction, 160)}` : '',
+    ].filter(Boolean).join('；')
+  }))
+
+  const reviews = compactLines((goal.reviews || []).map((review: any) => {
+    return [
+      `- ${review.type} ${formatDateRange(review.periodStart, review.periodEnd)}`,
+      review.progressSummary ? `进展：${trimForPrompt(review.progressSummary, 180)}` : '',
+      review.blockerSummary ? `阻塞：${trimForPrompt(review.blockerSummary, 160)}` : '',
+      review.nextFocus ? `下周期重点：${trimForPrompt(review.nextFocus, 160)}` : '',
+    ].filter(Boolean).join('；')
+  }))
+
+  return [
+    '## 当前工作台快照',
+    `当前主目标：${goal.title}`,
+    `状态：${goal.status}`,
+    `周期：${formatDateRange(goal.horizonStart, goal.horizonEnd)}`,
+    `用户原始输入：${trimForPrompt(goal.rawInput || '', 260)}`,
+    `系统解释：${trimForPrompt(goal.interpretedGoal || goal.rawInput || '', 260)}`,
+    '',
+    '## 完成标准和当前判断',
+    reasoningCard?.purposeSummary ? `目标意义：${trimForPrompt(reasoningCard.purposeSummary, 260)}` : '目标意义：暂无。',
+    reasoningCard?.sufficientConditionSet ? `充分条件集合：${trimForPrompt(reasoningCard.sufficientConditionSet, 260)}` : '充分条件集合：暂无。',
+    reasoningCard?.recommendedFocus ? `当前推荐焦点：${trimForPrompt(reasoningCard.recommendedFocus, 220)}` : '当前推荐焦点：暂无。',
+    successSignals.length ? `成功信号：${successSignals.join(' / ')}` : '成功信号：暂无。',
+    evidence.length ? `证据：${evidence.join(' / ')}` : '证据：暂无。',
+    '',
+    '## KR',
+    keyResults,
+    '',
+    '## 必要条件',
+    conditions,
+    '',
+    '## 阶段计划',
+    stagePlans,
+    '',
+    '## 今天和近期行动',
+    dailyActions,
+    '',
+    '## 最近反馈',
+    checkins,
+    '',
+    '## 最近诊断',
+    diagnoses,
+    '',
+    '## 最近复盘',
+    reviews,
+  ].join('\n')
+}
+
+function buildMarkdownPromptContext(markdownDocuments: any[]) {
+  if (!markdownDocuments.length) return '暂无 Markdown 文档。'
+  return markdownDocuments.map((document) => {
+    return [
+      `- ${document.path} [${document.type}] ${document.title ? `《${document.title}》` : ''}`,
+      `更新时间：${formatDate(document.updatedAt)}`,
+      trimForPrompt(document.content || '', 900),
+    ].join('\n')
+  }).join('\n\n')
+}
+
+function buildMemoryPromptContext(goal: any, history: any[]) {
+  const threadMessages = history.slice(-8).map((message: any) => {
+    return `- ${message.role}: ${trimForPrompt(message.content || '', 220)}`
+  })
+
+  return [
+    goal
+      ? [
+          `最近复盘重点：${(goal.reviews || []).map((review: any) => review.nextFocus).filter(Boolean).slice(0, 3).join('；') || '暂无'}`,
+          `最近诊断问题：${(goal.diagnoses || []).map((diagnosis: any) => diagnosis.nextQuestion).filter(Boolean).slice(0, 3).join('；') || '暂无'}`,
+        ].join('\n')
+      : '',
+    `已加载最近对话：${threadMessages.length} 条`,
+    `最近对话片段：\n${compactLines(threadMessages)}`,
+  ].filter(Boolean).join('\n')
+}
+
+function buildCapabilityPromptContext(settings: { canReadGoals: boolean; canReadLogs: boolean; memoryEnabled: boolean }) {
+  const tools = listAgentTools()
+  return [
+    `读取权限：Goals=${settings.canReadGoals ? 'ON' : 'OFF'}；Logs=${settings.canReadLogs ? 'ON' : 'OFF'}；Memory=${settings.memoryEnabled ? 'ON' : 'OFF'}`,
+    '可用系统动作：',
+    ...tools.map((tool) => `- ${tool.name}: ${tool.description}；权限=${tool.permission}；风险=${tool.riskLevel}`),
+    '执行原则：读操作可以直接回答；修改目标、设置、外部提醒等动作必须按工具确认规则执行。',
+  ].join('\n')
 }
 
 function readBooleanSetting(value: unknown, fallback: boolean) {
@@ -259,14 +446,20 @@ export async function generateAssistantReply(userId: string, threadId: string, l
   const apiBase = String(modelConfig?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
   const modelName = String(modelConfig?.model || defaultDeepSeekModel.model)
 
+  const thread = runtimeSettings.canReadGoals
+    ? await prisma.agentThread.findFirst({ where: { id: threadId, userId }, select: { goalId: true } })
+    : null
+  const goalWhere = thread?.goalId ? { userId, id: thread.goalId } : { userId, isCurrentFocus: true }
+
   const [goal, history] = await Promise.all([
     runtimeSettings.canReadGoals ? prisma.goal.findFirst({
-      where: { userId, isCurrentFocus: true },
+      where: goalWhere,
       include: {
         keyResults: true,
         conditions: true,
         stagePlans: { orderBy: { sortOrder: 'asc' } },
-        dailyActions: { orderBy: { actionDate: 'desc' }, take: 3 },
+        dailyActions: { orderBy: { actionDate: 'desc' }, take: 7 },
+        checkins: { orderBy: { createdAt: 'desc' }, take: 5 },
         reasoningCards: { orderBy: { version: 'desc' }, take: 1 },
         diagnoses: { orderBy: { createdAt: 'desc' }, take: 3 },
         reviews: { orderBy: { createdAt: 'desc' }, take: 3 },
@@ -281,40 +474,25 @@ export async function generateAssistantReply(userId: string, threadId: string, l
 
   const goalContext = !runtimeSettings.canReadGoals
     ? 'Settings 已关闭 Agent 读取 Goals。不要引用目标结构；如果用户需要目标信息，请先说明需要开启 Goals 读取。'
-    : goal
-    ? [
-        `当前目标：${goal.title}`,
-        `解释：${goal.interpretedGoal || goal.rawInput}`,
-        `KR：${goal.keyResults.map((kr) => `${kr.title}(${Math.round(kr.progress * 100)}%)`).join('；')}`,
-        `条件：${goal.conditions.map((condition) => `${condition.title}[${condition.status}]`).join('；')}`,
-        `今日行动：${goal.dailyActions[0]?.title || '暂无'}`,
-        `当前推理重点：${goal.reasoningCards[0]?.recommendedFocus || '暂无'}`,
-      ].join('\n')
-    : '当前还没有主目标。'
+    : buildGoalPromptContext(goal)
 
   const markdownContext = !runtimeSettings.canReadLogs
     ? 'Settings 已关闭 Agent 读取 Logs。不要引用 Markdown 日志内容；如果用户需要日志信息，请先说明需要开启 Logs 读取。'
-    : markdownDocuments.length
-    ? markdownDocuments.map((document) => `- ${document.path} [${document.type}]\n${trimForPrompt(document.content, 600)}`).join('\n\n')
-    : '暂无 Markdown 文档。'
+    : buildMarkdownPromptContext(markdownDocuments)
 
   const memoryContext = !runtimeSettings.memoryEnabled
     ? 'Settings 已关闭 Agent 对话记忆。不要引用历史对话。'
-    : goal
-    ? [
-        `最近复盘：${goal.reviews.map((review) => `${review.type}:${review.nextFocus}`).join('；') || '暂无'}`,
-        `最近诊断：${goal.diagnoses.map((diagnosis) => `${diagnosis.category}:${diagnosis.nextQuestion}`).join('；') || '暂无'}`,
-        `已加载最近对话：${history.length} 条。`,
-      ].join('\n')
-    : `已加载最近对话：${history.length} 条。`
+    : buildMemoryPromptContext(goal, history)
   const metaCognitionContext = runtimeSettings.memoryEnabled
     ? buildMetaCognitionPromptContext(metaCognitionHypotheses)
     : 'Settings 已关闭 Agent 对话记忆。不要引用元认知判断。'
+  const capabilityContext = buildCapabilityPromptContext(runtimeSettings)
 
   const systemPrompt = buildAgentSystemPrompt({
     goalContext,
     memoryContext,
     metaCognitionContext,
+    capabilityContext,
     markdownContext,
   })
 
@@ -357,13 +535,15 @@ export async function generateAssistantReply(userId: string, threadId: string, l
         model: modelName,
         messages,
         temperature: modelConfig?.temperature ?? defaultDeepSeekModel.temperature,
-        max_tokens: 900,
+        max_tokens: 1200,
       }),
     })
 
     if (!response.ok) {
       const text = await response.text()
-      const content = `模型调用失败，当前未改动任何计划。状态码：${response.status}。错误摘要：${trimForPrompt(text, 220)}`
+      const rawMessage = parseModelProviderError(text)
+      const failure = classifyModelProviderFailure(response.status, rawMessage)
+      const content = formatAgentModelFailureMessage(failure)
       return {
         content,
         modelName,
@@ -373,7 +553,7 @@ export async function generateAssistantReply(userId: string, threadId: string, l
           modelName,
           ok: false,
           runtimeSettings,
-          error: `http_${response.status}`,
+          error: failure.reason,
         }),
       }
     }
@@ -396,7 +576,8 @@ export async function generateAssistantReply(userId: string, threadId: string, l
       }),
     }
   } catch (error) {
-    const content = `模型连接失败，当前未改动任何计划。错误：${error instanceof Error ? error.message : String(error)}`
+    const message = error instanceof Error ? error.message : String(error)
+    const content = formatAgentModelNetworkFailureMessage(message)
     return {
       content,
       modelName,
@@ -406,7 +587,7 @@ export async function generateAssistantReply(userId: string, threadId: string, l
         modelName,
         ok: false,
         runtimeSettings,
-        error: error instanceof Error ? error.message : String(error),
+        error: 'network_error',
       }),
     }
   }
@@ -445,6 +626,9 @@ export async function generateAgentToolIntent(userId: string, latestUserContent:
               '你是 Goal Mate 的工具路由器，只判断用户是否明确要求操作系统。',
               '如果用户只是聊天、提问、讨论、解释概念，不要选择工具。',
               '只有用户明确要求查看、创建、更新、提交、写入、生成、设置时才选择工具。',
+              '首次没有目标时，如果用户用自然语言说清楚了想达到的结果、时间边界或当前状态，并且足够具体，应选择 goal.create_draft；不要要求用户填复杂表单。',
+              'goal.create_draft 的 input 至少给出 title、rawInput、interpretedGoal；能判断时继续给出 keyResults、necessaryConditions、stagePlans、dailyAction。',
+              'dailyAction 必须是今天能反馈的一步，包含 title、doneWhen、minimumStep、fallbackAction；不要套用固定行业模板。',
               '输出必须是 JSON，不要输出 Markdown。',
               '',
               'JSON 格式：',
