@@ -13,6 +13,8 @@ import {
   executeAgentToolWithPrisma,
 } from '../lib/agent-tool-executor.mjs'
 import { resolveModelApiKey } from '../lib/model-secret.mjs'
+import { chatCompletionsUrl } from '../lib/model-endpoint.mjs'
+import { fetchModelProvider } from '../lib/model-provider-http.mjs'
 import {
   clearQqBindingCode,
   findQqAccountByBindingCode,
@@ -305,11 +307,11 @@ async function generateToolIntent(userId, latestUserContent) {
   const apiKey = resolveModelApiKey(modelConfig)
   if (!apiKey) return null
 
-  const apiBaseForModel = String(modelConfig?.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
-  const modelName = String(modelConfig?.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
+  const apiBaseForModel = String(modelConfig?.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+  const modelName = String(modelConfig?.model || process.env.GOAL_MATE_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano')
 
   try {
-    const response = await fetch(`${apiBaseForModel}/chat/completions`, {
+    const response = await fetchModelProvider(chatCompletionsUrl(apiBaseForModel), {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -533,8 +535,8 @@ async function generateReply(userId, threadId, latestUserContent) {
   const apiKey = resolveModelApiKey(modelConfig)
   if (!apiKey) return '当前用户还没有配置模型 API Key，所以我只能先保存你的消息。请先在 Settings 里填入自己的模型密钥。'
 
-  const apiBaseForModel = String(modelConfig?.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
-  const modelName = String(modelConfig?.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
+  const apiBaseForModel = String(modelConfig?.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+  const modelName = String(modelConfig?.model || process.env.GOAL_MATE_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano')
 
   const [goal, history, markdownDocuments] = await Promise.all([
     prisma.goal.findFirst({
@@ -585,7 +587,7 @@ async function generateReply(userId, threadId, latestUserContent) {
     })),
   ]
 
-  const response = await fetch(`${apiBaseForModel}/chat/completions`, {
+  const response = await fetchModelProvider(chatCompletionsUrl(apiBaseForModel), {
     method: 'POST',
     headers: {
       authorization: `Bearer ${apiKey}`,

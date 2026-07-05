@@ -76,10 +76,10 @@ async function main() {
   await prisma.modelConfig.create({
     data: {
       userId: user.id,
-      provider: 'DeepSeek',
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
-      reasoningModel: 'deepseek-reasoner',
-      apiBase: process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com',
+      provider: 'B.AI',
+      model: process.env.GOAL_MATE_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano',
+      reasoningModel: process.env.GOAL_MATE_REASONING_MODEL || '',
+      apiBase: process.env.GOAL_MATE_MODEL_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai',
       apiKeyRef: '',
       usage: 'CHAT',
       isDefault: true,

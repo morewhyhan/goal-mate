@@ -109,14 +109,14 @@ const pages = [
     id: 'settings',
     path: '/dashboard/settings',
     requiredText: ['Settings', '模型配置', 'QQ 主动助手', '主动推进节奏', '系统行为', '账号与数据'],
-    authenticatedText: ['deepseek-v4-flash', 'DeepSeek'],
+    authenticatedText: ['gpt-5-nano', 'B.AI'],
     emptyRequiredText: ['Settings', '系统控制台', '模型配置', '账号与数据', '未配置', '待绑定', '待配置 QQ', 'QQ Worker', 'Scheduler'],
     emptyAuthenticatedText: ['系统控制台', '模型', '未配置', 'QQ', '待绑定', '提醒', '待配置 QQ', 'QQ Worker', 'Scheduler'],
     evaluate: pageCheckExpression(`
       const inputs = [...document.querySelectorAll('input')]
       const buttons = [...document.querySelectorAll('button')]
       const inputValues = inputs.map((input) => input.value)
-      const hasModelFields = inputValues.includes('DeepSeek') && inputValues.includes('deepseek-v4-flash') && inputValues.includes('https://api.deepseek.com')
+      const hasModelFields = inputValues.includes('B.AI') && inputValues.includes('gpt-5-nano') && inputValues.includes('https://api.b.ai')
       const hasActionButtons = ['保存模型', '测试连接', '保存提醒', '导出当前账号数据'].every((label) => buttons.some((button) => button.innerText.includes(label)))
       const overflowingInputs = inputs.filter((input) => {
         const rect = input.getBoundingClientRect()

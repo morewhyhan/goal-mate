@@ -296,7 +296,7 @@ async function run() {
   await prisma.modelConfig.create({
     data: {
       userId: modelUser.id,
-      provider: 'DeepSeek',
+      provider: 'B.AI',
       model: 'fake-first-run-model',
       apiBase: fakeModel.apiBase,
       apiKeyRef: `fixture-first-run-model-key-${runId}`,

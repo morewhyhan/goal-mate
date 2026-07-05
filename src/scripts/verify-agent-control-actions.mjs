@@ -105,10 +105,10 @@ async function run() {
 
   const rawModelSecret = `agent-control-key-${runId}`
   const modelInput = {
-    provider: 'DeepSeek',
+    provider: 'B.AI',
     model: `agent-control-model-${runId}`,
     reasoningModel: '',
-    apiBase: 'https://api.deepseek.com',
+    apiBase: 'https://api.b.ai',
     apiKey: rawModelSecret,
     temperature: 0.22,
   }

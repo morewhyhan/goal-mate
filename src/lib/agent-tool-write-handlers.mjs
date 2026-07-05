@@ -595,10 +595,10 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
   if (toolName === 'settings.model.update') {
     const existing = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true }, orderBy: { createdAt: 'asc' } })
     const data = modelSecretWriteData({
-      provider: readAgentToolString(input, 'provider', existing?.provider || 'deepseek'),
-      model: readAgentToolString(input, 'model', existing?.model || 'deepseek-v4-flash'),
+      provider: readAgentToolString(input, 'provider', existing?.provider || 'B.AI'),
+      model: readAgentToolString(input, 'model', existing?.model || 'gpt-5-nano'),
       reasoningModel: readAgentToolString(input, 'reasoningModel', existing?.reasoningModel || ''),
-      apiBase: readAgentToolString(input, 'apiBase', existing?.apiBase || 'https://api.deepseek.com'),
+      apiBase: readAgentToolString(input, 'apiBase', existing?.apiBase || 'https://api.b.ai'),
       apiKey: readAgentToolString(input, 'apiKey', ''),
       apiKeyRef: readAgentToolString(input, 'apiKeyRef', ''),
       usage: 'CHAT',

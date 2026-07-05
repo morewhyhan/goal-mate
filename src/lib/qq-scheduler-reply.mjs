@@ -1,11 +1,65 @@
 import { formatAgentToolDatePath } from './agent-tool-shared.mjs'
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function asRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
 function formatReminderType(type) {
   if (type === 'morning_planning') return '早晨规划'
   if (type === 'midday_check') return '中午检查'
   if (type === 'evening_review') return '晚上复盘'
   if (type === 'weekly_review') return '周复盘'
   return type
+}
+
+function formatReasonCategory(category) {
+  if (category === 'MOTIVATION') return '目标真实性或动机'
+  if (category === 'ABILITY') return '行动难度或启动成本'
+  if (category === 'PROMPT') return '提醒时机或风险点提示'
+  if (category === 'PATH') return '路径或关键条件'
+  return '证据不足'
+}
+
+export function buildSecretarySchedulerReply(feedback) {
+  if (feedback.result === 'DONE') {
+    return '记下了。这一步已经发生，明天先别加码，先看它能不能稳定重复。'
+  }
+  if (feedback.result === 'NO_RESPONSE') {
+    return '先不追问了。今天只保留一个最小入口；晚上你只回“做了”或“没做”就行。'
+  }
+  if (feedback.result === 'NOT_DONE') {
+    if (feedback.reasonCategory === 'MOTIVATION') {
+      return '记下了，今天先不催执行。先确认一件事：这个目标还值得继续吗？'
+    }
+    if (feedback.reasonCategory === 'ABILITY') {
+      return '记下了。不是继续硬顶，先把动作切小；明天只做能启动的版本。'
+    }
+    if (feedback.reasonCategory === 'PROMPT') {
+      return '记下了。问题出在风险点前没接住；下一次把提示提前，不等失败后复盘。'
+    }
+    if (feedback.reasonCategory === 'PATH') {
+      return '记下了。先不催你做更多；下一次先确认这一步到底补哪个缺口。'
+    }
+    return '记下了。证据还不够，下一次只回一个词：方向、难度、提醒，还是路径？'
+  }
+  if (feedback.reasonCategory === 'PATH') {
+    return '记下了。先不催你做更多；下一次先确认这一步到底补哪个缺口。'
+  }
+  if (feedback.reasonCategory === 'ABILITY') {
+    return '记下了。先别加任务，把它留在能启动的版本。'
+  }
+  if (feedback.reasonCategory === 'PROMPT') {
+    return '记下了。下一次把提示放到风险点前，不等晚上才补救。'
+  }
+  if (feedback.reasonCategory === 'MOTIVATION') {
+    return '记下了。今天先不催执行，先看这个目标还值不值得继续。'
+  }
+  if (feedback.reasonCategory === 'UNKNOWN') {
+    return '记下了。现在不扩计划，先保留这一点进展，晚上再看它能不能接上。'
+  }
+  return `记下了。${feedback.adjustment}`
 }
 
 export function classifyQqSchedulerReply(text) {
@@ -56,13 +110,13 @@ export async function findRecentQqSchedulerEvent(prisma, userId, now = new Date(
   })
 }
 
-async function buildSchedulerDailyLogContent(prisma, userId, schedulerEvent, feedback) {
-  const dateInfo = formatAgentToolDatePath(new Date())
+async function buildSchedulerDailyLogContent(prisma, userId, schedulerEvent, feedback, logDate = new Date(), now = new Date()) {
+  const dateInfo = formatAgentToolDatePath(logDate)
   const existing = await prisma.markdownDocument.findUnique({ where: { userId_path: { userId, path: dateInfo.path } } })
   const section = [
     `## ${formatReminderType(schedulerEvent.eventType)}反馈`,
     '',
-    `- 时间：${new Date().toISOString()}`,
+    `- 时间：${now.toISOString()}`,
     `- 用户回复：${feedback.userFeedback}`,
     `- 系统判断：${feedback.result}`,
     `- 原因分类：${feedback.reasonCategory}`,
@@ -74,17 +128,23 @@ async function buildSchedulerDailyLogContent(prisma, userId, schedulerEvent, fee
 
 export async function processQqSchedulerReply(prisma, options) {
   const { userId, thread, userMessage, context, executeAgentTool } = options
-  const schedulerEvent = await findRecentQqSchedulerEvent(prisma, userId)
+  const now = options.now || new Date()
+  const logDate = options.logDate || now
+  const schedulerEvent = await findRecentQqSchedulerEvent(prisma, userId, now)
   if (!schedulerEvent) return null
 
   const feedback = classifyQqSchedulerReply(context.text)
   const toolResults = []
+  const schedulerPayload = asRecord(schedulerEvent.payload)
+  const targetActionId = schedulerPayload.actionId || schedulerPayload.dailyActionId || schedulerPayload.targetActionId || ''
+  const targetGoalId = schedulerPayload.goalId || schedulerPayload.targetGoalId || ''
 
   if (schedulerEvent.eventType !== 'morning_planning' && schedulerEvent.eventType !== 'weekly_review') {
     const checkinExecution = await executeAgentTool(
       { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
       'checkin.submit',
       {
+        ...(targetActionId ? { actionId: targetActionId } : {}),
         result: feedback.result.toLowerCase(),
         reasonCategory: feedback.reasonCategory,
         userFeedback: feedback.userFeedback,
@@ -94,13 +154,16 @@ export async function processQqSchedulerReply(prisma, options) {
     toolResults.push({ toolName: 'checkin.submit', execution: checkinExecution })
   }
 
-  const logContent = await buildSchedulerDailyLogContent(prisma, userId, schedulerEvent, feedback)
+  const logContent = await buildSchedulerDailyLogContent(prisma, userId, schedulerEvent, feedback, logDate, now)
   const logExecution = await executeAgentTool(
     { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
     'log.write_daily',
     {
-      title: formatAgentToolDatePath(new Date()).title,
+      title: formatAgentToolDatePath(logDate).title,
+      date: logDate.toISOString(),
       content: logContent,
+      linkedGoalIds: targetGoalId ? [targetGoalId] : [],
+      linkedActionIds: targetActionId ? [targetActionId] : [],
     },
   )
   toolResults.push({ toolName: 'log.write_daily', execution: logExecution })
@@ -109,7 +172,12 @@ export async function processQqSchedulerReply(prisma, options) {
     const reviewExecution = await executeAgentTool(
       { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
       'review.generate',
-      { type: 'weekly', nextFocus: feedback.adjustment },
+      {
+        type: 'weekly',
+        periodStart: new Date(logDate.getTime() - 6 * DAY_MS).toISOString(),
+        periodEnd: logDate.toISOString(),
+        nextFocus: feedback.adjustment,
+      },
     )
     toolResults.push({ toolName: 'review.generate', execution: reviewExecution })
   }
@@ -118,7 +186,12 @@ export async function processQqSchedulerReply(prisma, options) {
     const reviewExecution = await executeAgentTool(
       { userId, source: 'scheduler', confirmed: true, agentThreadId: thread.id, agentMessageId: userMessage.id },
       'review.generate',
-      { type: 'daily', nextFocus: feedback.adjustment },
+      {
+        type: 'daily',
+        periodStart: logDate.toISOString(),
+        periodEnd: logDate.toISOString(),
+        nextFocus: feedback.adjustment,
+      },
     )
     toolResults.push({ toolName: 'review.generate', execution: reviewExecution })
   }
@@ -157,7 +230,7 @@ export async function processQqSchedulerReply(prisma, options) {
 
   if (feedback.result === 'DONE') {
     return {
-      reply: '已记录：这一步完成了。我把反馈写入了今日日志，下一次会继续围绕当前目标推进。',
+      reply: buildSecretarySchedulerReply(feedback),
       feedback,
       toolResults,
       schedulerEventId: schedulerEvent.id,
@@ -165,14 +238,14 @@ export async function processQqSchedulerReply(prisma, options) {
   }
   if (feedback.result === 'NOT_DONE') {
     return {
-      reply: `已记录：今天没有完成。我的当前判断是 ${feedback.reasonCategory}，下一步建议：${feedback.adjustment}`,
+      reply: buildSecretarySchedulerReply(feedback),
       feedback,
       toolResults,
       schedulerEventId: schedulerEvent.id,
     }
   }
   return {
-    reply: `已记录这次进展反馈。当前判断：${feedback.result}；下一步：${feedback.adjustment}`,
+    reply: buildSecretarySchedulerReply(feedback),
     feedback,
     toolResults,
     schedulerEventId: schedulerEvent.id,

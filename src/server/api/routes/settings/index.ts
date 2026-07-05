@@ -2,9 +2,11 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '../../validator'
 import { prisma } from '@/lib/db'
-import { defaultDeepSeekModel, defaultUserSettings, getCurrentUserId, unauthorized } from '../../context'
+import { defaultChatModel, defaultUserSettings, getCurrentUserId, unauthorized } from '../../context'
 import { AGENT_SYSTEM_PROMPT_VERSION } from '@/lib/agent-prompts'
 import { maskModelConfig, resolveModelApiKey } from '@/lib/model-secret.mjs'
+import { chatCompletionsUrl } from '@/lib/model-endpoint.mjs'
+import { fetchModelProvider } from '@/lib/model-provider-http.mjs'
 import { classifyModelProviderFailure, parseModelProviderError } from '@/lib/model-provider-errors'
 import { findQqBotAccount, issueQqBindingCode, maskQqBotConfig, resolveQqBotConfig, saveQqBotConfig } from '@/lib/qq-bot-config.mjs'
 import { summarizeRuntimeHeartbeat, touchRuntimeHeartbeat } from '@/lib/runtime-heartbeat.mjs'
@@ -126,8 +128,8 @@ function deploymentEnvConfig() {
     defaulted: [
       { key: 'PORT', value: process.env.PORT || '3000' },
       { key: 'HOSTNAME', value: process.env.HOSTNAME || '0.0.0.0' },
-      { key: 'DEEPSEEK_API_BASE', value: process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com' },
-      { key: 'DEEPSEEK_MODEL', value: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash' },
+      { key: 'GOAL_MATE_MODEL_API_BASE', value: process.env.GOAL_MATE_MODEL_API_BASE || 'https://api.b.ai' },
+      { key: 'GOAL_MATE_MODEL', value: process.env.GOAL_MATE_MODEL || 'gpt-5-nano' },
       { key: 'QQ_BOT_API_BASE', value: process.env.QQ_BOT_API_BASE || 'https://api.sgroup.qq.com' },
       { key: 'QQ_BOT_INTENTS', value: process.env.QQ_BOT_INTENTS || '33554432' },
       { key: 'SCHEDULER_TICK_SECONDS', value: process.env.SCHEDULER_TICK_SECONDS || '60' },
@@ -143,11 +145,11 @@ function deploymentEnvConfig() {
 }
 
 async function ensureDefaultModel(userId: string) {
-  const existingDefault = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true, usage: defaultDeepSeekModel.usage }, orderBy: { updatedAt: 'desc' } })
+  const existingDefault = await prisma.modelConfig.findFirst({ where: { userId, isDefault: true, usage: defaultChatModel.usage }, orderBy: { updatedAt: 'desc' } })
   if (existingDefault) return existingDefault
-  const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultDeepSeekModel.provider, usage: defaultDeepSeekModel.usage }, orderBy: { updatedAt: 'desc' } })
+  const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultChatModel.provider, usage: defaultChatModel.usage }, orderBy: { updatedAt: 'desc' } })
   if (existing) return existing
-  return prisma.modelConfig.create({ data: { ...defaultDeepSeekModel, userId } })
+  return prisma.modelConfig.create({ data: { ...defaultChatModel, userId } })
 }
 
 async function ensureDefaultReminderRules(userId: string) {
@@ -161,13 +163,14 @@ async function ensureDefaultReminderRules(userId: string) {
 
 async function probeModelConnection(model: any) {
   const apiKey = resolveModelApiKey(model)
-  const apiBase = String(model?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
-  const modelName = String(model?.model || defaultDeepSeekModel.model)
+  const apiBase = String(model?.apiBase || defaultChatModel.apiBase).replace(/\/+$/, '')
+  const modelName = String(model?.model || defaultChatModel.model)
+  const provider = model?.provider || defaultChatModel.provider
 
   if (!apiKey) {
     return {
       ok: false,
-      provider: model?.provider || defaultDeepSeekModel.provider,
+      provider,
       model: modelName,
       reason: 'missing_api_key',
       message: '当前用户没有配置模型 API Key，无法测试连接。',
@@ -175,7 +178,7 @@ async function probeModelConnection(model: any) {
   }
 
   try {
-    const response = await fetch(`${apiBase}/chat/completions`, {
+    const response = await fetchModelProvider(chatCompletionsUrl(apiBase), {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -183,9 +186,9 @@ async function probeModelConnection(model: any) {
       },
       body: JSON.stringify({
         model: modelName,
-        messages: [{ role: 'user', content: 'ping' }],
+        messages: [{ role: 'user', content: '请只回复 OK，不要解释。' }],
         temperature: 0,
-        max_tokens: 1,
+        max_tokens: 300,
       }),
     })
 
@@ -195,7 +198,7 @@ async function probeModelConnection(model: any) {
     const failure = classifyModelProviderFailure(response.status, rawMessage)
     return {
       ok: false,
-        provider: model?.provider || defaultDeepSeekModel.provider,
+        provider,
         model: modelName,
         status: response.status,
         reason: failure.reason,
@@ -206,16 +209,16 @@ async function probeModelConnection(model: any) {
 
     return {
       ok: true,
-      provider: model?.provider || defaultDeepSeekModel.provider,
+      provider,
       model: modelName,
       reason: 'ok',
-      message: 'DeepSeek 连接成功。',
+      message: `${provider} 连接成功。`,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return {
       ok: false,
-      provider: model?.provider || defaultDeepSeekModel.provider,
+      provider,
       model: modelName,
       reason: 'network_error',
       message: `模型连接失败：${message}`,

@@ -15,7 +15,7 @@ const unauthenticatedChecks = [
 
 const authenticatedChecks = [
   { id: 'API-SET-1', method: 'GET', path: '/api/settings', expected: 200, purpose: '读取用户设置' },
-  { id: 'API-MOD-1', method: 'GET', path: '/api/models', expected: 200, purpose: '读取 DeepSeek 模型配置且密钥脱敏', checkSecrets: true },
+  { id: 'API-MOD-1', method: 'GET', path: '/api/models', expected: 200, purpose: '读取 B.AI 模型配置且密钥脱敏', checkSecrets: true },
   { id: 'API-GOAL-1', method: 'GET', path: '/api/goals', expected: 200, purpose: '读取目标、KR、条件、阶段' },
   { id: 'API-TODAY-1', method: 'GET', path: '/api/today', expected: 200, purpose: '读取当前主目标今日行动；无主目标时返回空 Today 数据而不是错误' },
   { id: 'API-LOG-1', method: 'GET', path: '/api/logs/tree', expected: 200, purpose: '读取 Markdown 日志树' },

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '../../validator'
 import { prisma } from '@/lib/db'
-import { defaultDeepSeekModel, getCurrentUserId, notFound, unauthorized } from '../../context'
+import { defaultChatModel, getCurrentUserId, notFound, unauthorized } from '../../context'
 import { maskModelConfig, modelSecretWriteData } from '@/lib/model-secret.mjs'
 
 const modelSchema = z.object({
@@ -18,9 +18,9 @@ const modelSchema = z.object({
 })
 
 async function ensureDefaultModel(userId: string) {
-  const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultDeepSeekModel.provider, usage: defaultDeepSeekModel.usage } })
+  const existing = await prisma.modelConfig.findFirst({ where: { userId, provider: defaultChatModel.provider, usage: defaultChatModel.usage } })
   if (existing) return existing
-  return prisma.modelConfig.create({ data: { ...defaultDeepSeekModel, userId } })
+  return prisma.modelConfig.create({ data: { ...defaultChatModel, userId } })
 }
 
 const app = new Hono()

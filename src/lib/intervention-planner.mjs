@@ -9,6 +9,8 @@ import {
   normalizeInterventionDecision,
 } from './intervention-policy.mjs'
 import { resolveModelApiKey } from './model-secret.mjs'
+import { chatCompletionsUrl } from './model-endpoint.mjs'
+import { fetchModelProvider } from './model-provider-http.mjs'
 
 function asArray(value) {
   return Array.isArray(value) ? value : []
@@ -134,8 +136,8 @@ export async function buildAiPolicyInterventionDecision(input = {}) {
   const context = input.context || {}
   const apiKey = input.apiKey ?? ''
   const modelConfig = input.modelConfig || {}
-  const modelName = String(modelConfig.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
-  const apiBase = String(modelConfig.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
+  const modelName = String(modelConfig.model || process.env.GOAL_MATE_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano')
+  const apiBase = String(modelConfig.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
   const prompt = buildInterventionPolicyPrompt(context)
 
   if (!input.modelClient && !apiKey) {
@@ -147,8 +149,8 @@ export async function buildAiPolicyInterventionDecision(input = {}) {
     if (input.modelClient) {
       rawText = await input.modelClient({ prompt, context, modelName, apiBase })
     } else {
-      const fetchImpl = input.fetchImpl || fetch
-      const response = await fetchImpl(`${apiBase}/chat/completions`, {
+      const fetchImpl = input.fetchImpl || fetchModelProvider
+      const response = await fetchImpl(chatCompletionsUrl(apiBase), {
         method: 'POST',
         headers: {
           authorization: `Bearer ${apiKey}`,

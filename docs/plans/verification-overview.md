@@ -34,7 +34,7 @@
 - 2026-07-04 新增并执行本地从零到一产品闭环验收入口：`pnpm verify:zero-to-one:write` 已通过，组合覆盖类型检查、用户隔离、部署配置、fresh DB 首次建库、Settings 自助配置、Agent 静态契约、AI 回复质量、Agent 运行时上下文注入、首次目标输入、Today Web 反馈入库、干净新用户 Dashboard 空状态和 QQ Scheduler 回复入库验证。该入口用于证明本地 v0.1 主链路被串起来，不等于服务器长期运行或真实 QQ Gateway 已验收。
 - 2026-07-04 从零到一产品闭环验收已升级：`pnpm verify:zero-to-one` 现在把 `pnpm verify:intervention-planner` 和 `pnpm verify:control-loop-emergence` 纳入必过项，用来证明反馈、元认知、`policy_delta` 和 AI 自我优化不只是旁路脚本，而是本地 v0.1 主链路的一部分。
 - 2026-07-04 主动提醒规则已新增本地运行时验证：`pnpm verify:scheduler-rules` 会创建干净测试用户和用户自有 ReminderRule，证明 Scheduler 消费启用规则、跳过关闭规则、尊重 `maxPerDay` 和 `quietHours`；该验证还覆盖另一个用户更新更晚但 disabled 的 QQ 配置不会阻断当前用户规则；有 QQ 绑定时，它会通过本地 fake QQ API 验证 token + send，并断言发送内容包含今日行动、fallback、Planner 决策、可验证信号、`SchedulerEvent`、`AgentMessage` 和 `AgentToolAction` 审计；该验证已纳入 `pnpm verify:zero-to-one`。
-- 2026-07-04 新增并执行真实模型 Agent 链路验收入口：`pnpm verify:live-model-agent:write` 已跑到 DeepSeek。当前用户模型 Key 加密保存和响应脱敏通过，但 Settings 模型测试收到 `reason=insufficient_balance`，因此 Agent live reply 未继续执行，真实模型链路仍不能声明通过。
+- 2026-07-04 新增并执行真实模型 Agent 链路验收入口：`pnpm verify:live-model-agent:write` 当时已跑到 DeepSeek。当前用户模型 Key 加密保存和响应脱敏通过，但 Settings 模型测试收到 `reason=insufficient_balance`，因此 Agent live reply 未继续执行，真实模型链路仍不能声明通过。
 - 2026-07-04 Settings 模型测试错误已结构化：余额不足、Key 无效、限流、服务不可用、网络错误会返回 `reason` 和用户可理解 `message`；前端测试按钮会通过 toast 和页面内状态直接显示该结果。
 - 2026-07-04 新增并执行 Agent 上下文运行时验收入口：`pnpm verify:agent-context:write` 已通过；该脚本用本地 fake model 捕获 Web Agent 实际 chat-completions 请求，证明当前用户 Goal、Markdown、元认知和记忆会进入 runtime prompt，另一个用户的 Markdown 不会泄漏；关闭 Logs 读取权限后 prompt 会移除日志内容并显示权限关闭边界。
 - 2026-07-04 新增并执行 Agent 控制动作验收入口：`pnpm verify:agent-control:write` 已通过；该脚本会注册干净用户，通过 Web Agent Tools API 发起 `settings.model.update` 和 `reminder.schedule`，验证它们先进入待确认，确认后分别写入当前用户 `ModelConfig` 和 `ReminderRule`，模型密钥加密且不在读取、导出或 Control Center 中泄漏，Settings Control Center 能看到模型、提醒规则和工具审计。
@@ -47,7 +47,7 @@
 - 2026-07-04 Agent runtime 和 Settings 已共享模型失败分类：余额不足、Key 无效、限流、服务不可用、网络错误。Agent 模型调用失败时会保存用户消息，明确说明模型不可用和下一步去 Settings 测试连接，不会把 provider 原始 JSON 当作回复，也不会伪装成已完成思考或改动计划。`pnpm verify:ai-reply-quality` 已新增 `ARQ-MODEL-FAILURE-SHARED-CLASSIFIER` 和 `ARQ-SAMPLE-MODEL-FAILURE` 防回归检查并通过；`pnpm typecheck` 已通过。
 - 2026-07-04 QQ Bot App ID / Token 已从服务器 `.env` 和用户可见 fallback 中移除：干净用户 Settings Control Center 初始必须显示 `qq=missing_config`，只有当前用户在 Settings 保存 QQ 凭证后才会进入 configured；`.env.example`、QQ 集成文档、systemd README 和服务器验收模板不再要求或展示用户级 QQ 密钥字段。`pnpm verify:settings-self-service:write` 已新增初始 QQ missing 断言并通过；`pnpm verify:deployment-config:write` 已新增 `DEPLOY-ENV-NO-USER-QQ-SECRETS` 并通过；`pnpm typecheck` 已通过。
 - 2026-07-04 Agent 首次目标生成已收紧为“有模型优先，没模型兜底”：当前用户配置可用模型 Key 后，首次具体目标不会再被本地关键词 scaffold 抢先接管，而是先进入 Model JSON router；只有缺少模型 Key 时才使用本地 first-goal scaffold 保证从零到一闭环仍可跑。`pnpm verify:first-run-agent:write` 已新增 `FRA-MODEL-FIRST-GOAL-ROUTER` 并通过，证明 fake model 收到 router 调用且目标/今日行动来自模型返回；`pnpm typecheck` 和 `pnpm verify:agent-loop:static` 均通过。
-- 2026-07-04 AI 秘书回复质量门禁已补齐核心样本覆盖：`pnpm verify:ai-reply-quality` 现在覆盖模糊目标、今日行动、没做反馈、复盘、设置读取 5 类用户场景，并继续拒绝 AI 客服腔、泛鼓励、强制羞辱、未确认执行和隐私幻觉；该门禁已通过。真实 DeepSeek 长期对话质量仍按 live model 独立验收。
+- 2026-07-04 AI 秘书回复质量门禁已补齐核心样本覆盖：`pnpm verify:ai-reply-quality` 现在覆盖模糊目标、今日行动、没做反馈、复盘、设置读取 5 类用户场景，并继续拒绝 AI 客服腔、泛鼓励、强制羞辱、未确认执行和隐私幻觉；该门禁已通过。真实模型长期对话质量仍按 live model 独立验收。
 
 ## 2. 验收层级
 
@@ -71,7 +71,7 @@
 | 登录数据隔离 smoke | `pnpm verify:auth-isolation` | 是 | 否 | 2026-07-03 已通过，覆盖两用户私有数据隔离、跨用户直读阻断、模型密钥加密和导出脱敏 |
 | Fresh DB bootstrap | `pnpm verify:fresh-db` | 否 | 否 | 2026-07-04 已通过，使用临时 SQLite DB 验证首次迁移、零业务数据和最小读写，不触碰当前开发库 |
 | 从零到一产品闭环 | `pnpm verify:zero-to-one` | 首次 Agent 子项需要 Web API | 否 | 2026-07-04 已通过并写入报告；已纳入 fresh DB、Settings 自助配置、Today Web 反馈、自主干预 Planner 和控制闭环涌现门禁；沙箱内 Node 访问本地 Web API 会被 `EPERM` 阻止，需在允许本地 HTTP 的环境执行 |
-| 真实模型 Agent 链路 | `pnpm verify:live-model-agent` | 是 | 是 | 2026-07-04 已执行但未通过：Key 保存/脱敏通过，DeepSeek 返回 `reason=insufficient_balance`，Agent live reply 未验收 |
+| 真实模型 Agent 链路 | `pnpm verify:live-model-agent` | 是 | 是 | 2026-07-05 已切换默认 B.AI/gpt-5-nano，但当前环境访问 `api.b.ai` 超时；完整 Web Agent live flow 未验收 |
 | Agent 上下文运行时 | `pnpm verify:agent-context` | 是 | 否 | 2026-07-04 已通过；用本地 fake model 捕获模型请求，覆盖当前用户上下文注入、Logs 权限和跨用户隔离 |
 | Agent 控制动作 | `pnpm verify:agent-control` | 是 | 否 | 2026-07-04 已通过；覆盖 Agent 确认后修改模型配置、提醒规则、密钥脱敏和 Settings 审计 |
 | Settings 自助配置闭环 | `pnpm verify:settings-self-service` | 是 | 否 | 2026-07-04 已通过，覆盖用户自己保存模型、QQ、提醒和行为控制，模型/QQ 测试按当前用户配置执行，Control Center 可读且不泄密 |
@@ -101,7 +101,7 @@
 - 静态门禁、`db:generate`、`typecheck`、本地 API、业务流、Agent Loop 写入、生产构建、页面 HTTP smoke 和截图 smoke 已在 2026-07-02 通过。
 - 本地交付包已具备安全边界，但不等同于服务器已部署。
 - 仍未证明服务器长期运行和真实 QQ 长连接闭环。
-- 服务器长期运行验收依赖真实 QQ / DeepSeek / systemd，最后执行。
+- 服务器长期运行验收依赖真实 QQ / 真实模型 / systemd，最后执行。
 
 ## 4. 不能混淆的边界
 
@@ -143,7 +143,7 @@
 - 未证明完整人工主观体验验收；页面 HTTP smoke、截图 smoke、无登录态浏览器布局 smoke、登录态真实数据浏览器 smoke 已通过。
 - 未证明 QQ Gateway 长期连接稳定。
 - 未证明 Scheduler 能在服务器上长期主动发送到真实 QQ；本地回复入库闭环已通过。
-- 未证明真实模型在长期自然对话中稳定选择正确工具；当前首次目标闭环已由本地兜底路径证明可跑通，真实模型 Agent 链路已执行到 DeepSeek，但被账号余额不足阻断。
+- 未证明真实模型在长期自然对话中稳定选择正确工具；当前首次目标闭环已由本地兜底路径证明可跑通。2026-07-04 DeepSeek live 链路被余额不足阻断；2026-07-05 B.AI live 链路被当前网络连接超时阻断。
 
 ## 7. 下一步
 
@@ -156,7 +156,7 @@
 - 产品影响：用户会把“QQ 参数未配置”和“当前账号未绑定 QQ 会话”混在一起，不符合 Settings 作为控制中心的一眼可懂要求。
 - 修复内容：Settings 顶部状态和 QQ 主动助手状态统一拆成 `未配置/已配置` 与 `待绑定/已绑定` 两个维度；未配置 QQ 时也明确显示绑定仍处于 `待绑定`。
 - 验证结果：重启本地 `3002` 后，`pnpm verify:dashboard-browser:empty-auth:write` 通过；随后 `pnpm verify:zero-to-one:write` 于 `2026-07-04T14:33:53.806Z` 通过。
-- 仍不覆盖：真实 QQ Gateway 长连接送达、服务器 systemd 长期运行、真实 DeepSeek 长期回复质量。这三项仍按独立验收处理。
+- 仍不覆盖：真实 QQ Gateway 长连接送达、服务器 systemd 长期运行、真实模型长期回复质量。这三项仍按独立验收处理。
 
 ## 2026-07-04 Settings 主动提醒送达状态修复
 
@@ -182,5 +182,15 @@
 - 防回归：`pnpm verify:zero-to-one` 已新增 `ZOF-AGENT-PROMPT-SNAPSHOT`，组合验收会阻止 Agent system prompt 发生未记录漂移。
 - 验证结果：`pnpm verify:agent-prompt-snapshot:write` 通过并生成 snapshot；`pnpm verify:agent-prompt-snapshot` 通过；`pnpm verify:agent-loop:static` 通过；`pnpm typecheck` 通过。本次未重新执行完整 `pnpm verify:zero-to-one:write`，因为该组合验收依赖运行中的 Web/API 环境，后续服务器/真实 QQ 验收前应再跑一次。
 - 当前完成度：本地 v0.1 主链路已经覆盖注册登录、用户隔离、干净空状态、Settings 自助配置、Agent 上下文读取、Agent 确认式控制动作、首次目标创建、Today 反馈、Logs/Goals 状态回写、Scheduler 规则和 QQ 回复入库。
-- 当前未完成或未被强证据证明的 P0/P1：真实服务器 systemd 长期运行、真实 QQ Gateway 长连接和主动消息送达、真实 DeepSeek 长期自然对话质量、完整人工主观体验验收。
+- 当前未完成或未被强证据证明的 P0/P1：真实服务器 systemd 长期运行、真实 QQ Gateway 长连接和主动消息送达、真实模型长期自然对话质量、完整人工主观体验验收。
 - 判断边界：现在可以说“本地产品闭环基本成型且有脚本证据”；不能说“生产可用”或“电脑关闭后真实长期主动推进已验证”。
+
+## 2026-07-05 B.AI / gpt-5-nano 模型配置切换
+
+- 用户目标：用 B.AI OpenAI-compatible 接口和 `gpt-5-nano` 替代 DeepSeek live model 验收，因为当前 DeepSeek 余额不足。
+- 修复内容：默认模型配置切换为 `provider=B.AI`、`model=gpt-5-nano`、`apiBase=https://api.b.ai`；Settings、Agent Runtime、QQ Worker、Scheduler Worker、Intervention Planner 和 live model 验收脚本均改为 OpenAI-compatible 通道。
+- 兼容处理：新增 `chatCompletionsUrl(apiBase)`，当 `apiBase` 是 `https://api.b.ai` 或 `https://api.openai.com` 这类 root base 时自动补 `/v1/chat/completions`；本地 fake model base 不会被强制补 `/v1`。
+- 密钥边界：用户提供的 B.AI API Key 只用于一次临时连通性探测，没有写入代码、`.env.example`、文档或验证报告。后续应通过 Settings UI 或临时环境变量 `GOAL_MATE_LIVE_MODEL_API_KEY` / `BAI_API_KEY` 配置。
+- 当前探测结果：直连 `api.b.ai` 仍会超时，但通过本机代理 `127.0.0.1:7890` 可以访问；`curl`、`fetchModelProvider` Node helper 和完整 Web Agent live flow 均已跑通。
+- 验证结果：使用带代理环境的 `3003` 本地服务执行 `pnpm verify:live-model-agent:write` 已通过。Settings 模型测试返回 `B.AI 连接成功。`，Agent 普通对话通过保存的用户模型返回秘书式回复。
+- 运行要求：当前本地环境需要给 Web/Worker 进程设置 `GOAL_MATE_MODEL_PROXY=http://127.0.0.1:7890`；如需强制走 curl 代理兜底，设置 `GOAL_MATE_MODEL_FORCE_CURL=1`。

@@ -2,14 +2,16 @@ import { writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
+import { chatCompletionsUrl } from '../lib/model-endpoint.mjs'
 
 const prisma = new PrismaClient()
 const shouldWrite = process.argv.includes('--write')
 const keepData = process.argv.includes('--keep-data')
 const baseUrl = process.env.GOAL_MATE_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-const apiKey = process.env.GOAL_MATE_LIVE_MODEL_API_KEY || process.env.DEEPSEEK_API_KEY || ''
-const apiBase = String(process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
-const modelName = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash'
+const providerName = process.env.GOAL_MATE_LIVE_MODEL_PROVIDER || process.env.GOAL_MATE_MODEL_PROVIDER || 'B.AI'
+const apiKey = process.env.GOAL_MATE_LIVE_MODEL_API_KEY || process.env.BAI_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
+const apiBase = String(process.env.GOAL_MATE_LIVE_MODEL_API_BASE || process.env.GOAL_MATE_MODEL_API_BASE || process.env.BAI_API_BASE || process.env.OPENAI_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+const modelName = process.env.GOAL_MATE_LIVE_MODEL_MODEL || process.env.GOAL_MATE_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano'
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(scriptDir, '..', '..')
 const runId = Date.now()
@@ -99,7 +101,7 @@ async function run() {
   if (!health.response.ok) return
 
   if (!apiKey.trim()) {
-    record('LMA-LIVE-KEY', 'live model verifier requires a real DeepSeek API key supplied by environment only', false, 'missing GOAL_MATE_LIVE_MODEL_API_KEY or DEEPSEEK_API_KEY')
+    record('LMA-LIVE-KEY', 'live model verifier requires a real model API key supplied by environment only', false, 'missing GOAL_MATE_LIVE_MODEL_API_KEY, BAI_API_KEY, OPENAI_API_KEY or DEEPSEEK_API_KEY')
     return
   }
 
@@ -113,7 +115,7 @@ async function run() {
   const modelCreate = await api('/api/models', cookie, {
     method: 'POST',
     body: JSON.stringify({
-      provider: 'DeepSeek',
+      provider: providerName,
       model: modelName,
       apiBase,
       apiKey,
@@ -126,7 +128,7 @@ async function run() {
   const serializedModel = JSON.stringify(modelCreate.json || {})
   record(
     'LMA-SAVE-MODEL',
-    'current user can save an encrypted DeepSeek model key without response leaking the raw key',
+    'current user can save an encrypted live model key without response leaking the raw key',
     modelCreate.response.ok
       && modelData?.apiKeyConfigured === true
       && modelData?.apiKeySource === 'user_encrypted'
@@ -138,7 +140,7 @@ async function run() {
   const modelTestData = modelTest.json?.data
   record(
     'LMA-SETTINGS-TEST',
-    'Settings model test uses the current user model configuration and reaches DeepSeek successfully',
+    'Settings model test uses the current user model configuration and reaches the provider successfully',
     modelTest.response.ok && modelTestData?.ok === true,
     `status=${modelTest.response.status}; ok=${modelTestData?.ok}; reason=${modelTestData?.reason || 'missing'}; provider=${modelTestData?.provider || 'missing'}; model=${modelTestData?.model || 'missing'}; message=${compact(modelTestData?.message, 180)}`,
   )
@@ -152,7 +154,7 @@ async function run() {
   record('LMA-THREAD', 'live model user can create an Agent thread', thread.response.ok && Boolean(threadId), `thread=${threadId || 'missing'}`)
   if (!threadId) return
 
-  const prompt = '今天动作太大，我没开始。请只问我一个最关键的问题，用来判断怎么把下一步变小。'
+  const prompt = '请用一句话回答：你在 Goal Mate 里负责什么？不要调用工具。'
   const message = await api(`/api/agent/threads/${threadId}/messages`, cookie, {
     method: 'POST',
     body: JSON.stringify({ content: prompt }),
@@ -180,7 +182,7 @@ function toMarkdown() {
     `- Time: ${new Date().toISOString()}`,
     `- Base URL: ${baseUrl}`,
     `- Test user: ${maskEmail(email)}`,
-    `- Provider: DeepSeek`,
+    `- Provider: ${providerName}`,
     `- Model: ${modelName}`,
     `- API Base: ${apiBase}`,
     `- Test data kept: ${keepData ? 'yes' : 'no'}`,

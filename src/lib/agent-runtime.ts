@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/db'
-import { defaultDeepSeekModel, defaultUserSettings } from '@/server/api/context'
+import { defaultChatModel, defaultUserSettings } from '@/server/api/context'
+import { chatCompletionsUrl } from '@/lib/model-endpoint.mjs'
+import { fetchModelProvider } from '@/lib/model-provider-http.mjs'
 import { listAgentTools } from '@/lib/agent-tools'
 import { parseAgentToolIntentJson } from '@/lib/agent-tool-shared.mjs'
 import { AGENT_SYSTEM_PROMPT_VERSION, buildAgentSystemPrompt } from '@/lib/agent-prompts'
@@ -443,8 +445,8 @@ export async function generateAssistantReply(userId: string, threadId: string, l
     loadAgentRuntimeSettings(userId),
   ])
   const apiKey = resolveModelApiKey(modelConfig)
-  const apiBase = String(modelConfig?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
-  const modelName = String(modelConfig?.model || defaultDeepSeekModel.model)
+  const apiBase = String(modelConfig?.apiBase || defaultChatModel.apiBase).replace(/\/+$/, '')
+  const modelName = String(modelConfig?.model || defaultChatModel.model)
 
   const thread = runtimeSettings.canReadGoals
     ? await prisma.agentThread.findFirst({ where: { id: threadId, userId }, select: { goalId: true } })
@@ -525,7 +527,7 @@ export async function generateAssistantReply(userId: string, threadId: string, l
   ]
 
   try {
-    const response = await fetch(`${apiBase}/chat/completions`, {
+    const response = await fetchModelProvider(chatCompletionsUrl(apiBase), {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -534,7 +536,7 @@ export async function generateAssistantReply(userId: string, threadId: string, l
       body: JSON.stringify({
         model: modelName,
         messages,
-        temperature: modelConfig?.temperature ?? defaultDeepSeekModel.temperature,
+        temperature: modelConfig?.temperature ?? defaultChatModel.temperature,
         max_tokens: 1200,
       }),
     })
@@ -604,12 +606,12 @@ export async function generateAgentToolIntent(userId: string, latestUserContent:
   })
   const apiKey = resolveModelApiKey(modelConfig)
   if (!apiKey) return allowedFallbackIntent
-  const apiBase = String(modelConfig?.apiBase || defaultDeepSeekModel.apiBase).replace(/\/+$/, '')
-  const modelName = String(modelConfig?.model || defaultDeepSeekModel.model)
+  const apiBase = String(modelConfig?.apiBase || defaultChatModel.apiBase).replace(/\/+$/, '')
+  const modelName = String(modelConfig?.model || defaultChatModel.model)
   const tools = listAgentTools()
 
   try {
-    const response = await fetch(`${apiBase}/chat/completions`, {
+    const response = await fetchModelProvider(chatCompletionsUrl(apiBase), {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,

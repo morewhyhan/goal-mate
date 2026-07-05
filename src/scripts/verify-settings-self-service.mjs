@@ -184,7 +184,7 @@ async function run() {
   const modelCreate = await api('/api/models', cookie, {
     method: 'POST',
     body: JSON.stringify({
-      provider: 'DeepSeek',
+      provider: 'B.AI',
       model: `settings-self-model-${runId}`,
       apiBase: fakeModel.apiBase,
       apiKey: rawModelKey,
@@ -366,7 +366,7 @@ function toMarkdown() {
     '',
     '## Scope',
     '',
-    'This report proves a clean user can configure model, QQ Bot, reminder rhythm and behavior controls through the same Web/API surfaces used by Settings. It uses local fake model and QQ endpoints, so it does not prove external DeepSeek balance or real QQ Gateway delivery.',
+    'This report proves a clean user can configure model, QQ Bot, reminder rhythm and behavior controls through the same Web/API surfaces used by Settings. It uses local fake model and QQ endpoints, so it does not prove external B.AI balance or real QQ Gateway delivery.',
     '',
     '| ID | Purpose | Result | Evidence |',
     '| --- | --- | --- | --- |',

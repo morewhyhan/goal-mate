@@ -191,7 +191,7 @@ async function seedRuntimeContext(user, otherUser) {
   await prisma.modelConfig.create({
     data: {
       userId: user.id,
-      provider: 'DeepSeek',
+      provider: 'B.AI',
       model: 'fake-context-model',
       apiBase: fakeModel.apiBase,
       apiKeyRef: `sk-test-agent-context-${runId}`,

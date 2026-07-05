@@ -58,8 +58,8 @@ async function run() {
   const defaultModel = models.data?.find((model) => model.isDefault)
   record(
     'BF-MODEL',
-    'default DeepSeek model exists and does not leak secrets',
-    Boolean(defaultModel?.provider === 'DeepSeek' && defaultModel?.model === 'deepseek-v4-flash' && noSecretLeak(models)),
+    'default B.AI model exists and does not leak secrets',
+    Boolean(defaultModel?.provider === 'B.AI' && defaultModel?.model === 'gpt-5-nano' && noSecretLeak(models)),
     defaultModel ? `${defaultModel.provider}/${defaultModel.model}/${defaultModel.apiKeyRef}` : 'missing',
   )
 
@@ -67,7 +67,7 @@ async function run() {
   record(
     'BF-MODEL-TEST',
     'settings can trigger model connection test endpoint without leaking keys',
-    Boolean(typeof testedModel.data?.ok === 'boolean' && testedModel.data?.provider === 'DeepSeek' && noSecretLeak(testedModel)),
+    Boolean(typeof testedModel.data?.ok === 'boolean' && testedModel.data?.provider === 'B.AI' && noSecretLeak(testedModel)),
     testedModel.data ? `${testedModel.data.provider}/${testedModel.data.model}; ok=${testedModel.data.ok}` : 'missing',
   )
 

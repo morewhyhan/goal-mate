@@ -6,6 +6,8 @@ import {
   recordAgentToolActionWithPrisma,
 } from '../lib/agent-tool-executor.mjs'
 import { planIntervention } from '../lib/intervention-planner.mjs'
+import { chatCompletionsUrl } from '../lib/model-endpoint.mjs'
+import { fetchModelProvider } from '../lib/model-provider-http.mjs'
 import { resolveModelApiKey } from '../lib/model-secret.mjs'
 import { resolveQqBotConfig } from '../lib/qq-bot-config.mjs'
 import { touchRuntimeHeartbeat } from '../lib/runtime-heartbeat.mjs'
@@ -404,8 +406,8 @@ async function generateReminderText(userId, reminderType) {
   const apiKey = resolveModelApiKey(modelConfig)
   if (!apiKey) return fallbackReminderText(reminderType, goalContext)
 
-  const modelName = String(modelConfig?.model || process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash')
-  const modelApiBase = String(modelConfig?.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
+  const modelName = String(modelConfig?.model || process.env.GOAL_MATE_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano')
+  const modelApiBase = String(modelConfig?.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
   const reminderInstruction = {
     morning_planning: '早晨规划：只问今天最小可推进的一步。',
     midday_check: '中午检查：只判断是否偏离，以及要不要缩小动作。',
@@ -414,7 +416,7 @@ async function generateReminderText(userId, reminderType) {
   }[reminderType] || '目标推进提醒：只问一个关键问题。'
 
   try {
-    const response = await fetch(`${modelApiBase}/chat/completions`, {
+    const response = await fetchModelProvider(chatCompletionsUrl(modelApiBase), {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,

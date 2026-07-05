@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { chatCompletionsUrl } from '../lib/model-endpoint.mjs'
+import { fetchModelProvider } from '../lib/model-provider-http.mjs'
 
 const results = []
 
@@ -44,6 +46,14 @@ const forbiddenControlPatterns = [
   /自律太差/u,
 ]
 
+const mechanicalSecretaryPatterns = [
+  /更像是.+问题[；;]/u,
+  /原因分类/u,
+  /系统判断/u,
+  /调整建议/u,
+  /动机不足|能力不足|提示不对|路径判断错误/u,
+]
+
 function evaluateAgentReplyQuality(reply, expectation = {}) {
   const text = String(reply || '').trim()
   const issues = []
@@ -52,6 +62,7 @@ function evaluateAgentReplyQuality(reply, expectation = {}) {
   if (forbiddenAiTonePatterns.some((pattern) => pattern.test(text))) issues.push('ai_tone')
   if (genericEncouragementPatterns.some((pattern) => pattern.test(text))) issues.push('generic_encouragement')
   if (forbiddenControlPatterns.some((pattern) => pattern.test(text))) issues.push('coercive_tone')
+  if (mechanicalSecretaryPatterns.some((pattern) => pattern.test(text))) issues.push('mechanical_diagnostic_tone')
   if (expectation.mustAskOneQuestion) {
     const questionCount = (text.match(/[？?]/g) || []).length
     if (questionCount !== 1) issues.push(`question_count_${questionCount}`)
@@ -103,6 +114,17 @@ record(
     && promptSource.includes('下一次最小干预')
     && promptSource.includes('动机不足、能力不足、提示不对、路径判断错误'),
   'control-loop prompt source scanned',
+)
+
+record(
+  'ARQ-PROMPT-SECRETARY-DIALOGUE',
+  'Agent prompt requires secretary-style multi-turn resistance handling instead of mechanical classification',
+  promptSource.includes('SECRETARY_DIALOGUE_POLICY')
+    && promptSource.includes('不要把诊断标签说给用户听')
+    && promptSource.includes('不做也可能是正确选择')
+    && promptSource.includes('降低难度只能降低今天动作，不能偷偷降低最终目标')
+    && promptSource.includes('如果用户说完成但证据不足，先记为待确认'),
+  'secretary dialogue prompt source scanned',
 )
 
 record(
@@ -170,11 +192,11 @@ const positiveCases = [
   {
     id: 'ARQ-SAMPLE-SETTINGS-READ',
     purpose: 'A good settings-read reply reports configuration facts without inventing',
-    reply: '当前默认模型是 DeepSeek / deepseek-v4-flash，API Key 已配置但不会明文显示。下一步只需要点一次测试连接，确认它能真实调用。',
+    reply: '当前默认模型是 B.AI / gpt-5-nano，API Key 已配置但不会明文显示。下一步只需要点一次测试连接，确认它能真实调用。',
     expectation: {
       mustBeActionable: true,
       mustUseKnownFact: true,
-      knownFactPattern: /DeepSeek \/ deepseek-v4-flash/u,
+      knownFactPattern: /B.AI \/ gpt-5-nano/u,
       mustMentionAny: [/API Key 已配置|测试连接|真实调用/u],
       mustAvoidClaimingExecution: true,
     },
@@ -223,7 +245,7 @@ const positiveCases = [
   {
     id: 'ARQ-SAMPLE-MODEL-FAILURE',
     purpose: 'A model failure reply is explicit, non-fake and points to Settings instead of dumping provider JSON',
-    reply: '模型现在不可用，我已经保存了你的消息，但不会假装已经完成思考，也不会改动任何计划。\nDeepSeek 账户余额不足。请充值，或者换一个可用的 API Key 后再试。\n先去 Settings 测试连接；修好后再让我继续。',
+    reply: '模型现在不可用，我已经保存了你的消息，但不会假装已经完成思考，也不会改动任何计划。\nB.AI 账户余额不足。请充值，或者换一个可用的 API Key 后再试。\n先去 Settings 测试连接；修好后再让我继续。',
     expectation: {
       mustBeActionable: true,
       mustMentionAny: [/模型现在不可用|不会假装|Settings 测试连接/u],
@@ -267,6 +289,13 @@ const negativeCases = [
     expectation: { forbidMentionAny: [/日报里写着|我看到你的日志/u] },
     expectedIssues: ['mentions_forbidden_context'],
   },
+  {
+    id: 'ARQ-REJECT-MECHANICAL-DIAGNOSIS',
+    purpose: 'Reject mechanically exposing diagnosis labels instead of talking like a secretary',
+    reply: '已记录：今天没有完成。更像是行动难度或启动成本问题；下一步明天把行动缩小到更容易开始的最小步骤。',
+    expectation: { mustBeActionable: true },
+    expectedIssues: ['mechanical_diagnostic_tone'],
+  },
 ]
 
 for (const item of negativeCases) {
@@ -281,16 +310,16 @@ for (const item of negativeCases) {
 
 async function runLiveModelIfRequested() {
   if (process.env.RUN_REAL_LIVE_AI !== '1') {
-    record('ARQ-LIVE-SKIPPED', 'Live model reply quality eval is opt-in', true, 'set RUN_REAL_LIVE_AI=1 with DEEPSEEK_API_KEY to run')
+    record('ARQ-LIVE-SKIPPED', 'Live model reply quality eval is opt-in', true, 'set RUN_REAL_LIVE_AI=1 with GOAL_MATE_LIVE_MODEL_API_KEY or BAI_API_KEY to run')
     return
   }
-  const apiKey = process.env.DEEPSEEK_API_KEY
+  const apiKey = process.env.GOAL_MATE_LIVE_MODEL_API_KEY || process.env.BAI_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY
   if (!apiKey) {
-    record('ARQ-LIVE-MISSING-KEY', 'Live model eval requires DEEPSEEK_API_KEY', false, 'missing key')
+    record('ARQ-LIVE-MISSING-KEY', 'Live model eval requires a model API key', false, 'missing GOAL_MATE_LIVE_MODEL_API_KEY, BAI_API_KEY, OPENAI_API_KEY or DEEPSEEK_API_KEY')
     return
   }
-  const apiBase = String(process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com').replace(/\/+$/, '')
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash'
+  const apiBase = String(process.env.GOAL_MATE_LIVE_MODEL_API_BASE || process.env.GOAL_MATE_MODEL_API_BASE || process.env.BAI_API_BASE || process.env.OPENAI_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+  const model = process.env.GOAL_MATE_LIVE_MODEL_MODEL || process.env.GOAL_MATE_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano'
   const liveCases = [
     {
       id: 'ARQ-LIVE-NOT-DONE',
@@ -334,7 +363,7 @@ async function runLiveModelIfRequested() {
   ].join('\n')
   for (const item of liveCases) {
     try {
-      const response = await fetch(`${apiBase}/chat/completions`, {
+      const response = await fetchModelProvider(chatCompletionsUrl(apiBase), {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify({

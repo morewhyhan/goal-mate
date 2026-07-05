@@ -1,5 +1,5 @@
 export type ModelProviderFailure = {
-  reason: 'insufficient_balance' | 'invalid_api_key' | 'rate_limited' | 'provider_unavailable' | 'provider_error'
+  reason: 'insufficient_balance' | 'invalid_api_key' | 'rate_limited' | 'provider_unavailable' | 'provider_error' | 'network_error'
   message: string
 }
 
@@ -17,7 +17,7 @@ export function classifyModelProviderFailure(status: number | undefined, rawMess
   if (text.includes('insufficient balance') || text.includes('余额不足') || text.includes('quota') || text.includes('billing')) {
     return {
       reason: 'insufficient_balance',
-      message: 'DeepSeek 账户余额不足。请充值，或者换一个可用的 API Key 后再试。',
+      message: '模型账户余额或额度不足。请充值，或者换一个可用的 API Key 后再试。',
     }
   }
   if (status === 401 || status === 403 || text.includes('invalid api key') || text.includes('unauthorized') || text.includes('authentication')) {

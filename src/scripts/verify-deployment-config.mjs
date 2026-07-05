@@ -59,8 +59,9 @@ const requiredEnvVars = [
 const defaultedEnvVars = [
   'PORT',
   'HOSTNAME',
-  'DEEPSEEK_API_BASE',
-  'DEEPSEEK_MODEL',
+  'GOAL_MATE_MODEL_PROVIDER',
+  'GOAL_MATE_MODEL_API_BASE',
+  'GOAL_MATE_MODEL',
   'QQ_BOT_API_BASE',
   'QQ_BOT_INTENTS',
   'SCHEDULER_TICK_SECONDS',
@@ -76,6 +77,8 @@ const recommendedEnvVars = [
   'NEXT_PUBLIC_BETTER_AUTH_URL',
   'QQ_ALLOWED_CONTEXT_IDS',
   'QQ_SCHEDULER_REPLY_WINDOW_HOURS',
+  'GOAL_MATE_MODEL_PROXY',
+  'GOAL_MATE_MODEL_FORCE_CURL',
 ]
 
 const results = []

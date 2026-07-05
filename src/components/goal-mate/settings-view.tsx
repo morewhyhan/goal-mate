@@ -153,7 +153,7 @@ export function SettingsView() {
     { key: 'scheduler-worker', label: 'Scheduler', status: runtimeStatus.schedulerWorker },
   ]
 
-  const [modelDraft, setModelDraft] = useState({ provider: 'DeepSeek', model: 'deepseek-v4-flash', reasoningModel: '', apiBase: 'https://api.deepseek.com', apiKey: '', temperature: '0.3' })
+  const [modelDraft, setModelDraft] = useState({ provider: 'B.AI', model: 'gpt-5-nano', reasoningModel: '', apiBase: 'https://api.b.ai', apiKey: '', temperature: '0.3' })
   const [qqBotDraft, setQqBotDraft] = useState<QqBotDraft>(defaultQqBotDraft)
   const [reminderDrafts, setReminderDrafts] = useState<ReminderDraft[]>(defaultReminderDrafts)
   const [behaviorDraft, setBehaviorDraft] = useState<BehaviorDraft>(defaultBehaviorDraft)
@@ -161,10 +161,10 @@ export function SettingsView() {
   useEffect(() => {
     if (!model) return
     setModelDraft({
-      provider: model.provider || 'DeepSeek',
-      model: model.model || 'deepseek-v4-flash',
+      provider: model.provider || 'B.AI',
+      model: model.model || 'gpt-5-nano',
       reasoningModel: model.reasoningModel || '',
-      apiBase: model.apiBase || 'https://api.deepseek.com',
+      apiBase: model.apiBase || 'https://api.b.ai',
       apiKey: '',
       temperature: String(model.temperature ?? 0.3),
     })
@@ -298,7 +298,7 @@ export function SettingsView() {
   const systemReady = modelOk && !deploymentMissing.length
   const modelTestResult = testModel.data?.data
   const modelTestMessage = testModel.isPending
-    ? '正在连接 DeepSeek。'
+    ? '正在连接 B.AI。'
     : modelTestResult?.message || ''
 
   return (
@@ -329,7 +329,7 @@ export function SettingsView() {
 
         <section className="grid gap-3 md:grid-cols-3">
           {[
-            { title: '1. 配置模型', state: modelOk ? '已完成' : '必须先做', body: modelOk ? `当前模型：${model?.model || 'DeepSeek'}` : '没有模型密钥时，Agent 不能拆目标、诊断原因或生成下一步。', href: '#settings-model', ok: modelOk },
+            { title: '1. 配置模型', state: modelOk ? '已完成' : '必须先做', body: modelOk ? `当前模型：${model?.model || 'B.AI'}` : '没有模型密钥时，Agent 不能拆目标、诊断原因或生成下一步。', href: '#settings-model', ok: modelOk },
             { title: '2. 说明目标', state: '去 Agent', body: '模型可用后，去 Agent 说清楚结果、截止时间和当前情况。', href: '/dashboard/agent', ok: true },
             { title: '3. 接入主动提醒', state: qqOk && qqBound ? '已接入' : qqOk ? '待绑定' : '先配置', body: qqOk && qqBound ? 'QQ 可以用于早中晚追问和复盘。' : qqOk ? '生成绑定码，在 QQ 里发送后才能主动联系你。' : '先保存 App ID 和 Token；绑定状态会保持待绑定。', href: '#settings-qq', ok: qqOk && qqBound },
           ].map((item) => (
