@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
+import { encryptModelApiKey } from '../lib/model-secret.mjs'
 
 const prisma = new PrismaClient()
 const shouldWrite = process.argv.includes('--write')
@@ -299,7 +300,7 @@ async function run() {
       provider: 'B.AI',
       model: 'fake-first-run-model',
       apiBase: fakeModel.apiBase,
-      apiKeyRef: `fixture-first-run-model-key-${runId}`,
+      apiKeyRef: encryptModelApiKey(`fixture-first-run-model-key-${runId}`),
       usage: 'CHAT',
       isDefault: true,
       temperature: 0.2,

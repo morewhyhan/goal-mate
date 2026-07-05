@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useUpdateModel } from '@/hooks/use-models'
+import { useCreateModel, useUpdateModel } from '@/hooks/use-models'
 import { useDeleteAgentMemory, useDeleteWorkspaceData, useExportUserData, useGenerateQqBindingCode, useSettingsControlCenter, useTestModelConnection, useTestQqBotConnection, useUpdateQqBotConfig, useUpdateReminderRules, useUpdateSettings } from '@/hooks/use-settings'
 
 type ReminderDraft = {
@@ -127,6 +127,7 @@ function RuntimeStatusPill({ status }: { status: any }) {
 export function SettingsView() {
   const controlCenter = useSettingsControlCenter()
   const updateSettings = useUpdateSettings()
+  const createModel = useCreateModel()
   const updateModel = useUpdateModel()
   const updateReminderRules = useUpdateReminderRules()
   const updateQqBotConfig = useUpdateQqBotConfig()
@@ -214,19 +215,22 @@ export function SettingsView() {
   }, [data?.settings])
 
   function saveModel() {
-    if (!model?.id) return
     const temperature = Number(modelDraft.temperature)
-    updateModel.mutate({
-      id: model.id,
+    const payload = {
       provider: modelDraft.provider,
       model: modelDraft.model,
       reasoningModel: modelDraft.reasoningModel || undefined,
       apiBase: modelDraft.apiBase,
       apiKey: modelDraft.apiKey.trim() || undefined,
-      usage: 'CHAT',
+      usage: 'CHAT' as const,
       isDefault: true,
       temperature: Number.isFinite(temperature) ? temperature : 0.3,
-    })
+    }
+    if (model?.id) {
+      updateModel.mutate({ id: model.id, ...payload })
+      return
+    }
+    createModel.mutate(payload)
   }
 
   function saveReminderRules() {
@@ -361,7 +365,7 @@ export function SettingsView() {
               <label className="rounded-[20px] bg-[#f7f4ec] p-4 md:col-span-2"><span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">API Base</span><input value={modelDraft.apiBase} onChange={(event) => setModelDraft((draft) => ({ ...draft, apiBase: event.target.value }))} className="mt-2 w-full bg-transparent text-base font-semibold outline-none" /></label>
               <label className="rounded-[20px] bg-[#f7f4ec] p-4 md:col-span-2"><span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">API Key</span><input type="password" value={modelDraft.apiKey} onChange={(event) => setModelDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={modelOk ? '已配置，留空则保留原密钥' : '填入你自己的模型 API Key'} className="mt-2 w-full bg-transparent text-base font-semibold outline-none" /><span className="mt-2 block text-xs text-stone-500">按当前用户加密保存。切换账号后不会复用上一个账号的密钥。</span></label>
             </div>
-            <div className="mt-5 flex flex-wrap gap-3"><button disabled={!model?.id || updateModel.isPending} onClick={saveModel} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存模型</button><button disabled={testModel.isPending || !modelOk} onClick={() => testModel.mutate()} className="rounded-full bg-stone-100 px-5 py-3 text-sm font-semibold text-stone-700 disabled:cursor-not-allowed disabled:opacity-45">测试连接</button></div>
+            <div className="mt-5 flex flex-wrap gap-3"><button disabled={createModel.isPending || updateModel.isPending} onClick={saveModel} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存模型</button><button disabled={testModel.isPending || !modelOk} onClick={() => testModel.mutate()} className="rounded-full bg-stone-100 px-5 py-3 text-sm font-semibold text-stone-700 disabled:cursor-not-allowed disabled:opacity-45">测试连接</button></div>
             {(testModel.isPending || modelTestResult) && (
               <div className={`mt-4 rounded-[20px] border p-4 text-sm leading-6 ${modelTestResult?.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : testModel.isPending ? 'border-stone-200 bg-stone-50 text-stone-600' : 'border-red-200 bg-red-50 text-red-900'}`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">

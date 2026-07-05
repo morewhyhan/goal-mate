@@ -406,8 +406,8 @@ async function generateReminderText(userId, reminderType) {
   const apiKey = resolveModelApiKey(modelConfig)
   if (!apiKey) return fallbackReminderText(reminderType, goalContext)
 
-  const modelName = String(modelConfig?.model || process.env.GOAL_MATE_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano')
-  const modelApiBase = String(modelConfig?.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+  const modelName = String(modelConfig?.model || process.env.GOAL_MATE_MODEL || 'gpt-5-nano')
+  const modelApiBase = String(modelConfig?.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
   const reminderInstruction = {
     morning_planning: '早晨规划：只问今天最小可推进的一步。',
     midday_check: '中午检查：只判断是否偏离，以及要不要缩小动作。',

@@ -24,7 +24,8 @@
 | E2E-15 | QQ evening_review 主动提醒后用户回复 | 用户回复“没完成，太难了” | 系统写入 Check-in、Diagnosis、Markdown 日志、daily Review、SchedulerEvent responded 和 scheduler 审计 |
 | E2E-16 | 本地从零到一产品闭环 | 执行 `pnpm verify:zero-to-one` | 新用户隔离、配置边界、Agent 首次目标、Today 接入、QQ 回复入库和回复质量门禁被组合验收证明 |
 | E2E-17 | 干净新用户打开 Dashboard | 执行 `pnpm verify:dashboard-browser:empty-auth` | Today、Goals、Logs、Agent、Settings 展示空状态和配置边界，不出现假任务、假目标、假日志或 demo 数据 |
-| E2E-18 | 用户配置 DeepSeek 后 Agent 真实调用 AI | 执行 `pnpm verify:live-model-agent`，并提供真实模型 Key | 当前用户模型 Key 加密保存且不泄露；Settings 测试成功；Agent 回复来自当前用户模型配置，不是缺 key 或模型错误兜底 |
+| E2E-18 | 用户配置 B.AI 后 Agent 真实调用 AI | 执行 `pnpm verify:live-model-agent`，并提供真实模型 Key | 当前用户模型 Key 加密保存且不泄露；Settings 测试成功；Agent 回复来自当前用户模型配置，不是缺 key 或模型错误兜底 |
+| E2E-19 | 7 天行动交换商业验证 | 执行 `pnpm verify:seven-day-action-exchange` | 系统模拟 QQ 早中晚触达、7 天低摩擦回复、每天下一承诺、正常日日志、KR 进度和 99 元/月模拟意愿信号；报告必须明确这不等于真实付费 |
 
 ## 2. AI 输出验收
 
@@ -73,7 +74,7 @@
 | T-R17 | 模型密钥归属 | 模型 API Key 必须按当前用户保存、加密、脱敏返回，不能作为服务器全局共享密钥 |
 | T-R18 | QQ 会话归属 | 陌生 QQ 会话必须通过当前用户生成的一次性绑定码绑定，不能自动归属到全局账号或第一个用户 |
 | T-R19 | 首次目标输入 | 模糊目标只允许追问，不允许伪造目标；具体目标必须能生成目标草案、KR、条件、阶段、今日行动和目标 Markdown |
-| T-R20 | 模型测试失败 | DeepSeek 余额不足、Key 无效、限流或网络错误必须显示明确原因，不能让用户看到原始错误 JSON |
+| T-R20 | 模型测试失败 | B.AI 余额不足、Key 无效、限流或网络错误必须显示明确原因，不能让用户看到原始错误 JSON |
 
 ## 4.1 涌现效果验收
 
@@ -90,6 +91,18 @@
 | EMG-7 | 旧元认知被证伪 | 必须生成 `AiSelfOptimizationUpdate`，说明 AI 上一次推理错误和下一次规则 |
 | EMG-8 | 下一次 Planner 消费自我优化 | 必须改变问题、推理顺序或行动安排，而不是复用旧策略 |
 
+## 4.2 行动交换与模拟付费意愿验收
+
+行动交换不是“提醒用户打卡”。它的含义是：用户每次给系统一个最小反馈，系统必须返还一个更低摩擦、更明确、更安全的下一步承诺。
+
+| 编号 | 必测链路 | 预期 |
+| --- | --- | --- |
+| PAY-1 | 用户连续 7 天用短句回复 | 每次回复长度低、语义明确，不要求长篇复盘 |
+| PAY-2 | 用户回复“没做，太难/忘了/不想做/路径不对” | 系统产生不同诊断和控制策略，不能统一鼓励 |
+| PAY-3 | 每天晚上复盘 | 当日日志必须写入下一承诺：什么时候、做什么、做到什么算完成、为什么更容易发生 |
+| PAY-4 | 7 天结束 | 系统统计连续回复天数、可验证行动天数、决策成本降低信号和 99 元/月意愿信号 |
+| PAY-5 | 生成付费判断 | 只能说“达到模拟付费意愿最低条件”，不能把本地模拟说成真实付费 |
+
 ## 5. v0.1 准出标准
 
 ```text
@@ -105,5 +118,6 @@
 10. ControlLoopEpisode 和 Meta-Cognition 闭环可连续运行，能证明系统不是只记录反馈，而是在持续修正下一次干预策略。
 11. AI 自我优化闭环可运行：系统能判断自己上一次干预为什么失败，并让下一次 Planner 改变推理顺序。
 12. 本地从零到一产品闭环可被 `pnpm verify:zero-to-one` 一次性组合验证，且包含干净新用户页面空状态浏览器 smoke；真实 QQ Gateway 长连接、服务器 systemd 长期运行和真实模型长期质量仍按独立验收执行。
-13. 真实模型链路必须由 `pnpm verify:live-model-agent` 单独证明；默认本地验收不能替代真实 DeepSeek Key、网络和 Agent live reply 验收。
+13. 真实模型链路必须由 `pnpm verify:live-model-agent` 单独证明；默认本地验收不能替代真实 B.AI Key、网络和 Agent live reply 验收。
+14. 7 天行动交换闭环必须由 `pnpm verify:seven-day-action-exchange` 单独证明；该验证只能证明本地模拟的持续回复、推进证据和付费意愿条件，不能替代真实用户付费实验。
 ```

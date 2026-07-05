@@ -14,15 +14,15 @@ Model Provider 负责让 Agent Runtime 连接真实大模型。
 
 ## 2. 当前默认
 
-v0.1 默认使用 DeepSeek。
+v0.1 默认使用 B.AI。
 
 默认配置形态：
 
 | 字段 | 当前含义 |
 | --- | --- |
-| provider | DeepSeek |
-| apiBase | `https://api.deepseek.com` |
-| model | `deepseek-v4-flash` |
+| provider | B.AI |
+| apiBase | `https://api.b.ai` |
+| model | `gpt-5-nano` |
 | temperature | 默认低温，保证目标推进回复稳定 |
 | default_for | chat / reasoning / summary |
 
@@ -54,7 +54,7 @@ Agent Runtime 应按以下顺序读取模型配置：
 
 ```text
 用户默认 ModelConfig
-  -> defaultDeepSeekModel
+  -> defaultB.AIModel
   -> 环境变量兜底
 ```
 

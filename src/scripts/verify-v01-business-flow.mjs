@@ -36,7 +36,7 @@ async function request(path, options = {}) {
 
 function noSecretLeak(value) {
   const text = JSON.stringify(value)
-  return !text.includes('env:DEEPSEEK_API_KEY') && !/sk-[A-Za-z0-9_-]{12,}/.test(text)
+  return !text.includes('env:GOAL_MATE_LIVE_MODEL_API_KEY') && !/sk-[A-Za-z0-9_-]{12,}/.test(text)
 }
 
 async function run() {

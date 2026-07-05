@@ -40,7 +40,7 @@ Storage
 | Agent Runtime | Handles conversation, goal clarification, plan adjustment, diagnosis, and log drafting. |
 | Logs Service | Reads and writes Markdown-style year, quarter, month, week, and day records. |
 | Settings Service | Stores product configuration, permissions, reminders, model config, and data preferences. |
-| Model Provider Adapter | Routes Agent requests to configured models such as deepseek-v4-flash or reasoning models. |
+| Model Provider Adapter | Routes Agent requests to configured models such as gpt-5-nano or reasoning models. |
 | Agent Tool Runtime | Converts Agent intent into controlled read, draft, and execute tools. |
 | Scheduler Worker | Triggers morning planning, midday checks, evening reviews, and weekly reviews. |
 | Tool Audit Log | Records every Agent-triggered system operation for traceability. |

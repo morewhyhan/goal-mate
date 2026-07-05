@@ -44,7 +44,7 @@
 | 模型 | PRD 对应 | 说明 |
 | --- | --- | --- |
 | UserSetting | F5/F6 | General、Goals、Logs、Today、Agent、Notifications、Data & Privacy 配置 |
-| ModelConfig | F5/F6 | DeepSeek 等模型配置，保存 apiKeyRef，不保存明文 API Key |
+| ModelConfig | F5/F6 | B.AI 等 OpenAI-compatible模型配置，保存 apiKeyRef，不保存明文 API Key |
 
 ## 6. 后续预留
 

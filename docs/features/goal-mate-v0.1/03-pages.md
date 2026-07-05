@@ -159,4 +159,4 @@ MOC
 | AC-F2-2 | Goals | 能看到 O、多条 KR、条件、阶段和进度，且没有编辑操作 |
 | AC-F2-3 | Logs | 文件树是层级结构，不是年度/季度/月度并列平铺 |
 | AC-F2-4 | Agent | 输入框固定可见，只有消息区滚动 |
-| AC-F2-5 | Settings | 模型配置包含 DeepSeek、API Key、API Base、默认模型和测试连接 |
+| AC-F2-5 | Settings | 模型配置包含 B.AI、API Key、API Base、默认模型和测试连接 |

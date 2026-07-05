@@ -281,16 +281,16 @@ components:
       properties:
         provider:
           type: string
-          example: deepseek
+          example: B.AI
         default_model:
           type: string
-          example: deepseek-v4-flash
+          example: gpt-5-nano
         reasoning_model:
           type: string
-          example: deepseek-reasoner
+          example: 可选 reasoning model
         api_base_url:
           type: string
-          example: https://api.deepseek.com
+          example: https://api.b.ai
         fallback_strategy:
           type: string
           enum: [retry_then_fallback, fail_fast]

@@ -9,9 +9,9 @@ const shouldWrite = process.argv.includes('--write')
 const keepData = process.argv.includes('--keep-data')
 const baseUrl = process.env.GOAL_MATE_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 const providerName = process.env.GOAL_MATE_LIVE_MODEL_PROVIDER || process.env.GOAL_MATE_MODEL_PROVIDER || 'B.AI'
-const apiKey = process.env.GOAL_MATE_LIVE_MODEL_API_KEY || process.env.BAI_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
-const apiBase = String(process.env.GOAL_MATE_LIVE_MODEL_API_BASE || process.env.GOAL_MATE_MODEL_API_BASE || process.env.BAI_API_BASE || process.env.OPENAI_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
-const modelName = process.env.GOAL_MATE_LIVE_MODEL_MODEL || process.env.GOAL_MATE_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano'
+const apiKey = process.env.GOAL_MATE_LIVE_MODEL_API_KEY || process.env.BAI_API_KEY || process.env.OPENAI_API_KEY || ''
+const apiBase = String(process.env.GOAL_MATE_LIVE_MODEL_API_BASE || process.env.GOAL_MATE_MODEL_API_BASE || process.env.BAI_API_BASE || process.env.OPENAI_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+const modelName = process.env.GOAL_MATE_LIVE_MODEL_MODEL || process.env.GOAL_MATE_MODEL || process.env.OPENAI_MODEL || 'gpt-5-nano'
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(scriptDir, '..', '..')
 const runId = Date.now()
@@ -101,7 +101,7 @@ async function run() {
   if (!health.response.ok) return
 
   if (!apiKey.trim()) {
-    record('LMA-LIVE-KEY', 'live model verifier requires a real model API key supplied by environment only', false, 'missing GOAL_MATE_LIVE_MODEL_API_KEY, BAI_API_KEY, OPENAI_API_KEY or DEEPSEEK_API_KEY')
+    record('LMA-LIVE-KEY', 'live model verifier requires a real model API key supplied by environment only', false, 'missing GOAL_MATE_LIVE_MODEL_API_KEY, BAI_API_KEY or OPENAI_API_KEY')
     return
   }
 

@@ -20,7 +20,7 @@ Goal Mate 第一版主机器人通道改为 QQ Bot。
 ```text
 Goal Mate 服务器 -> 连接 QQ Gateway WebSocket
 QQ 消息事件 -> Worker 收到 -> 写入 AgentThread
-Agent 读取目标 + MD 文档 -> DeepSeek 回复
+Agent 读取目标 + MD 文档 -> B.AI 回复
 Worker 调 QQ OpenAPI sendMessage -> 回 QQ
 ```
 
@@ -34,7 +34,7 @@ Worker 调 QQ OpenAPI sendMessage -> 回 QQ
 
 - 服务器长期在线
 - 服务器可以访问 QQ OpenAPI
-- 服务器可以访问 DeepSeek API
+- 服务器可以访问 B.AI API
 
 ## 3. 配置来源
 
@@ -112,7 +112,7 @@ Worker 做这些事：
 5. 接收消息事件。
 6. 根据 `contextType + contextId` 绑定用户。
 7. 写入 Agent 消息。
-8. 调 DeepSeek。
+8. 调 B.AI。
 9. 回发 QQ。
 10. 记录 `QqMessageEvent`。
 
@@ -136,7 +136,7 @@ QQ Bot 可以：
 
 - 接收 QQ 文本消息。
 - 调用 Agent 读取目标、KR、条件、今日行动、MD 文档。
-- 调 DeepSeek 生成回复。
+- 调 B.AI 生成回复。
 - 把回复发回 QQ。
 
 QQ Bot 不可以：
@@ -158,7 +158,7 @@ QQ Bot 不可以：
 - QQ 对话绑定 Goal Mate 用户。
 - QQ 消息进入 AgentThread。
 - Agent 读取目标和 MD 文档。
-- DeepSeek 回复。
+- B.AI 回复。
 - QQ sendMessage 回发。
 - QQ 工具意图识别。
 - QQ read/draft 工具执行。

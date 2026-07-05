@@ -24,7 +24,7 @@ Telegram Bot 曾被设计为 Goal Mate 的外部对话入口。
 它不是一个独立功能，而是 Agent 的外部通道：
 
 ```text
-Telegram 消息 -> Goal Mate webhook -> Agent thread -> DeepSeek -> Telegram 回复
+Telegram 消息 -> Goal Mate webhook -> Agent thread -> B.AI -> Telegram 回复
 ```
 
 用户在 Telegram 里像和真人助手聊天一样输入，系统读取当前目标、KR、条件、今日行动、MD 文档和对话历史，然后给出可行动回复。

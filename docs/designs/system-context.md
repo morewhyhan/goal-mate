@@ -67,7 +67,7 @@ Automatic high-risk external actions
 
 | Dependency | Purpose | Notes |
 | --- | --- | --- |
-| Model provider | Agent reasoning, planning, summarization | Default planned provider: DeepSeek. |
+| Model provider | Agent reasoning, planning, summarization | Default planned provider: B.AI. |
 | Markdown storage | Logs output | Web version may store in DB first and export as Markdown. |
 | QQ Bot | Daily reminders, check-in, and conversational entry | First auxiliary channel; requires long-running worker. |
 | Future bot channels | Daily reminders and check-in | WeChat / Feishu / Email are future entry points. |
@@ -75,7 +75,7 @@ Automatic high-risk external actions
 
 ## Current Agent Capability Boundary
 
-As of 2026-07-02, the Agent can chat through the Web Agent page and QQ Bot, call DeepSeek, and read allowed goal/log context.
+As of 2026-07-02, the Agent can chat through the Web Agent page and QQ Bot, call B.AI, and read allowed goal/log context.
 
 The system now has an explicit Agent Tool Runtime foundation for creating goal drafts, updating today's action, submitting check-ins, writing logs, generating review drafts, scheduling reminders, updating model settings, and recording audit logs.
 

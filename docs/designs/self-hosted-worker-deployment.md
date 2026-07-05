@@ -26,7 +26,7 @@ Scheduler Worker
 | --- | --- |
 | Node.js | 与项目依赖兼容 |
 | pnpm | 与 `src/package.json` 使用版本兼容 |
-| 网络 | 能访问 QQ OpenAPI、QQ Gateway、DeepSeek API |
+| 网络 | 能访问 QQ OpenAPI、QQ Gateway、B.AI API |
 | 存储 | SQLite 数据库文件必须持久化 |
 | 环境变量 | `.env` 只保存启动前必须存在的基础参数，不提交 Git |
 | 进程守护 | worker 崩溃后必须自动重启 |
@@ -40,15 +40,15 @@ NEXT_PUBLIC_APP_URL
 GOAL_MATE_SECRET
 ```
 
-DeepSeek / model API Key、QQ Bot App ID、QQ Bot Token 不再作为服务器全局必填项。模型密钥和 QQ 机器人凭证由用户在 Settings 中配置，服务端加密保存；`.env` 不保存这些用户级业务密钥。
+B.AI / model API Key、QQ Bot App ID、QQ Bot Token 不再作为服务器全局必填项。模型密钥和 QQ 机器人凭证由用户在 Settings 中配置，服务端加密保存；`.env` 不保存这些用户级业务密钥。
 
 默认环境变量：
 
 ```text
 PORT=3000
 HOSTNAME=0.0.0.0
-DEEPSEEK_API_BASE=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-flash
+GOAL_MATE_MODEL_API_BASE=https://api.b.ai
+GOAL_MATE_MODEL=gpt-5-nano
 QQ_BOT_API_BASE=https://api.sgroup.qq.com
 QQ_BOT_INTENTS=33554432
 SCHEDULER_TICK_SECONDS=60

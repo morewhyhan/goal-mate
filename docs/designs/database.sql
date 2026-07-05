@@ -107,10 +107,10 @@ CREATE TABLE user_settings (
 CREATE TABLE model_configs (
   id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(64) NOT NULL REFERENCES users(id),
-  provider VARCHAR(80) NOT NULL DEFAULT 'deepseek',
-  default_model VARCHAR(120) NOT NULL DEFAULT 'deepseek-v4-flash',
-  reasoning_model VARCHAR(120) NOT NULL DEFAULT 'deepseek-reasoner',
-  api_base_url VARCHAR(300) NOT NULL DEFAULT 'https://api.deepseek.com',
+  provider VARCHAR(80) NOT NULL DEFAULT 'B.AI',
+  default_model VARCHAR(120) NOT NULL DEFAULT 'gpt-5-nano',
+  reasoning_model VARCHAR(120) NOT NULL DEFAULT '可选 reasoning model',
+  api_base_url VARCHAR(300) NOT NULL DEFAULT 'https://api.b.ai',
   api_key_ref VARCHAR(200),
   fallback_strategy VARCHAR(80) NOT NULL DEFAULT 'retry_then_fallback',
   updated_at TIMESTAMP NOT NULL

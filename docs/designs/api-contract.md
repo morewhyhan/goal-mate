@@ -41,7 +41,7 @@ API 使用 Hono RPC。成功响应统一返回 `{ data }`，列表可附带 `{ m
 
 ### PUT /api/models/:id
 
-保存模型配置。默认包含 DeepSeek：provider、model、reasoning_model、api_base、api_key_ref、default_for。
+保存模型配置。默认包含 B.AI：provider、model、reasoning_model、api_base、api_key_ref、default_for。
 
 ## 4. Logs API
 

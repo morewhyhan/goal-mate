@@ -1,13 +1,13 @@
 # Goal Mate QQ Scheduler Reply Loop Verification
 
-- Time: 2026-07-04T10:41:27.363Z
+- Time: 2026-07-05T19:01:36.521Z
 - Test user: qq-...@goalmate.local
 - Test data kept: no
 
 | ID | Purpose | Result | Evidence |
 | --- | --- | --- | --- |
-| QSR-SEED | test workspace has a current goal, action, QQ thread and sent evening scheduler event | PASS | user=qq-...@goalmate.local; action=b2dd1a1e-5983-4e7e-b752-3535d2e67691; event=f55165f7-382c-480d-b907-0b4fb78eda07 |
-| QSR-PROCESS-REPLY | scheduler reply processor classifies QQ reply and returns a user-facing acknowledgement | PASS | reply=已记录：今天没有完成。我的当前判断是 ABILITY，下一步建议：明天把行动缩小到更容易开始的最小步骤。; result=NOT_DONE; reason=ABILITY |
+| QSR-SEED | test workspace has a current goal, action, QQ thread and sent evening scheduler event | PASS | user=qq-...@goalmate.local; action=62807ba3-6cf4-4e7f-bca9-5bf7229f2e39; event=8cbd90b0-5050-4099-be67-3a74fd9fd9c5 |
+| QSR-PROCESS-REPLY | scheduler reply processor classifies QQ reply and returns a user-facing acknowledgement | PASS | reply=记下了。不是继续硬顶，先把动作切小；明天只做能启动的版本。; result=NOT_DONE; reason=ABILITY |
 | QSR-EVENT-RESPONDED | SchedulerEvent is marked responded and stores reply feedback payload | PASS | status=responded; feedback=NOT_DONE |
 | QSR-CHECKIN-DIAGNOSIS | QQ reply creates Check-in and diagnosis through shared Agent tools | PASS | checkins=1; result=NOT_DONE; diagnoses=1; category=ABILITY |
 | QSR-LOG-REVIEW | evening review reply writes daily Markdown evidence and daily Review | PASS | dailyDocs=1; reviews=1 |

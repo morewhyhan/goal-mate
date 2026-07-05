@@ -136,8 +136,8 @@ export async function buildAiPolicyInterventionDecision(input = {}) {
   const context = input.context || {}
   const apiKey = input.apiKey ?? ''
   const modelConfig = input.modelConfig || {}
-  const modelName = String(modelConfig.model || process.env.GOAL_MATE_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano')
-  const apiBase = String(modelConfig.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+  const modelName = String(modelConfig.model || process.env.GOAL_MATE_MODEL || 'gpt-5-nano')
+  const apiBase = String(modelConfig.apiBase || process.env.GOAL_MATE_MODEL_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
   const prompt = buildInterventionPolicyPrompt(context)
 
   if (!input.modelClient && !apiKey) {

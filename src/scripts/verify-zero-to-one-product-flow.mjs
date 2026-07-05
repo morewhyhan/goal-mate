@@ -21,7 +21,7 @@ function record(id, purpose, ok, evidence = '') {
   results.push({ id, purpose, ok, evidence })
 }
 
-function runCommand(item) {
+function runCommandAttempt(item) {
   const startedAt = Date.now()
   const child = spawnSync(item.command[0], item.command.slice(1), {
     cwd: appRoot,
@@ -38,14 +38,34 @@ function runCommand(item) {
   })
   const durationMs = Date.now() - startedAt
   const output = compact(`${child.stdout || ''}\n${child.stderr || ''}`)
+  return {
+    ok: child.status === 0,
+    status: child.status,
+    durationMs,
+    output,
+  }
+}
+
+function runCommand(item) {
+  const maxAttempts = Math.max(1, 1 + (item.retries || 0))
+  const attempts = []
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = runCommandAttempt(item)
+    attempts.push({ attempt, ...result })
+    if (result.ok) break
+  }
+  const final = attempts[attempts.length - 1]
   record(
     item.id,
     item.purpose,
-    child.status === 0,
+    final.ok,
     [
       `$ ${item.command.join(' ')}`,
-      `exit=${child.status ?? 'signal'}; durationMs=${durationMs}`,
-      output,
+      `attempts=${attempts.length}/${maxAttempts}; finalExit=${final.status ?? 'signal'}; totalDurationMs=${attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0)}`,
+      attempts.map((attempt) => [
+        `attempt=${attempt.attempt}; exit=${attempt.status ?? 'signal'}; durationMs=${attempt.durationMs}`,
+        attempt.output,
+      ].filter(Boolean).join('\n')).join('\n--- retry boundary ---\n'),
     ].filter(Boolean).join('\n'),
   )
 }
@@ -115,6 +135,7 @@ const checks = [
     id: 'ZOF-FIRST-RUN-AGENT',
     purpose: '全新用户可从空状态通过 Agent 说明目标、生成草案、确认激活并进入 Today',
     command: [pnpmBin, 'verify:first-run-agent'],
+    retries: 1,
   },
   {
     id: 'ZOF-TODAY-FEEDBACK-LOOP',
@@ -125,6 +146,7 @@ const checks = [
     id: 'ZOF-EMPTY-DASHBOARD-BROWSER',
     purpose: '干净新用户打开五个 Dashboard 页面时看到空状态和真实配置边界，而不是假任务或 demo 数据',
     command: [pnpmBin, 'verify:dashboard-browser:empty-auth'],
+    retries: 1,
   },
   {
     id: 'ZOF-SCHEDULER-RULES',

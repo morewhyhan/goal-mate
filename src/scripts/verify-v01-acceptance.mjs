@@ -41,7 +41,7 @@ async function runCheck(check, useCookie) {
     const ok = expectedStatuses.includes(response.status)
     const serializedBody = JSON.stringify(body || '')
     const secretLeak = check.checkSecrets
-      ? serializedBody.includes('env:DEEPSEEK_API_KEY') || /sk-[A-Za-z0-9_-]{12,}/.test(serializedBody)
+      ? serializedBody.includes('env:GOAL_MATE_LIVE_MODEL_API_KEY') || /sk-[A-Za-z0-9_-]{12,}/.test(serializedBody)
       : false
     return {
       ...check,

@@ -14,7 +14,7 @@
 - `agent-prompt-system.md`：Agent 提示词系统工程事实。
 - `agent-runtime.md`：Agent 对话运行时总流程事实。
 - `agent-memory.md`：Agent 对话、日志、复盘和目标状态记忆事实。
-- `model-provider.md`：DeepSeek 等模型供应商配置和调用事实。
+- `model-provider.md`：B.AI 等 OpenAI-compatible模型供应商配置和调用事实。
 - `settings-runtime.md`：Settings 如何影响真实系统行为。
 - `privacy-and-permissions.md`：Agent 读取、写入、密钥、导出和删除边界。
 - `verification-strategy.md`：静态、API、浏览器、部署和真实运行验收策略。

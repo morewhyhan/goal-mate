@@ -313,13 +313,13 @@ async function runLiveModelIfRequested() {
     record('ARQ-LIVE-SKIPPED', 'Live model reply quality eval is opt-in', true, 'set RUN_REAL_LIVE_AI=1 with GOAL_MATE_LIVE_MODEL_API_KEY or BAI_API_KEY to run')
     return
   }
-  const apiKey = process.env.GOAL_MATE_LIVE_MODEL_API_KEY || process.env.BAI_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY
+  const apiKey = process.env.GOAL_MATE_LIVE_MODEL_API_KEY || process.env.BAI_API_KEY || process.env.OPENAI_API_KEY
   if (!apiKey) {
-    record('ARQ-LIVE-MISSING-KEY', 'Live model eval requires a model API key', false, 'missing GOAL_MATE_LIVE_MODEL_API_KEY, BAI_API_KEY, OPENAI_API_KEY or DEEPSEEK_API_KEY')
+    record('ARQ-LIVE-MISSING-KEY', 'Live model eval requires a model API key', false, 'missing GOAL_MATE_LIVE_MODEL_API_KEY, BAI_API_KEY or OPENAI_API_KEY')
     return
   }
-  const apiBase = String(process.env.GOAL_MATE_LIVE_MODEL_API_BASE || process.env.GOAL_MATE_MODEL_API_BASE || process.env.BAI_API_BASE || process.env.OPENAI_API_BASE || process.env.DEEPSEEK_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
-  const model = process.env.GOAL_MATE_LIVE_MODEL_MODEL || process.env.GOAL_MATE_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || 'gpt-5-nano'
+  const apiBase = String(process.env.GOAL_MATE_LIVE_MODEL_API_BASE || process.env.GOAL_MATE_MODEL_API_BASE || process.env.BAI_API_BASE || process.env.OPENAI_API_BASE || 'https://api.b.ai').replace(/\/+$/, '')
+  const model = process.env.GOAL_MATE_LIVE_MODEL_MODEL || process.env.GOAL_MATE_MODEL || process.env.OPENAI_MODEL || 'gpt-5-nano'
   const liveCases = [
     {
       id: 'ARQ-LIVE-NOT-DONE',
