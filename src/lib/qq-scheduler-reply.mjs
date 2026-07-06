@@ -66,20 +66,22 @@ export function classifyQqSchedulerReply(text) {
   const content = String(text || '').trim()
   const lower = content.toLowerCase()
   const done = /(完成|做完|已做|搞定|done|finished|ok了|好了)/i.test(content)
-  const notDone = /(没做|没完成|未完成|没推进|没开始|失败|做不了|不想做|太难|忘了|来不及|拖延)/i.test(content)
-  const partial = /(做了一点|一部分|部分|还差|进行中|started|partial)/i.test(content)
+  const noResponse = /(未回复|不回了|不回|沉默|no[_ -]?response)/i.test(content)
+  const notDone = /(^0$|^不$|没做|没做到|没完成|未完成|没推进|没开始|还没|失败|做不了|不想做|不想弄|不想搞|不搞|不弄|不干|不继续|不知道|没想过|没想好|太难|太忙|没空|没时间|没有时间|没工夫|忘了|来不及|拖延|下次吧|明天再说|先放着|放着吧|算了|取消|停止|暂停|停了|放弃|别烦|烦|躺)/i.test(content)
+  const partial = /(做了一点|一部分|部分|还差|进行中|started|partial|搜|打开了|看了|写了|喝了一口|健康|学习|工作|(^|\s)在($|\s)|^1\s*在$|^1$|到$|继续|嗯|行$|好吧|好$|是$)/i.test(content)
 
   let result = 'PARTIAL'
   if (done && !notDone) result = 'DONE'
   if (notDone) result = 'NOT_DONE'
-  if (partial) result = 'PARTIAL'
-  if (!done && !notDone && !partial) result = lower.length <= 6 ? 'NO_RESPONSE' : 'PARTIAL'
+  if (partial && !notDone) result = 'PARTIAL'
+  if (noResponse) result = 'NO_RESPONSE'
+  if (!done && !notDone && !partial && !noResponse) result = lower.length <= 6 ? 'NO_RESPONSE' : 'PARTIAL'
 
   let reasonCategory = 'UNKNOWN'
-  if (/(不想|没意义|不重要|没动力|不值得|抗拒)/i.test(content)) reasonCategory = 'MOTIVATION'
-  if (/(太难|不会|不知道怎么|做不了|累|困|没精力|时间不够|来不及)/i.test(content)) reasonCategory = 'ABILITY'
+  if (/(^0$|^不$|不想|没意义|不重要|没动力|不值得|抗拒|不搞|不弄|不干|不继续|算了|取消|停止|暂停|停了|放弃|别烦|烦|躺|明天再说|先放着|放着吧)/i.test(content)) reasonCategory = 'MOTIVATION'
+  if (/(没做到|还没|下次吧|太难|太忙|没空|没时间|没有时间|没工夫|不会|不知道怎么|不知道从哪|想不出来|做不了|累|困|没精力|时间不够|来不及|麻烦|费劲)/i.test(content)) reasonCategory = 'ABILITY'
   if (/(忘|没提醒|时间不对|没看到|错过)/i.test(content)) reasonCategory = 'PROMPT'
-  if (/(方向|路径|计划不对|不是关键|不知道为什么做)/i.test(content)) reasonCategory = 'PATH'
+  if (/(方向|路径|计划不对|不是关键|不知道为什么做|不知道|没想过|没想好)/i.test(content)) reasonCategory = 'PATH'
 
   const adjustment = result === 'DONE'
     ? '保持当前推进节奏，明天继续围绕关键条件推进下一步。'

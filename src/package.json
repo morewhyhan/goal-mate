@@ -68,6 +68,8 @@
     "verify:secretary-dialogue-quality:write": "node scripts/verify-secretary-dialogue-quality.mjs --write",
     "verify:long-term-dialogue-trial": "node scripts/verify-long-term-dialogue-trial.mjs",
     "verify:long-term-dialogue-trial:write": "node scripts/verify-long-term-dialogue-trial.mjs --write",
+    "verify:dynamic-deepseek-qq": "node scripts/verify-dynamic-deepseek-qq-trial.mjs",
+    "verify:dynamic-deepseek-qq:write": "node scripts/verify-dynamic-deepseek-qq-trial.mjs --write",
     "verify:seven-day-action-exchange": "node scripts/verify-seven-day-action-exchange.mjs",
     "verify:seven-day-action-exchange:write": "node scripts/verify-seven-day-action-exchange.mjs --write",
     "verify:agent-prompt-snapshot": "node scripts/verify-agent-prompt-snapshot.mjs",

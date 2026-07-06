@@ -78,18 +78,9 @@ async function readLogBooleanSetting(prisma, userId, key, fallback) {
 export function inferControlLoopDiagnosis(input = {}) {
   const feedback = String(input.feedback || '').toLowerCase()
   const estimatedMinutes = Number(input.estimatedMinutes || 0)
+  const explicitCategory = String(input.reasonCategory || '').toUpperCase()
 
-  if ((input.consecutiveMissCount || 0) >= 3) {
-    return {
-      category: 'PATH',
-      adjustmentType: 'REBUILD_PATH',
-      evidence: input.feedback || '用户连续多次未完成或部分完成，问题可能不只是行动难度。',
-      nextQuestion: '这已经连续几次没有稳定发生了。你觉得是这一步没对准关键条件，还是这个目标本身还没被澄清？',
-      proposedNextAction: '暂停继续加任务，先重新判断当前缺口和行动设计是否正确。',
-    }
-  }
-
-  if (feedback.includes('太难') || feedback.includes('不会') || feedback.includes('累') || feedback.includes('没时间') || estimatedMinutes > 60) {
+  if (explicitCategory === 'ABILITY' || feedback.includes('没做到') || feedback.includes('还没') || feedback.includes('下次吧') || feedback.includes('太难') || feedback.includes('太忙') || feedback.includes('没空') || feedback.includes('没时间') || feedback.includes('没有时间') || feedback.includes('没工夫') || feedback.includes('不会') || feedback.includes('想不出来') || feedback.includes('做不了') || feedback.includes('累') || feedback.includes('麻烦') || feedback.includes('费劲') || estimatedMinutes > 60) {
     return {
       category: 'ABILITY',
       adjustmentType: 'SIMPLIFY',
@@ -99,7 +90,7 @@ export function inferControlLoopDiagnosis(input = {}) {
     }
   }
 
-  if (feedback.includes('忘') || feedback.includes('提醒') || feedback.includes('时间不对') || feedback.includes('太晚') || feedback.includes('太早') || feedback.includes('没准备') || feedback.includes('风险点') || feedback.includes('预案') || feedback.includes('替代') || feedback.includes('失控') || feedback.includes('默认选择')) {
+  if (explicitCategory === 'PROMPT' || feedback.includes('忘') || feedback.includes('提醒') || feedback.includes('时间不对') || feedback.includes('太晚') || feedback.includes('太早') || feedback.includes('没准备') || feedback.includes('风险点') || feedback.includes('预案') || feedback.includes('替代') || feedback.includes('失控') || feedback.includes('默认选择')) {
     return {
       category: 'PROMPT',
       adjustmentType: 'RESCHEDULE',
@@ -109,7 +100,7 @@ export function inferControlLoopDiagnosis(input = {}) {
     }
   }
 
-  if (feedback.includes('不想') || feedback.includes('没意义') || feedback.includes('不重要') || feedback.includes('没动力')) {
+  if (explicitCategory === 'MOTIVATION' || feedback === '0' || feedback === '不' || feedback.includes('不想') || feedback.includes('没意义') || feedback.includes('不重要') || feedback.includes('没动力') || feedback.includes('不搞') || feedback.includes('不弄') || feedback.includes('不干') || feedback.includes('不继续') || feedback.includes('算了') || feedback.includes('取消') || feedback.includes('停止') || feedback.includes('暂停') || feedback.includes('停了') || feedback.includes('放弃') || feedback.includes('别烦') || feedback.includes('烦') || feedback.includes('躺') || feedback.includes('明天再说') || feedback.includes('先放着')) {
     return {
       category: 'MOTIVATION',
       adjustmentType: 'REFRAME_GOAL',
@@ -119,13 +110,23 @@ export function inferControlLoopDiagnosis(input = {}) {
     }
   }
 
-  if (feedback.includes('方向') || feedback.includes('目标') || feedback.includes('不知道为什么') || feedback.includes('不确定')) {
+  if (explicitCategory === 'PATH' || feedback.includes('方向') || feedback.includes('路径') || feedback.includes('目标') || feedback.includes('不知道为什么') || feedback.includes('不知道') || feedback.includes('没想过') || feedback.includes('没想好') || feedback.includes('不确定')) {
     return {
       category: 'GOAL',
       adjustmentType: 'REFRAME_GOAL',
       evidence: input.feedback || '用户反馈目标或目的不清楚。',
       nextQuestion: '如果这个目标 7 天后真的推进了，你最希望看到的具体变化是什么？',
       proposedNextAction: '回到目标澄清，而不是继续拆任务。',
+    }
+  }
+
+  if ((input.consecutiveMissCount || 0) >= 3) {
+    return {
+      category: 'PATH',
+      adjustmentType: 'REBUILD_PATH',
+      evidence: input.feedback || '用户连续多次未完成或部分完成，问题可能不只是行动难度。',
+      nextQuestion: '这已经连续几次没有稳定发生了。你觉得是这一步没对准关键条件，还是这个目标本身还没被澄清？',
+      proposedNextAction: '暂停继续加任务，先重新判断当前缺口和行动设计是否正确。',
     }
   }
 
@@ -327,6 +328,7 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
       })
       const inferred = inferControlLoopDiagnosis({
         feedback: userFeedback,
+        reasonCategory: input.reasonCategory,
         consecutiveMissCount: recentMisses.length,
         estimatedMinutes: action.estimatedMinutes,
       })
