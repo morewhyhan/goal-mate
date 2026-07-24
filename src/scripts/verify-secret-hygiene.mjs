@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, extname, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -60,9 +60,9 @@ const secretPatterns = [
 ]
 
 function shouldSkipFile(path) {
-  const basename = path.split('/').pop() || ''
-  if (basename === '.env.example') return false
-  if (basename === '.env' || basename.startsWith('.env.')) return true
+  const filename = basename(path)
+  if (filename === '.env.example') return false
+  if (filename === '.env' || filename.startsWith('.env.')) return true
   return ignoredExtensions.has(extname(path).toLowerCase())
 }
 

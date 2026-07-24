@@ -1,15 +1,18 @@
 'use client'
 
+import { useState } from 'react'
 import { useGenerateTodayAction, useSubmitCheckin, useToday } from '@/hooks/use-today'
 import { useSettings, useSettingsControlCenter } from '@/hooks/use-settings'
 import { MomentumHeatmap } from './momentum-heatmap'
 
 const feedbackOptions = [
-  { label: '完成', value: 'done' },
-  { label: '部分完成', value: 'partial' },
-  { label: '没做', value: 'not_done' },
-  { label: '改小', value: 'skipped' },
+  { label: '完成', value: 'done', result: 'done' },
+  { label: '部分完成', value: 'partial', result: 'partial' },
+  { label: '没做', value: 'not_done', result: 'not_done' },
+  { label: '改小', value: 'make_smaller', result: 'not_done' },
 ] as const
+
+const reasonSuggestions = ['动作太大', '今天没时间', '不知道怎么开始', '现在不想做', '提醒时机不对', '方向可能不对']
 
 export function TodayView() {
   const today = useToday()
@@ -17,6 +20,9 @@ export function TodayView() {
   const controlCenter = useSettingsControlCenter()
   const submitCheckin = useSubmitCheckin()
   const generateTodayAction = useGenerateTodayAction()
+  const [feedbackIntent, setFeedbackIntent] = useState<(typeof feedbackOptions)[number] | null>(null)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [feedbackError, setFeedbackError] = useState('')
   const apiData = today.data?.data
   const apiGoal = apiData?.goal
   const apiAction = apiData?.action
@@ -60,10 +66,51 @@ export function TodayView() {
   const minimumText = action?.minimumStep || (apiGoal ? '生成今日行动后，这里会显示低精力时的最小版本。' : '先不用自己拆计划。')
   const fallbackText = action?.fallbackAction || (apiGoal ? '生成今日行动后，这里会显示做不动时的替代动作。' : '没有目标时，不需要预案。')
 
-  const handleFeedback = (result: (typeof feedbackOptions)[number]['value']) => {
+  const handleFeedback = (option: (typeof feedbackOptions)[number]) => {
     if (!action?.id) return
-    submitCheckin.mutate({ actionId: action.id, result })
+    setFeedbackError('')
+    if (option.value === 'done') {
+      setFeedbackIntent(null)
+      setFeedbackText('')
+      submitCheckin.mutate({ actionId: action.id, result: 'done' })
+      return
+    }
+    setFeedbackIntent(option)
+    setFeedbackText('')
   }
+
+  const submitFeedbackWithReason = () => {
+    if (!action?.id || !feedbackIntent) return
+    const reason = feedbackText.trim()
+    if (!reason) {
+      setFeedbackError('补一句实际情况，AI 才能据此调整下一步。')
+      return
+    }
+    const userFeedback = feedbackIntent.value === 'make_smaller'
+      ? `当前行动太大，请把下一步改小。${reason}`
+      : reason
+    submitCheckin.mutate(
+      { actionId: action.id, result: feedbackIntent.result, userFeedback },
+      {
+        onSuccess: () => {
+          setFeedbackIntent(null)
+          setFeedbackText('')
+          setFeedbackError('')
+        },
+      },
+    )
+  }
+
+  const feedbackResult = submitCheckin.data?.data
+  const diagnosis = feedbackResult?.diagnosis
+  const proposedNextAction = diagnosis?.proposedNextAction
+  const reminderAdjustment = feedbackResult?.reminderAdjustment
+  const nextCommitmentCandidate = feedbackResult?.nextCommitment
+    || feedbackResult?.controlLoopEpisode?.next_commitment
+  const returnedNextCommitment = nextCommitmentCandidate
+    && (nextCommitmentCandidate.persisted === true || nextCommitmentCandidate.id)
+    ? nextCommitmentCandidate
+    : null
 
   const quadrants = [
     {
@@ -119,6 +166,19 @@ export function TodayView() {
           <div className="rounded-[22px] border border-stone-200 bg-white p-6 text-sm text-stone-500 shadow-sm">
             正在加载今天的下一步。
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (today.isError) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-[#f4f1ea] px-4 py-4 text-stone-950 md:px-5 md:py-5">
+        <div className="mx-auto max-w-[1180px] rounded-[22px] border border-red-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-600">Today 暂时不可用</p>
+          <h1 className="mt-3 text-2xl font-semibold">暂时无法读取今天的任务。</h1>
+          <p className="mt-2 text-sm leading-6 text-stone-600">{today.error.message}</p>
+          <button onClick={() => today.refetch()} className="mt-4 rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold text-white">重新读取</button>
         </div>
       </div>
     )
@@ -232,7 +292,7 @@ export function TodayView() {
                       <button
                         key={option.value}
                         disabled={!action.id || actionLocked || submitCheckin.isPending}
-                        onClick={() => handleFeedback(option.value)}
+                        onClick={() => handleFeedback(option)}
                         className={`rounded-full px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${index === 0 ? 'bg-white text-stone-950' : 'bg-white/10 text-white hover:bg-white/15'}`}
                       >
                         {option.label}
@@ -250,6 +310,10 @@ export function TodayView() {
                 </div>
               </div>
 
+              <div className="mt-4 rounded-[18px] border border-white/10 bg-white/10 px-4 py-3 text-sm leading-6 text-white/75">
+                这里是执行看板，不需要你维护结构。完成、没做、想改小或需要暂停时，直接回到“助手”用自然语言说；快捷按钮只是同一反馈闭环的补充入口。
+              </div>
+
               <div className="mt-5 grid gap-2 text-sm leading-5 text-white/74 md:grid-cols-3">
                 {[
                   ['完成标准', completionText],
@@ -263,6 +327,107 @@ export function TodayView() {
                 ))}
               </div>
             </section>
+
+            {feedbackIntent && action && !actionLocked ? (
+              <section className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">{feedbackIntent.label} · 补一句实际情况</p>
+                <h2 className="mt-2 text-xl font-semibold text-stone-950">
+                  {feedbackIntent.value === 'partial'
+                    ? '做到哪一步，剩下卡在哪里？'
+                    : feedbackIntent.value === 'make_smaller'
+                      ? '是什么让这一步显得太大？'
+                      : '今天为什么没有开始？'}
+                </h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {reasonSuggestions.map((reason) => (
+                    <button
+                      key={reason}
+                      type="button"
+                      onClick={() => {
+                        setFeedbackText(reason)
+                        setFeedbackError('')
+                      }}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${feedbackText === reason ? 'bg-stone-950 text-white ring-stone-950' : 'bg-white text-stone-600 ring-amber-200'}`}
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={feedbackText}
+                  onChange={(event) => {
+                    setFeedbackText(event.target.value)
+                    setFeedbackError('')
+                  }}
+                  placeholder="也可以直接说实际发生了什么，不用整理措辞。"
+                  className="mt-3 min-h-[88px] w-full resize-y rounded-[18px] border border-amber-200 bg-white px-4 py-3 text-sm leading-6 text-stone-800 outline-none focus:border-amber-400"
+                />
+                {feedbackError ? <p className="mt-2 text-xs font-medium text-red-700">{feedbackError}</p> : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button disabled={submitCheckin.isPending} onClick={submitFeedbackWithReason} className="rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
+                    {submitCheckin.isPending ? '正在调整' : '提交并让 AI 调整'}
+                  </button>
+                  <button
+                    disabled={submitCheckin.isPending}
+                    onClick={() => {
+                      setFeedbackIntent(null)
+                      setFeedbackText('')
+                      setFeedbackError('')
+                    }}
+                    className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-stone-600 ring-1 ring-amber-200 disabled:opacity-45"
+                  >
+                    取消
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {feedbackResult ? (
+              <section className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">反馈已进入目标档案</p>
+                <h2 className="mt-2 text-xl font-semibold text-stone-950">
+                  {returnedNextCommitment ? '下一步已按这次反馈写入' : diagnosis ? '反馈已记录，还需要确认下一步' : '这一步已经完成，进度已同步'}
+                </h2>
+                {diagnosis ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="rounded-[18px] bg-white p-4 ring-1 ring-emerald-100">
+                      <p className="text-xs font-semibold text-stone-400">系统判断</p>
+                      <p className="mt-2 text-sm leading-6 text-stone-700">{diagnosis.evidence || '这次没有完成，需要根据你的反馈调整执行方式。'}</p>
+                    </div>
+                    <div className="rounded-[18px] bg-white p-4 ring-1 ring-emerald-100">
+                      <p className="text-xs font-semibold text-stone-400">{returnedNextCommitment ? '已经写入的调整' : '诊断建议（尚未写入）'}</p>
+                      <p className="mt-2 text-sm leading-6 text-stone-700">
+                        {returnedNextCommitment?.title || proposedNextAction || '这次没有形成可写入的调整。'}
+                      </p>
+                    </div>
+                    {diagnosis.nextQuestion ? (
+                      <div className="rounded-[18px] bg-white p-4 ring-1 ring-emerald-100 md:col-span-2">
+                        <p className="text-xs font-semibold text-stone-400">下一次需要确认</p>
+                        <p className="mt-2 text-sm leading-6 text-stone-700">{diagnosis.nextQuestion}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm leading-6 text-stone-600">系统已更新行动与目标进度。你可以回到同一个 Agent 入口，让它基于最新事实给出下一步。</p>
+                )}
+                {returnedNextCommitment ? (
+                  <div className="mt-3 rounded-[18px] bg-stone-950 p-4 text-white">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">下一承诺</p>
+                    <p className="mt-2 text-sm leading-6 text-white/80">{returnedNextCommitment.title}</p>
+                    {returnedNextCommitment.minimumStep || returnedNextCommitment.minimum_step ? (
+                      <p className="mt-1 text-xs leading-5 text-white/60">
+                        先从这里开始：{returnedNextCommitment.minimumStep || returnedNextCommitment.minimum_step}
+                      </p>
+                    ) : null}
+                    {reminderAdjustment?.applied ? (
+                      <p className="mt-1 text-xs leading-5 text-white/60">
+                        提醒候选时机已从 {reminderAdjustment.previousSchedule} 调到 {reminderAdjustment.newSchedule}，频率没有增加。
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="relative overflow-hidden rounded-[24px] border border-stone-200 bg-[#fbfcf8] p-3 shadow-sm">
               <div className="mb-2 hidden grid-cols-[58px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 px-1 md:grid">
@@ -285,7 +450,7 @@ export function TodayView() {
                     <div className="mt-3 flex items-center justify-between gap-2">
                       <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-500">{item.meta}</span>
                       {item.primary && action && !actionLocked && (
-                        <button disabled={submitCheckin.isPending} onClick={() => handleFeedback('done')} className="rounded-full bg-[#dfe8d9] px-3 py-1.5 text-xs font-semibold text-stone-900 disabled:opacity-45">
+                        <button disabled={submitCheckin.isPending} onClick={() => handleFeedback(feedbackOptions[0])} className="rounded-full bg-[#dfe8d9] px-3 py-1.5 text-xs font-semibold text-stone-900 disabled:opacity-45">
                           标记完成
                         </button>
                       )}

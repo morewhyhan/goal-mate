@@ -1,5 +1,6 @@
 import { client } from '@/lib/api-client'
-import { InferRequestType, InferResponseType } from 'hono/client'
+import { parseApiResponse } from '@/lib/api-response'
+import { InferRequestType } from 'hono/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -16,14 +17,14 @@ type GenerateTodayActionResponse = any
 export function useToday() {
   return useQuery<TodayResponse, Error>({
     queryKey: ['today'],
-    queryFn: async () => (await $get()).json(),
+    queryFn: async () => parseApiResponse(await $get()),
   })
 }
 
 export function useGenerateTodayAction() {
   const queryClient = useQueryClient()
   return useMutation<GenerateTodayActionResponse, Error>({
-    mutationFn: async () => (await $executeTool({ json: { toolName: 'today.get', input: {}, confirmed: true } })).json(),
+    mutationFn: async () => parseApiResponse(await $executeTool({ json: { toolName: 'today.get', input: {}, confirmed: true } })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['today'] })
       queryClient.invalidateQueries({ queryKey: ['goals'] })
@@ -36,7 +37,7 @@ export function useGenerateTodayAction() {
 export function useSubmitCheckin() {
   const queryClient = useQueryClient()
   return useMutation<CheckinResponse, Error, CheckinRequest>({
-    mutationFn: async (json) => (await $checkin({ json })).json(),
+    mutationFn: async (json) => parseApiResponse(await $checkin({ json })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['today'] })
       queryClient.invalidateQueries({ queryKey: ['goals'] })

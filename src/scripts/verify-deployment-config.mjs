@@ -54,6 +54,7 @@ const requiredEnvVars = [
   'DATABASE_URL',
   'NEXT_PUBLIC_APP_URL',
   'GOAL_MATE_SECRET',
+  'BETTER_AUTH_SECRET',
 ]
 
 const defaultedEnvVars = [

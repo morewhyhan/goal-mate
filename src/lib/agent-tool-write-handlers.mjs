@@ -15,6 +15,13 @@ import { ensureLogPeriodRollups } from './log-period-rollup.mjs'
 import { buildMetaCognitionHypothesis, persistMetaCognitionHypothesis } from './meta-cognition-layer.mjs'
 import { submitControlLoopFeedback } from './control-loop-episode.mjs'
 import { modelSecretWriteData } from './model-secret.mjs'
+import { pauseQqProactiveContact } from './qq-contact-policy.mjs'
+import {
+  buildProactiveContactMetadata,
+  isProactiveContactDisableInput,
+  normalizeProactiveContactCadence,
+  RECOMMENDED_PROACTIVE_CONTACT_RULES,
+} from './proactive-contact-control.mjs'
 
 const goalStatuses = new Set(['DRAFT', 'CLARIFYING', 'CONFIRMED', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ABANDONED', 'ARCHIVED'])
 const keyResultStatuses = new Set(['ACTIVE', 'ACHIEVED', 'AT_RISK', 'ABANDONED'])
@@ -23,6 +30,141 @@ const conditionTypes = new Set(['HARD', 'ASSUMED', 'SUPPORTING'])
 const conditionStatuses = new Set(['MISSING', 'PARTIAL', 'SATISFIED', 'INVALIDATED'])
 const stageStatuses = new Set(['DRAFT', 'ACTIVE', 'COMPLETED', 'ADJUSTED', 'CANCELLED'])
 const DAY_MS = 24 * 60 * 60 * 1000
+
+const fallbackUserSettingCreate = {
+  general: { locale: 'zh-CN', timezone: 'Asia/Shanghai', week_start: 'monday' },
+  goals: { max_active_goals: 1, review_cadence: 'weekly' },
+  logs: {
+    vault_root: 'logs/',
+    naming_pattern: 'YYYY/Q#/YYYY-MM/W##/YYYY-MM-DD.md',
+    auto_write_checkin: true,
+    auto_write_review: true,
+    preserve_user_edits: true,
+  },
+  today: { generate_time: '08:30', low_energy_mode: true, heatmap_scope: 'year' },
+  agent: {
+    can_read_goals: true,
+    can_read_logs: true,
+    memory_enabled: true,
+    require_confirm_goal_changes: true,
+    require_confirm_setting_changes: true,
+    require_confirm_external_actions: true,
+  },
+  notifications: {
+    morning_checkin_time: '08:30',
+    evening_review_time: '21:30',
+    quiet_hours: '23:00-07:30',
+    channel: 'web',
+    max_daily_prompts: 2,
+    proactive_contact_enabled: false,
+    proactive_contact_cadence: 'balanced',
+    proactive_contact_pause_after: 3,
+  },
+  dataPrivacy: { redact_secrets: true, export_markdown: true, local_first_mode: false },
+}
+
+async function enableSharedProactiveContactSettings(prisma, userId, input, now) {
+  const current = await prisma.userSetting.findUnique({ where: { userId } })
+  const cadence = normalizeProactiveContactCadence(input.cadence)
+  const updatedAt = now.toISOString()
+  const notifications = {
+    ...fallbackUserSettingCreate.notifications,
+    ...asObject(current?.notifications),
+    proactive_contact_enabled: true,
+    proactive_contact_cadence: cadence,
+    proactive_contact_consent_updated_at: updatedAt,
+    proactive_contact_paused_reason: null,
+    proactive_contact_paused_at: null,
+  }
+  await prisma.userSetting.upsert({
+    where: { userId },
+    update: { notifications },
+    create: { userId, ...fallbackUserSettingCreate, notifications },
+  })
+  return { cadence, updatedAt }
+}
+
+async function resolveSharedProactiveContactBinding(prisma, userId, input) {
+  const requestedContextId = readAgentToolString(input, 'qqContextId')
+  const requestedContextType = readAgentToolString(input, 'qqContextType')
+  const binding = await prisma.qqChatBinding.findFirst({
+    where: requestedContextId
+      ? {
+          userId,
+          status: 'ENABLED',
+          contextId: requestedContextId,
+          ...(requestedContextType ? { contextType: requestedContextType } : {}),
+        }
+      : {
+          userId,
+          status: 'ENABLED',
+          // Never infer permission to publish private goal reminders into a
+          // group or channel. A Web confirmation may safely default only to
+          // the user's most recent direct QQ conversation.
+          contextType: 'c2c',
+        },
+    orderBy: { updatedAt: 'desc' },
+  })
+  if (!binding) {
+    throw new Error(
+      requestedContextId
+        ? '这个 QQ 会话没有有效绑定，不能开启主动联系。请先重新绑定。'
+        : '还没有可用于私人提醒的 QQ 单聊。请先绑定 QQ 单聊，再开启主动联系。',
+    )
+  }
+  return binding
+}
+
+async function upsertSharedAutonomousReminderRules(prisma, userId, input, now) {
+  const binding = await resolveSharedProactiveContactBinding(prisma, userId, input)
+  const { cadence, updatedAt } = await enableSharedProactiveContactSettings(prisma, userId, input, now)
+  const baseMetadata = buildProactiveContactMetadata({ ...input, cadence }, now)
+  const authorizedMetadata = {
+    ...baseMetadata,
+    qqContextId: binding.contextId,
+    qqContextType: binding.contextType,
+    contactConsent: {
+      ...asObject(baseMetadata.contactConsent),
+      qqContextId: binding.contextId,
+      qqContextType: binding.contextType,
+    },
+  }
+  const rules = []
+  for (const candidate of RECOMMENDED_PROACTIVE_CONTACT_RULES) {
+    const existing = await prisma.reminderRule.findFirst({
+      where: { userId, reminderType: candidate.reminderType, channel: 'qq' },
+      orderBy: { updatedAt: 'desc' },
+    })
+    const data = {
+      goalId: readAgentToolString(input, 'goalId') || existing?.goalId || null,
+      reminderType: candidate.reminderType,
+      channel: 'qq',
+      schedule: candidate.schedule,
+      timezone: readAgentToolString(input, 'timezone', existing?.timezone || 'Asia/Shanghai'),
+      maxPerDay: 1,
+      quietHours: input.quietHours || existing?.quietHours || { range: '23:00-07:30' },
+      enabled: true,
+      metadata: {
+        ...asObject(existing?.metadata),
+        ...authorizedMetadata,
+        candidateWindow: {
+          reminderType: candidate.reminderType,
+          selectedBy: 'agent_recommendation',
+        },
+      },
+    }
+    rules.push(existing
+      ? await prisma.reminderRule.update({ where: { id: existing.id }, data })
+      : await prisma.reminderRule.create({ data: { userId, ...data } }))
+  }
+  return {
+    mode: 'autonomous',
+    cadence,
+    consentUpdatedAt: updatedAt,
+    qqContextType: binding.contextType,
+    rules,
+  }
+}
 
 function normalizeGoalStatus(value, fallback) {
   const normalized = String(value || '').trim().toUpperCase()
@@ -572,9 +714,64 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
   }
 
   if (toolName === 'reminder.schedule') {
+    const mode = readAgentToolString(input, 'mode').toLowerCase()
+    if (isProactiveContactDisableInput(input) && !readAgentToolString(input, 'ruleId')) {
+      const paused = await pauseQqProactiveContact(prisma, userId, {
+        reasonCode: readAgentToolString(input, 'reason', 'user_requested_pause'),
+      })
+      if (typeof prisma.agentToolAction?.updateMany === 'function') {
+        await prisma.agentToolAction.updateMany({
+          where: {
+            userId,
+            toolName: 'reminder.schedule',
+            status: 'pending_confirmation',
+          },
+          data: {
+            status: 'rejected',
+            errorMessage: '用户随后要求暂停主动联系，此前待确认的开启动作已失效。',
+          },
+        })
+      }
+      return {
+        targetId: paused.disabledRuleIds[0],
+        result: {
+          mode: 'pause',
+          ...paused,
+        },
+      }
+    }
+
+    if (mode === 'autonomous') {
+      const result = await upsertSharedAutonomousReminderRules(prisma, userId, input, new Date())
+      return { targetId: result.rules[0]?.id, result }
+    }
+
     const reminderType = readAgentToolString(input, 'reminderType', 'morning_planning')
     const schedule = readAgentToolString(input, 'schedule', '08:30')
     const ruleId = readAgentToolString(input, 'ruleId')
+    const enabled = readAgentToolBoolean(input, 'enabled') ?? true
+    const now = new Date()
+    let confirmedContact = null
+    let authorizedBinding = null
+    if (enabled) {
+      authorizedBinding = await resolveSharedProactiveContactBinding(prisma, userId, input)
+      confirmedContact = await enableSharedProactiveContactSettings(prisma, userId, input, now)
+    }
+    const baseConsentMetadata = enabled
+      ? buildProactiveContactMetadata({ ...input, cadence: confirmedContact?.cadence }, now)
+      : {}
+    const consentMetadata = authorizedBinding
+      ? {
+          ...baseConsentMetadata,
+          qqContextId: authorizedBinding.contextId,
+          qqContextType: authorizedBinding.contextType,
+          contactConsent: {
+            ...asObject(baseConsentMetadata.contactConsent),
+            qqContextId: authorizedBinding.contextId,
+            qqContextType: authorizedBinding.contextType,
+          },
+        }
+      : baseConsentMetadata
     const data = {
       goalId: readAgentToolString(input, 'goalId') || null,
       reminderType,
@@ -583,8 +780,11 @@ export async function runSharedWriteToolHandler(prisma, userId, toolName, input 
       timezone: readAgentToolString(input, 'timezone', 'Asia/Shanghai'),
       maxPerDay: Math.round(readAgentToolNumber(input, 'maxPerDay', 2)),
       quietHours: input.quietHours || undefined,
-      enabled: readAgentToolBoolean(input, 'enabled') ?? true,
-      metadata: input.metadata || undefined,
+      enabled,
+      metadata: {
+        ...asObject(input.metadata),
+        ...consentMetadata,
+      },
     }
     const rule = ruleId
       ? await prisma.reminderRule.update({ where: { id: ruleId }, data })

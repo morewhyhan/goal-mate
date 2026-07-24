@@ -171,7 +171,12 @@ export function LogsView() {
           </button>
         </div>
         <div className="mt-6 space-y-1">
-          {treeQuery.isLoading ? (
+          {treeQuery.isError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800">
+              <p>{treeQuery.error?.message || '日志读取失败。'}</p>
+              <button onClick={() => treeQuery.refetch()} className="mt-3 rounded-full bg-stone-950 px-3 py-1.5 text-xs font-semibold text-white">重新读取</button>
+            </div>
+          ) : treeQuery.isLoading ? (
             <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm leading-6 text-stone-500">
               正在读取 Markdown 日志树。
             </div>
@@ -196,13 +201,20 @@ export function LogsView() {
           </div>
           <button disabled={!canSave || !isDirty || updateLog.isPending} onClick={handleSave} className="rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存</button>
         </div>
-        <textarea
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          placeholder="这里显示真实 Markdown 日志。没有日志时，不展示示例文本。"
-          disabled={!canSave}
-          className="min-h-0 flex-1 resize-none bg-transparent p-6 font-mono text-sm leading-7 text-stone-800 outline-none"
-        />
+        {logQuery.isError ? (
+          <div className="m-6 rounded-2xl border border-red-200 bg-white p-5 text-sm leading-6 text-red-800">
+            <p>{logQuery.error?.message || '这篇日志暂时无法读取。'}</p>
+            <button onClick={() => logQuery.refetch()} className="mt-3 rounded-full bg-stone-950 px-3 py-1.5 text-xs font-semibold text-white">重新读取</button>
+          </div>
+        ) : (
+          <textarea
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="这里显示真实 Markdown 日志。没有日志时，不展示示例文本。"
+            disabled={!canSave}
+            className="min-h-0 flex-1 resize-none bg-transparent p-6 font-mono text-sm leading-7 text-stone-800 outline-none"
+          />
+        )}
       </main>
     </div>
   )

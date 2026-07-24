@@ -29,10 +29,12 @@ const reminderRuleInputSchema = z.object({
   timezone: z.string().min(1).default('Asia/Shanghai'),
   maxPerDay: z.number().int().min(1).max(8).default(1),
   quietHours: z.string().min(1).default('23:00-07:30'),
-  enabled: z.boolean().default(true),
+  enabled: z.boolean().default(false),
 })
 
 const reminderRulesSchema = z.object({
+  proactiveContactEnabled: z.boolean().default(false),
+  cadence: z.enum(['light', 'balanced', 'supportive']).default('balanced'),
   rules: z.array(reminderRuleInputSchema).min(1),
 })
 
@@ -49,10 +51,10 @@ const DEFAULT_QQ_MESSAGE_API_BASE = 'https://api.sgroup.qq.com'
 const DEFAULT_QQ_TOKEN_API_BASE = 'https://bots.qq.com'
 
 const defaultReminderRules = [
-  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
-  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
-  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
-  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
 ]
 
 function modelForSettings(config: any) {
@@ -110,6 +112,14 @@ function deploymentEnvConfig() {
       value: maskEnvValue(process.env.GOAL_MATE_SECRET),
       reason: '用于加密 Settings 中保存的模型密钥和机器人 token。',
     },
+    {
+      key: 'BETTER_AUTH_SECRET',
+      label: '登录会话密钥',
+      configured: envConfigured('BETTER_AUTH_SECRET'),
+      secret: true,
+      value: maskEnvValue(process.env.BETTER_AUTH_SECRET),
+      reason: '用于签名登录会话，生产环境必须单独设置。',
+    },
   ]
 
   return {
@@ -157,7 +167,22 @@ async function ensureDefaultReminderRules(userId: string) {
     const existing = await prisma.reminderRule.findFirst({
       where: { userId, reminderType: rule.reminderType, channel: rule.channel },
     })
-    if (!existing) await prisma.reminderRule.create({ data: { userId, ...rule, quietHours: { range: rule.quietHours }, metadata: { source: 'settings_default' } } })
+    if (!existing) {
+      await prisma.reminderRule.create({
+        data: {
+          userId,
+          ...rule,
+          quietHours: { range: rule.quietHours },
+          metadata: {
+            source: 'settings_recommended',
+            recommended: true,
+            scheduleMode: 'candidate_window',
+            candidateWindow: { reminderType: rule.reminderType, selectedBy: 'system_recommendation' },
+            activeContactConsent: false,
+          },
+        },
+      })
+    }
   }
 }
 
@@ -539,6 +564,41 @@ const app = new Hono()
     if (!userId) return unauthorized(c)
 
     const input = c.req.valid('json')
+    const authorizedBinding = input.proactiveContactEnabled
+      ? await prisma.qqChatBinding.findFirst({
+          where: {
+            userId,
+            status: 'ENABLED',
+            contextType: 'c2c',
+          },
+          orderBy: { updatedAt: 'desc' },
+        })
+      : null
+    if (input.proactiveContactEnabled && !authorizedBinding) {
+      return c.json({
+        error: {
+          code: 'QQ_C2C_BINDING_REQUIRED',
+          message: '开启主动联系前，请先绑定一个 QQ 单聊。系统不会把私人目标提醒自动发到群聊。',
+        },
+      }, 400)
+    }
+    const consentUpdatedAt = new Date().toISOString()
+    const currentSettings = await prisma.userSetting.findUnique({ where: { userId } })
+    const notifications = {
+      ...defaultUserSettings.notifications,
+      ...asRecord(currentSettings?.notifications),
+      proactive_contact_enabled: input.proactiveContactEnabled,
+      proactive_contact_cadence: input.cadence,
+      proactive_contact_consent_updated_at: consentUpdatedAt,
+      proactive_contact_paused_reason: null,
+      proactive_contact_paused_at: null,
+    }
+    await prisma.userSetting.upsert({
+      where: { userId },
+      update: { notifications },
+      create: { userId, ...defaultUserSettings, notifications },
+    })
+
     const saved = []
     for (const rule of input.rules) {
       const existing = rule.id
@@ -552,8 +612,26 @@ const app = new Hono()
         timezone: rule.timezone,
         maxPerDay: rule.maxPerDay,
         quietHours: { range: rule.quietHours },
-        enabled: rule.enabled,
-        metadata: { source: 'settings_ui' },
+        enabled: input.proactiveContactEnabled && rule.enabled,
+        metadata: {
+          ...asRecord(existing?.metadata),
+          source: 'settings_ui',
+          recommended: true,
+          scheduleMode: 'candidate_window',
+          candidateWindow: { reminderType: rule.reminderType, selectedBy: 'cadence_preset' },
+          cadence: input.cadence,
+          qqContextId: authorizedBinding?.contextId || null,
+          qqContextType: authorizedBinding?.contextType || null,
+          activeContactConsent: input.proactiveContactEnabled,
+          consentUpdatedAt,
+          contactConsent: {
+            granted: input.proactiveContactEnabled,
+            source: input.proactiveContactEnabled ? 'settings_ui' : 'settings_ui_revoked',
+            updatedAt: consentUpdatedAt,
+            qqContextId: authorizedBinding?.contextId || null,
+            qqContextType: authorizedBinding?.contextType || null,
+          },
+        },
       }
 
       const nextRule = existing
@@ -562,7 +640,13 @@ const app = new Hono()
       saved.push(nextRule)
     }
 
-    return c.json({ data: saved })
+    return c.json({
+      data: saved,
+      contactPreferences: {
+        proactiveContactEnabled: input.proactiveContactEnabled,
+        cadence: input.cadence,
+      },
+    })
   })
   .get('/', async (c) => {
     const userId = await getCurrentUserId(c)
@@ -576,6 +660,7 @@ const app = new Hono()
     if (!userId) return unauthorized(c)
 
     const input = c.req.valid('json')
+    const currentSettings = await prisma.userSetting.findUnique({ where: { userId } })
     const merged = {
       general: {
         ...defaultUserSettings.general,
@@ -596,6 +681,7 @@ const app = new Hono()
       agent: { ...defaultUserSettings.agent, ...(input.agent || {}) },
       notifications: {
         ...defaultUserSettings.notifications,
+        ...asRecord(currentSettings?.notifications),
         ...(input.notifications || {}),
         channel: defaultUserSettings.notifications.channel,
         max_daily_prompts: defaultUserSettings.notifications.max_daily_prompts,

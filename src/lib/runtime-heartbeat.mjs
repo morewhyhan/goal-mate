@@ -55,10 +55,21 @@ export function summarizeRuntimeHeartbeat(record, options = {}) {
     }
   }
 
+  const normalizedStatus = String(record.status || 'ok').toLowerCase()
+  const unavailableStatuses = new Set([
+    'error',
+    'failed',
+    'reconnecting',
+    'stopping',
+    'waiting_config',
+    'missing_config',
+  ])
+  const online = !unavailableStatuses.has(normalizedStatus)
+
   return {
     status: record.status || 'ok',
-    online: true,
-    label: record.detail || '进程在线',
+    online,
+    label: record.detail || (online ? '进程在线' : '进程当前不可用'),
     evidence: `pid=${record.pid || 'unknown'}; last=${lastSeenAt?.toISOString?.() || 'unknown'}`,
     lastSeenAt,
     pid: record.pid,

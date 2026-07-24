@@ -32,12 +32,195 @@ const quickPrompts = [
   { label: '建立目标', prompt: '我想达到的结果是：\n截止时间是：\n我现在的情况是：' },
   { label: '下一步', prompt: '我现在下一步应该做什么？' },
   { label: '没做诊断', prompt: '我今天没有完成，帮我判断原因，并把下一步改小。' },
+  { label: '由你提醒', prompt: '你根据我的目标状态，在合适的时候主动提醒我开始。安静时段不要打扰，完成或暂停后就停止。' },
+  { label: '暂停提醒', prompt: '暂停所有主动提醒，直到我再次明确开启。' },
   { label: '生成复盘', prompt: '根据最近目标、行动和日志，帮我生成今天的复盘。' },
   { label: '写入日志', prompt: '把我接下来这段反馈写入今天日志：' },
 ]
 
 function isFirstGoalIntake(content: string) {
   return /我想达到的结果是|截止时间是|我现在的情况是/.test(content)
+}
+
+function asList(value: unknown) {
+  return Array.isArray(value) ? value : []
+}
+
+function readableDate(value: unknown) {
+  if (!value) return ''
+  const date = new Date(String(value))
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
+}
+
+function humanToolLabel(toolName: string, input: any) {
+  if (toolName === 'goal.update') return '确认当前目标'
+  if (toolName === 'today.set_next_action') return '调整当前任务'
+  if (toolName === 'checkin.submit') return '记录执行反馈'
+  if (toolName === 'log.write_daily') return '整理推进记录'
+  if (toolName === 'review.generate') return '生成复盘'
+  if (toolName === 'settings.model.update') return '更新模型设置'
+  if (toolName === 'reminder.schedule') {
+    return input?.enabled === false || ['pause', 'disable', 'off', 'revoke'].includes(String(input?.mode || '').toLowerCase())
+      ? '暂停主动提醒'
+      : '开启助手主动联系'
+  }
+  return '更新系统状态'
+}
+
+function humanStatusLabel(status: string) {
+  if (status === 'pending_confirmation') return '等待你确认'
+  if (status === 'executed') return '已执行'
+  if (status === 'drafted') return '草稿已生成'
+  if (status === 'approved') return '已确认'
+  if (status === 'rejected') return '已取消'
+  if (status === 'failed') return '执行失败'
+  return '已处理'
+}
+
+function humanActionSummary(toolName: string, input: any) {
+  if (toolName === 'reminder.schedule') {
+    if (input?.enabled === false || ['pause', 'disable', 'off', 'revoke'].includes(String(input?.mode || '').toLowerCase())) {
+      return '停止主动联系；你之后明确说重新开启时才会恢复。'
+    }
+    if (String(input?.mode || '').toLowerCase() === 'autonomous') {
+      return '允许助手根据目标状态，在推荐候选时段自行决定发送、跳过或延后；安静时段、已完成、等待回复和连续无回应都会抑制提醒。'
+    }
+    return `调整提醒规则${input?.schedule ? `，候选时间 ${input.schedule}` : ''}。`
+  }
+  if (toolName === 'goal.update') return '把你核对过的目标设为当前推进方向。'
+  if (toolName === 'today.set_next_action') return `把当前下一步调整为“${input?.title || '新的行动'}”。`
+  if (toolName === 'settings.model.update') return '更新模型连接配置；密钥不会显示在对话里。'
+  return '执行后会同步到目标、行动或推进记录；不会要求你手工维护内部结构。'
+}
+
+function GoalDraftReviewCard({
+  message,
+  action,
+  onConfirm,
+  onReject,
+  busy,
+}: {
+  message: any
+  action?: any
+  onConfirm: (id: string) => void
+  onReject: (id: string) => void
+  busy: boolean
+}) {
+  const output = parseStructuredOutput(message)
+  const draft = output?.tool_result?.result
+  const goal = draft?.goal
+  if (!goal) return null
+
+  const reasoningCard = draft?.reasoningCard || {}
+  const keyResults = asList(draft?.keyResults)
+  const conditions = asList(draft?.conditions)
+  const stages = asList(draft?.stagePlans)
+  const successSignals = asList(reasoningCard?.successSignals)
+  const dailyAction = draft?.dailyAction
+  const actionId = action?.id || output?.toolActionId
+  const needsConfirmation = Boolean(output?.needsConfirmation || action?.status === 'pending_confirmation')
+  const status = action?.status || (needsConfirmation ? 'pending_confirmation' : 'processed')
+  const isPending = status === 'pending_confirmation'
+
+  return (
+    <section className="mt-4 overflow-hidden rounded-[24px] border border-amber-200 bg-amber-50 text-stone-900">
+      <div className="border-b border-amber-200 bg-white/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">目标草稿 · 请核对</p>
+            <h3 className="mt-2 text-xl font-semibold leading-7 text-stone-950">{goal.title || '新目标'}</h3>
+            {goal.interpretedGoal ? <p className="mt-2 text-sm leading-6 text-stone-600">{goal.interpretedGoal}</p> : null}
+          </div>
+          <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(status)}`}>
+            {isPending ? '等待你确认' : status === 'rejected' ? '已取消' : '已处理'}
+          </span>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-stone-600">
+          {readableDate(goal.horizonEnd) ? <span className="rounded-full bg-white px-3 py-1.5 ring-1 ring-amber-200">目标日期 {readableDate(goal.horizonEnd)}</span> : null}
+          {reasoningCard?.recommendedFocus ? <span className="rounded-full bg-white px-3 py-1.5 ring-1 ring-amber-200">当前重点：{reasoningCard.recommendedFocus}</span> : null}
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2">
+        <div className="rounded-[18px] bg-white p-4 ring-1 ring-amber-100">
+          <h4 className="text-sm font-semibold text-stone-950">做到什么算成功</h4>
+          <ul className="mt-2 space-y-2 text-sm leading-6 text-stone-600">
+            {(successSignals.length ? successSignals : keyResults.map((item: any) => item.title)).map((item: any, index: number) => (
+              <li key={`${String(item)}-${index}`} className="flex gap-2">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                <span>{String(item)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-[18px] bg-white p-4 ring-1 ring-amber-100">
+          <h4 className="text-sm font-semibold text-stone-950">关键结果</h4>
+          <ul className="mt-2 space-y-2 text-sm leading-6 text-stone-600">
+            {keyResults.map((item: any) => (
+              <li key={item.id || item.title}>
+                <strong className="font-semibold text-stone-800">{item.title}</strong>
+                {item.currentValue || item.targetValue ? <span className="block text-xs text-stone-500">{item.currentValue || '当前待记录'} → {item.targetValue || '完成'}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-[18px] bg-white p-4 ring-1 ring-amber-100">
+          <h4 className="text-sm font-semibold text-stone-950">必须具备的条件</h4>
+          <ul className="mt-2 space-y-2 text-sm leading-6 text-stone-600">
+            {conditions.map((item: any) => (
+              <li key={item.id || item.title}>
+                <strong className="font-semibold text-stone-800">{item.title}</strong>
+                {item.whyRequired ? <span className="block text-xs leading-5 text-stone-500">{item.whyRequired}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-[18px] bg-white p-4 ring-1 ring-amber-100">
+          <h4 className="text-sm font-semibold text-stone-950">推进阶段</h4>
+          <ol className="mt-2 space-y-2 text-sm leading-6 text-stone-600">
+            {stages.map((item: any, index: number) => (
+              <li key={item.id || item.title} className="flex gap-2">
+                <span className="font-semibold text-stone-400">{index + 1}.</span>
+                <span><strong className="font-semibold text-stone-800">{item.title}</strong>{item.stageGoal ? `：${item.stageGoal}` : ''}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+
+      {dailyAction ? (
+        <div className="mx-4 mb-4 rounded-[18px] bg-stone-950 p-4 text-white">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">确认后的第一步</p>
+          <h4 className="mt-2 text-base font-semibold">{dailyAction.title}</h4>
+          <p className="mt-2 text-sm leading-6 text-white/70"><strong className="text-white">完成标准：</strong>{dailyAction.doneWhen}</p>
+          <p className="mt-1 text-sm leading-6 text-white/70"><strong className="text-white">最小启动：</strong>{dailyAction.minimumStep}</p>
+        </div>
+      ) : null}
+
+      <div className="border-t border-amber-200 p-4">
+        {isPending && actionId ? (
+          <>
+            <p className="text-xs leading-5 text-stone-600">方向正确就激活；有任何理解偏差，先不激活，直接在对话里告诉我哪里需要改。</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button disabled={busy} onClick={() => onConfirm(actionId)} className="rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
+                方向正确，设为当前目标
+              </button>
+              <button disabled={busy} onClick={() => onReject(actionId)} className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-stone-700 ring-1 ring-amber-200 disabled:cursor-not-allowed disabled:opacity-45">
+                先不激活
+              </button>
+            </div>
+          </>
+        ) : isPending ? (
+          <p className="text-xs font-medium text-amber-700">确认动作正在生成，稍后会自动刷新。</p>
+        ) : (
+          <p className="text-xs font-medium text-stone-500">{status === 'rejected' ? '这份草稿没有激活，你可以继续在对话中修改。' : '这份目标草稿已经处理。'}</p>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function ToolActionCard({
@@ -54,24 +237,29 @@ function ToolActionCard({
   busy: boolean
 }) {
   const output = parseStructuredOutput(message)
-  const toolName = action?.toolName || output?.toolIntent?.toolName || output?.toolName || 'agent.tool'
+  const requestedToolName = output?.toolIntent?.toolName || output?.tool_intent?.toolName
+  if (requestedToolName === 'goal.create_draft' && output?.tool_result?.result?.goal) {
+    return <GoalDraftReviewCard message={message} action={action} onConfirm={onConfirm} onReject={onReject} busy={busy} />
+  }
+
+  const toolName = action?.toolName || requestedToolName || output?.toolName || 'agent.tool'
   const actionId = action?.id || output?.toolActionId
   const needsConfirmation = Boolean(output?.needsConfirmation || action?.status === 'pending_confirmation')
   if (!actionId && !needsConfirmation) return null
 
   const status = action?.status || (needsConfirmation ? 'pending_confirmation' : 'processed')
-  const inputSummary = action?.inputSummary || JSON.stringify(output?.toolIntent?.input || {})
+  const actionInput = action?.input || output?.toolIntent?.input || output?.tool_intent?.input || {}
 
   return (
     <div className="mt-3 rounded-[22px] border border-amber-200 bg-amber-50 p-4 text-stone-900">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Agent Action</p>
-          <h3 className="mt-1 text-base font-semibold">{toolName}</h3>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">{status === 'pending_confirmation' ? '需要确认' : '系统动作'}</p>
+          <h3 className="mt-1 text-base font-semibold">{humanToolLabel(toolName, actionInput)}</h3>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(status)}`}>{status}</span>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(status)}`}>{humanStatusLabel(status)}</span>
       </div>
-      <p className="mt-3 line-clamp-2 text-xs leading-5 text-stone-600">{inputSummary}</p>
+      <p className="mt-3 text-xs leading-5 text-stone-600">{humanActionSummary(toolName, actionInput)}</p>
       {status === 'pending_confirmation' && actionId ? (
         <div className="mt-4 flex flex-wrap gap-2">
           <button disabled={busy} onClick={() => onConfirm(actionId)} className="rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
@@ -136,6 +324,7 @@ export function AgentView() {
   const pendingActions = toolActions.filter((action: any) => action.status === 'pending_confirmation')
   const isMutatingThread = updateThread.isPending || deleteThread.isPending || clearThreadMessages.isPending
   const modelConfigured = Boolean(controlCenter.data?.data?.model?.apiKeyConfigured)
+  const conversationError = threadsQuery.error || messagesQuery.error || toolActionsQuery.error
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: 'end' })
@@ -224,11 +413,6 @@ export function AgentView() {
   const sendContent = (rawContent: string) => {
     const content = rawContent.trim()
     if (!content || isSending) return
-    if (!modelConfigured) {
-      setDraft(content)
-      textareaRef.current?.focus()
-      return
-    }
     setDraft('')
     setOptimisticMessage(content)
 
@@ -378,7 +562,25 @@ export function AgentView() {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
           <div className="mx-auto max-w-[920px] space-y-5">
-            {messagesQuery.isLoading || threadsQuery.isLoading ? (
+            {conversationError ? (
+              <div className="flex min-h-[360px] items-center justify-center">
+                <div className="max-w-xl rounded-[28px] border border-red-200 bg-white p-8 text-center shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-600">对话暂时不可用</p>
+                  <h3 className="mt-3 text-2xl font-semibold text-stone-950">暂时无法读取这段对话。</h3>
+                  <p className="mt-3 text-sm leading-6 text-stone-600">{conversationError.message}</p>
+                  <button
+                    onClick={() => {
+                      threadsQuery.refetch()
+                      messagesQuery.refetch()
+                      toolActionsQuery.refetch()
+                    }}
+                    className="mt-5 rounded-full bg-stone-950 px-4 py-2 text-xs font-semibold text-white"
+                  >
+                    重新读取
+                  </button>
+                </div>
+              </div>
+            ) : messagesQuery.isLoading || threadsQuery.isLoading ? (
               <div className="flex min-h-[360px] items-center justify-center">
                 <div className="max-w-xl rounded-[28px] border border-stone-200 bg-white p-8 text-center shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">Loading</p>
@@ -418,11 +620,11 @@ export function AgentView() {
               <div className="flex min-h-[360px] items-center justify-center">
                 <div className="max-w-xl rounded-[28px] border border-dashed border-stone-200 bg-white p-8 text-center shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">First message</p>
-                  <h3 className="mt-3 text-2xl font-semibold text-stone-950">{modelConfigured ? '先说你想达到什么结果' : '先配置模型，再让 Agent 拆目标'}</h3>
+                  <h3 className="mt-3 text-2xl font-semibold text-stone-950">{modelConfigured ? '先说你想达到什么结果' : '基础控制可用，完整理解需要模型'}</h3>
                   <p className="mt-3 text-sm leading-6 text-stone-500">
                     {modelConfigured
                       ? '第一次使用时，不需要研究 OKR、甘特图或日志。直接告诉 Agent：结果、截止时间、当前情况。它会把这些转成目标结构和今天的下一步。'
-                      : '当前还没有模型 API Key。你可以先写草稿，但 Agent 无法真正理解、拆解和调用工具推进。'}
+                      : '当前还没有模型 API Key。你仍可直接暂停提醒、反馈“做完了/没做”或读取当前任务；需要理解复杂目标和自由对话时再去 Settings 配置模型。'}
                   </p>
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
                     <button

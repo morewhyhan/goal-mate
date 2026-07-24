@@ -48,6 +48,19 @@ export function GoalsView() {
     )
   }
 
+  if (goalsQuery.isError) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-[#f4f1ea] p-5 md:p-8">
+        <section className="rounded-[24px] border border-red-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-red-500">目标读取失败</p>
+          <h1 className="mt-2 text-2xl font-semibold text-stone-950">暂时无法读取目标状态。</h1>
+          <p className="mt-2 text-sm leading-6 text-stone-600">{goalsQuery.error?.message || '暂时无法读取目标状态，请稍后重试。'}</p>
+          <button onClick={() => goalsQuery.refetch()} className="mt-5 rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white">重新读取</button>
+        </section>
+      </div>
+    )
+  }
+
   if (!apiGoals.length) {
     return (
       <div className="min-h-[calc(100vh-4rem)] space-y-5 bg-[#f4f1ea] p-5 md:p-8">
@@ -66,15 +79,15 @@ export function GoalsView() {
               </p>
             </div>
             <div className="flex rounded-full border border-stone-200 bg-white p-1 text-sm font-semibold text-stone-500">
-              <button onClick={() => setActiveView('okr')} className={`rounded-full px-4 py-2 ${activeView === 'okr' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>OKR</button>
-              <button onClick={() => setActiveView('gantt')} className={`rounded-full px-4 py-2 ${activeView === 'gantt' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>Gantt</button>
+              <button onClick={() => setActiveView('okr')} className={`rounded-full px-4 py-2 ${activeView === 'okr' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>目标结构</button>
+              <button onClick={() => setActiveView('gantt')} className={`rounded-full px-4 py-2 ${activeView === 'gantt' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>推进时间线</button>
             </div>
           </div>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="rounded-[24px] border border-dashed border-stone-300 bg-white p-8 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">{activeView === 'okr' ? 'OKR empty' : 'Gantt empty'}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">{activeView === 'okr' ? '目标结构' : '推进时间线'}</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">这里等待真实目标生成。</h2>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-stone-500">
               当前没有任何目标，所以不渲染假的 KR、阶段或甘特条。{modelConfigured ? '下一步只需要去 Agent 说清楚你想达到的结果。' : '下一步先配置模型密钥，然后再让 Agent 生成目标结构。'}
@@ -89,11 +102,11 @@ export function GoalsView() {
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">生成后会看到</p>
             <div className="mt-4 space-y-3">
               {[
-                ['Objective', '你要达到的结果。'],
-                ['KR', '能证明结果达成的关键指标。'],
-                ['Conditions', '达成 KR 必须满足的条件。'],
-                ['Stages', '按周期推进的阶段。'],
-                ['Daily Actions', '真正落到今天的下一步。'],
+                ['想达到的结果', 'AI 对你最终目的的当前理解。'],
+                ['完成证据', '能证明结果真正达成的指标。'],
+                ['必要条件', '结果成立前必须补齐的条件。'],
+                ['推进阶段', '当前处于哪一步，下一阶段是什么。'],
+                ['当前行动', '真正落到今天的下一步。'],
               ].map(([label, body]) => (
                 <div key={label} className="rounded-2xl bg-stone-50 p-3">
                   <p className="text-sm font-semibold text-stone-950">{label}</p>
@@ -239,8 +252,8 @@ export function GoalsView() {
               </div>
             </div>
             <div className="flex rounded-full border border-stone-200 bg-white p-1 text-sm font-semibold text-stone-500">
-              <button onClick={() => setActiveView('okr')} className={`flex-1 rounded-full px-4 py-2 ${activeView === 'okr' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>OKR</button>
-              <button onClick={() => setActiveView('gantt')} className={`flex-1 rounded-full px-4 py-2 ${activeView === 'gantt' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>Gantt</button>
+              <button onClick={() => setActiveView('okr')} className={`flex-1 rounded-full px-4 py-2 ${activeView === 'okr' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>目标结构</button>
+              <button onClick={() => setActiveView('gantt')} className={`flex-1 rounded-full px-4 py-2 ${activeView === 'gantt' ? 'bg-stone-950 text-white' : 'hover:text-stone-950'}`}>推进时间线</button>
             </div>
           </div>
         </div>
@@ -249,14 +262,14 @@ export function GoalsView() {
       {activeView === 'okr' ? (
         <section className="overflow-hidden rounded-[22px] border border-stone-200 bg-white shadow-sm">
           <div className="grid bg-[#fbfcf8] text-xs font-bold uppercase tracking-[0.18em] text-stone-400 lg:grid-cols-[1.05fr_1fr_1.3fr_150px]">
-            <div className="border-b border-r border-stone-200 p-4">Objective</div>
-            <div className="border-b border-r border-stone-200 p-4">Key Results</div>
-            <div className="border-b border-r border-stone-200 p-4">Necessary Conditions</div>
-            <div className="border-b border-stone-200 p-4">Progress</div>
+            <div className="border-b border-r border-stone-200 p-4">想达到的结果</div>
+            <div className="border-b border-r border-stone-200 p-4">完成证据</div>
+            <div className="border-b border-r border-stone-200 p-4">必要条件</div>
+            <div className="border-b border-stone-200 p-4">当前进展</div>
           </div>
           <div className="grid lg:grid-cols-[1.05fr_1fr_1.3fr_150px]">
             <div className="border-b border-r border-stone-200 p-5 lg:border-b-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">O</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">当前目的</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">{title}</h2>
               <p className="mt-3 text-sm leading-6 text-stone-500">{objective}</p>
               <p className="mt-4 rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-500">{horizon}</p>
@@ -268,7 +281,7 @@ export function GoalsView() {
                   const progress = typeof kr.progress === 'number' ? kr.progress : 0
                   return (
                     <div key={kr.id || kr.title} className="rounded-2xl bg-stone-50 p-3">
-                      <p className="text-xs font-bold text-stone-400">KR{index + 1}</p>
+                      <p className="text-xs font-bold text-stone-400">完成证据 {index + 1}</p>
                       <h3 className="mt-1 text-sm font-semibold leading-5 text-stone-950">{kr.title}</h3>
                       <p className="mt-1 text-xs leading-5 text-stone-500">{[kr.currentValue, kr.targetValue].filter(Boolean).join(' → ') || kr.whyNecessary || '等待证据'}</p>
                       <div className="mt-2 h-1.5 rounded-full bg-white">
@@ -277,7 +290,7 @@ export function GoalsView() {
                     </div>
                   )
                 }) : (
-                  <div className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm leading-6 text-stone-500">还没有 KR。KR 只保留能证明目标达成的结果。</div>
+                  <div className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm leading-6 text-stone-500">还没有完成证据。这里只保留能证明目标真正达成的结果。</div>
                 )}
               </div>
             </div>
@@ -308,7 +321,7 @@ export function GoalsView() {
             <div className="p-5">
               <div className="grid h-full content-center gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-stone-400">Overall</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-stone-400">整体进展</p>
                   <p className="mt-1 text-3xl font-semibold text-stone-950">{Math.round(overallProgress * 100)}%</p>
                 </div>
                 <div className="h-2 rounded-full bg-stone-100">
@@ -322,11 +335,11 @@ export function GoalsView() {
         <section className="overflow-hidden rounded-[22px] border border-stone-200 bg-white shadow-sm">
           <div className="min-w-[920px]">
             <div className="grid grid-cols-[320px_minmax(0,1fr)_96px] bg-[#fbfcf8] text-xs font-bold uppercase tracking-[0.18em] text-stone-400">
-              <div className="border-b border-r border-stone-200 p-4">Work Breakdown</div>
+              <div className="border-b border-r border-stone-200 p-4">推进结构</div>
               <div className="grid grid-cols-5 border-b border-r border-stone-200">
                 {timelineColumns.map((label) => <div key={label} className="border-r border-stone-200 p-4 last:border-r-0">{label}</div>)}
               </div>
-              <div className="border-b border-stone-200 p-4">Status</div>
+              <div className="border-b border-stone-200 p-4">状态</div>
             </div>
 
             {ganttRows.map((row) => {
@@ -356,7 +369,7 @@ export function GoalsView() {
             })}
           </div>
           <div className="border-t border-stone-200 bg-[#fbfcf8] p-4 text-sm text-stone-500">
-            当前阶段：{activeStageLabel}。Gantt 视图只展示推进结构和周期状态，不提供编辑操作。
+            当前阶段：{activeStageLabel}。这里仅用于查看推进结构和周期状态，调整请直接告诉 Agent。
           </div>
         </section>
       )}

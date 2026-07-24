@@ -8,6 +8,10 @@ import { AGENT_SYSTEM_PROMPT_VERSION, buildAgentSystemPrompt } from '@/lib/agent
 import { loadMetaCognitionHypotheses } from '@/lib/meta-cognition-layer.mjs'
 import { resolveModelApiKey } from '@/lib/model-secret.mjs'
 import { classifyModelProviderFailure, formatAgentModelFailureMessage, formatAgentModelNetworkFailureMessage, parseModelProviderError } from '@/lib/model-provider-errors'
+import {
+  generateAgentToolIntentWithPrisma,
+  generateAssistantReplyWithPrisma,
+} from '@/lib/agent-runtime-shared.mjs'
 
 function toChatRole(role: string) {
   const normalized = role.toLowerCase()
@@ -365,7 +369,7 @@ function generateFallbackAgentToolIntent(latestUserContent: string) {
 }
 
 function inferCheckinFeedbackIntent(content: string) {
-  if (/(假如|如果|要是).*(没做|未完成|没推进|做不动)/u.test(content)) return null
+  if (/(假如|如果|要是).*(没做|未完成|没推进|做不动|不想做|不想开始|不想碰)/u.test(content)) return null
 
   const feedbackInput = {
     userFeedback: trimForPrompt(content, 240),
@@ -389,7 +393,7 @@ function inferCheckinFeedbackIntent(content: string) {
     }
   }
 
-  if (/(没做|没有做|未完成|没完成|没推进|没开始|做不动|失败了|not[_ -]?done)/iu.test(content)) {
+  if (/(没做|没有做|未完成|没完成|没推进|没开始|做不动|不想做|不想开始|不想碰|提不起劲|失败了|not[_ -]?done)/iu.test(content)) {
     return {
       toolName: 'checkin.submit',
       input: { ...feedbackInput, result: 'not_done' },
@@ -436,7 +440,7 @@ function buildAgentReplyStructuredOutput(input: {
   }
 }
 
-export async function generateAssistantReply(userId: string, threadId: string, latestUserContent: string) {
+async function generateAssistantReplyLegacy(userId: string, threadId: string, latestUserContent: string) {
   const [modelConfig, runtimeSettings] = await Promise.all([
     prisma.modelConfig.findFirst({
       where: { userId, isDefault: true },
@@ -595,7 +599,18 @@ export async function generateAssistantReply(userId: string, threadId: string, l
   }
 }
 
-export async function generateAgentToolIntent(userId: string, latestUserContent: string) {
+export async function generateAssistantReply(userId: string, threadId: string, latestUserContent: string) {
+  return generateAssistantReplyWithPrisma(prisma, {
+    userId,
+    threadId,
+    latestUserContent,
+    defaultAgentSettings: defaultUserSettings.agent,
+    defaultChatModel,
+    channel: 'web',
+  })
+}
+
+async function generateAgentToolIntentLegacy(userId: string, latestUserContent: string) {
   const fallbackIntent = generateFallbackAgentToolIntent(latestUserContent)
   const runtimeSettings = await loadAgentRuntimeSettings(userId)
   const allowedFallbackIntent = filterToolIntentByRuntimeSettings(fallbackIntent, runtimeSettings)
@@ -663,4 +678,13 @@ export async function generateAgentToolIntent(userId: string, latestUserContent:
   } catch {
     return allowedFallbackIntent
   }
+}
+
+export async function generateAgentToolIntent(userId: string, latestUserContent: string) {
+  return generateAgentToolIntentWithPrisma(prisma, {
+    userId,
+    latestUserContent,
+    defaultAgentSettings: defaultUserSettings.agent,
+    defaultChatModel,
+  })
 }

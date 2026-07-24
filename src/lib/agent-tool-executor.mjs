@@ -12,6 +12,7 @@ import {
   runSharedWriteToolHandler,
 } from './agent-tool-write-handlers.mjs'
 import { encryptModelApiKey } from './model-secret.mjs'
+import { isProactiveContactDisableInput } from './proactive-contact-control.mjs'
 
 const sharedToolDefinitions = listSharedAgentTools()
 
@@ -83,9 +84,16 @@ async function loadAgentConfirmationPolicy(prisma, userId) {
   }
 }
 
-function shouldRequireConfirmation(definition, policy) {
+export function shouldRequireConfirmation(definition, policy, input) {
   if (definition.permission !== 'execute') return false
   if (definition.riskLevel === 'high') return true
+
+  // A check-in is the user's report of an observed fact, not a proposed
+  // system change. Requiring a second confirmation here would make the
+  // "tell the assistant what happened" path fail to record the feedback.
+  if (definition.name === 'checkin.submit') {
+    return false
+  }
 
   if (definition.name === 'goal.update' || definition.name === 'today.set_next_action') {
     return policy.requireConfirmGoalChanges
@@ -96,7 +104,9 @@ function shouldRequireConfirmation(definition, policy) {
   }
 
   if (definition.name === 'reminder.schedule') {
-    return policy.requireConfirmSettingChanges || policy.requireConfirmExternalActions
+    // Stopping contact is always safe and must take effect immediately.
+    // Starting or restoring external contact always needs an explicit second step.
+    return !isProactiveContactDisableInput(input)
   }
 
   return true
@@ -108,7 +118,7 @@ export async function executeAgentToolWithPrisma(prisma, context, toolName, rawI
 
   const input = secureAgentToolInput(definition.name, rawInput)
   const confirmationPolicy = await loadAgentConfirmationPolicy(prisma, context.userId)
-  const requiresConfirmation = !context.confirmed && shouldRequireConfirmation(definition, confirmationPolicy)
+  const requiresConfirmation = !context.confirmed && shouldRequireConfirmation(definition, confirmationPolicy, input)
 
   if (requiresConfirmation) {
     const action = await recordAgentToolActionWithPrisma(prisma, {

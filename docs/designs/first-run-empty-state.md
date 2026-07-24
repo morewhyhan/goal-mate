@@ -21,7 +21,7 @@
 6. Goals 只读展示 Objective / KR / Conditions / Stages / Daily Actions。
 7. Today 只显示今天唯一下一步。
 8. Check-in 或复盘后，Logs 自动沉淀 Markdown 推进记录。
-9. 用户可以稍后在 Settings 配置 QQ Bot，生成一次性绑定码并在 QQ 中发送绑定命令，让系统主动追问和提醒。
+9. 用户可以稍后在 Settings 配置 QQ Bot，生成一次性绑定码并在 QQ 中发送绑定命令，接通同一 Agent 对话；绑定本身不会开启主动联系，用户须另行明确授权。
 ```
 
 ## 3. 页面空状态

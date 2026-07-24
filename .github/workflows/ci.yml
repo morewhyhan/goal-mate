@@ -1,0 +1,35 @@
+name: Goal Mate CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    env:
+      DATABASE_URL: file:./ci.db
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+      BETTER_AUTH_URL: http://127.0.0.1:3000
+      BETTER_AUTH_SECRET: ci-only-auth-secret-that-is-never-used-in-production
+      GOAL_MATE_SECRET: ci-only-data-secret-that-is-never-used-in-production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm verify:static
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build

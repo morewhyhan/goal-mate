@@ -6,11 +6,20 @@ import {
   persistMetaCognitionEvaluations,
   persistMetaCognitionHypothesis,
 } from './meta-cognition-layer.mjs'
+import { persistFeedbackNextCommitment } from './today-action-planner.mjs'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
 function pad(value) {
   return String(value).padStart(2, '0')
+}
+
+function startOfLocalDay(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function endOfLocalDay(date = new Date()) {
+  return new Date(startOfLocalDay(date).getTime() + DAY_MS)
 }
 
 function asObject(value) {
@@ -75,6 +84,83 @@ async function readLogBooleanSetting(prisma, userId, key, fallback) {
   return typeof logs[key] === 'boolean' ? logs[key] : fallback
 }
 
+export function inferPromptInterventionSignal(feedbackValue = '') {
+  const feedback = String(feedbackValue || '').toLowerCase()
+  const exactTime = feedback.match(/(?:^|\D)([01]?\d|2[0-3])(?:[:：]([0-5]\d)|[点时](?:([0-5]?\d)分?)?)(?:\D|$)/u)
+  if (exactTime) {
+    const hour = String(Number(exactTime[1])).padStart(2, '0')
+    const minute = String(Number(exactTime[2] || exactTime[3] || 0)).padStart(2, '0')
+    return {
+      strategy: 'advance_prompt',
+      timingHint: `exact_time_${hour}_${minute}`,
+      timingLabel: `${hour}:${minute} 的行动窗口`,
+      leadMinutes: 10,
+      frequencyPolicy: 'do_not_increase',
+    }
+  }
+  if (/太晚|来不及|已经晚了/u.test(feedback)) {
+    return {
+      strategy: 'advance_prompt',
+      timingHint: 'earlier_than_previous_window',
+      timingLabel: '下一次真正能开始的行动窗口',
+      leadMinutes: 20,
+      frequencyPolicy: 'do_not_increase',
+    }
+  }
+  if (/太早|还没到时候|当时不能做/u.test(feedback)) {
+    return {
+      strategy: 'advance_prompt',
+      timingHint: 'closer_to_action_window',
+      timingLabel: '下一次真正能开始的行动窗口',
+      leadMinutes: 5,
+      frequencyPolicy: 'do_not_increase',
+    }
+  }
+  if (/早上|上午|起床/u.test(feedback)) {
+    return {
+      strategy: 'advance_prompt',
+      timingHint: 'morning_action_window',
+      timingLabel: '上午行动窗口',
+      leadMinutes: 10,
+      frequencyPolicy: 'do_not_increase',
+    }
+  }
+  if (/中午|午休/u.test(feedback)) {
+    return {
+      strategy: 'advance_prompt',
+      timingHint: 'midday_action_window',
+      timingLabel: '午间行动窗口',
+      leadMinutes: 10,
+      frequencyPolicy: 'do_not_increase',
+    }
+  }
+  if (/下午/u.test(feedback)) {
+    return {
+      strategy: 'advance_prompt',
+      timingHint: 'afternoon_action_window',
+      timingLabel: '下午行动窗口',
+      leadMinutes: 10,
+      frequencyPolicy: 'do_not_increase',
+    }
+  }
+  if (/晚上|下班|睡前/u.test(feedback)) {
+    return {
+      strategy: 'advance_prompt',
+      timingHint: 'evening_action_window',
+      timingLabel: '晚间行动窗口',
+      leadMinutes: 10,
+      frequencyPolicy: 'do_not_increase',
+    }
+  }
+  return {
+    strategy: 'advance_prompt',
+    timingHint: 'before_action_window',
+    timingLabel: '下一次行动窗口',
+    leadMinutes: 10,
+    frequencyPolicy: 'do_not_increase',
+  }
+}
+
 export function inferControlLoopDiagnosis(input = {}) {
   const feedback = String(input.feedback || '').toLowerCase()
   const estimatedMinutes = Number(input.estimatedMinutes || 0)
@@ -91,12 +177,14 @@ export function inferControlLoopDiagnosis(input = {}) {
   }
 
   if (explicitCategory === 'PROMPT' || feedback.includes('忘') || feedback.includes('提醒') || feedback.includes('时间不对') || feedback.includes('太晚') || feedback.includes('太早') || feedback.includes('没准备') || feedback.includes('风险点') || feedback.includes('预案') || feedback.includes('替代') || feedback.includes('失控') || feedback.includes('默认选择')) {
+    const interventionSignal = inferPromptInterventionSignal(input.feedback)
     return {
       category: 'PROMPT',
       adjustmentType: 'RESCHEDULE',
-      evidence: input.feedback || '用户反馈更接近提醒时机、风险点或触达问题。',
+      evidence: `${input.feedback || '用户反馈更接近提醒时机、风险点或触达问题。'} 下一次应在${interventionSignal.timingLabel}前 ${interventionSignal.leadMinutes} 分钟介入，并保持原有联系频率。`,
       nextQuestion: '提醒应该改到哪个时间点，才更接近你真的能行动的窗口？',
-      proposedNextAction: '调整提醒时间和风险点预案，不增加提醒频率。',
+      proposedNextAction: `在${interventionSignal.timingLabel}前 ${interventionSignal.leadMinutes} 分钟准备风险预案，不增加提醒频率。`,
+      interventionSignal,
     }
   }
 
@@ -155,6 +243,25 @@ function nextConditionStatus(currentStatus, signal) {
   if (signal === 1) return 'SATISFIED'
   if (signal === 0.5 && currentStatus !== 'SATISFIED') return 'PARTIAL'
   return currentStatus
+}
+
+function conditionPriority(condition) {
+  if (condition?.status === 'MISSING') return 0
+  if (condition?.status === 'PARTIAL') return 1
+  if (condition?.status === 'SATISFIED') return 3
+  return 2
+}
+
+export function pickFeedbackNextCondition(action, result, progressUpdate = {}) {
+  if (result !== 'DONE') return progressUpdate.condition || action.condition || null
+  const candidates = asArray(progressUpdate.conditions)
+    .filter((condition) => condition.status !== 'SATISFIED')
+    .sort((left, right) => {
+      const priority = conditionPriority(left) - conditionPriority(right)
+      if (priority !== 0) return priority
+      return new Date(left.createdAt || 0).getTime() - new Date(right.createdAt || 0).getTime()
+    })
+  return candidates[0] || progressUpdate.condition || action.condition || null
 }
 
 function asStringArray(value) {
@@ -217,6 +324,7 @@ async function applyControlLoopProgress(tx, action, result) {
 
   return {
     condition: updatedCondition,
+    conditions: effectiveConditions,
     keyResults: updatedKeyResults,
     stagePlan: updatedStagePlan,
     conditionProgress,
@@ -269,6 +377,8 @@ function buildControlLoopLogBlock(input) {
       : '- 偏差判断：今日反馈不是完成，需要判断是动机、能力、提示还是路径问题。',
     input.diagnosisQuestion ? `- 下一步调整：${input.diagnosisQuestion}` : '- 下一步调整：等待 Agent 根据反馈继续诊断或调整行动。',
     input.proposedNextAction ? `- 建议动作：${input.proposedNextAction}` : undefined,
+    input.nextCommitment?.title ? `- 已写入下一承诺：${input.nextCommitment.title}` : undefined,
+    input.nextCommitment?.minimumStep ? `- 下一承诺最小启动：${input.nextCommitment.minimumStep}` : undefined,
     input.metaEvaluationSummary ? `- 元认知评估：${input.metaEvaluationSummary}` : undefined,
     metaLines.length ? '' : undefined,
     ...metaLines,
@@ -285,10 +395,155 @@ function summarizeMetaEvaluations(evaluations = []) {
   return Object.entries(counts).map(([key, value]) => `${key}:${value}`).join('；')
 }
 
+export async function resolveControlLoopFeedbackAction(prisma, userId, input = {}) {
+  const suppliedAction = input.action
+  if (suppliedAction) {
+    if (suppliedAction.userId && suppliedAction.userId !== userId) {
+      throw new Error('这条行动不属于当前用户。')
+    }
+    if (suppliedAction.id && suppliedAction.goal && suppliedAction.condition) return suppliedAction
+  }
+
+  const actionId = input.actionId || suppliedAction?.id
+  if (actionId) {
+    return prisma.dailyAction.findFirst({
+      where: { id: actionId, userId },
+      include: { goal: true, condition: true },
+    })
+  }
+
+  const currentGoal = await prisma.goal.findFirst({
+    where: { userId, isCurrentFocus: true, status: 'ACTIVE' },
+    select: { id: true },
+  })
+  if (!currentGoal) return null
+
+  const now = input.now instanceof Date ? input.now : new Date()
+  return prisma.dailyAction.findFirst({
+    where: {
+      userId,
+      goalId: currentGoal.id,
+      status: { in: ['PLANNED', 'PARTIAL', 'NOT_DONE'] },
+      actionDate: { gte: startOfLocalDay(now), lt: endOfLocalDay(now) },
+    },
+    orderBy: { createdAt: 'desc' },
+    include: { goal: true, condition: true },
+  })
+}
+
+function parseClockMinutes(value) {
+  const match = String(value || '').match(/^([01]\d|2[0-3]):([0-5]\d)$/u)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function formatClockMinutes(value) {
+  const normalized = ((value % 1440) + 1440) % 1440
+  return `${pad(Math.floor(normalized / 60))}:${pad(normalized % 60)}`
+}
+
+function reminderTypeForPromptSignal(signal = {}, now = new Date()) {
+  const exact = String(signal.timingHint || '').match(/^exact_time_(\d{2})_(\d{2})$/u)
+  const hour = exact ? Number(exact[1]) : now.getHours()
+  if (signal.timingHint === 'morning_action_window' || hour < 11) return 'morning_planning'
+  if (signal.timingHint === 'evening_action_window' || hour >= 17) return 'evening_review'
+  return 'midday_check'
+}
+
+export function buildPromptReminderScheduleAdjustment(rule, signal = {}, now = new Date()) {
+  const previousSchedule = String(rule?.schedule || '')
+  const previousMinutes = parseClockMinutes(previousSchedule)
+  if (previousMinutes === null || rule?.reminderType === 'weekly_review') return null
+
+  const exact = String(signal.timingHint || '').match(/^exact_time_(\d{2})_(\d{2})$/u)
+  let nextMinutes = previousMinutes
+  if (exact) {
+    nextMinutes = Number(exact[1]) * 60 + Number(exact[2]) - Number(signal.leadMinutes || 10)
+  } else if (signal.timingHint === 'morning_action_window') {
+    nextMinutes = 9 * 60 - Number(signal.leadMinutes || 10)
+  } else if (signal.timingHint === 'midday_action_window') {
+    nextMinutes = 12 * 60 + 30 - Number(signal.leadMinutes || 10)
+  } else if (signal.timingHint === 'afternoon_action_window') {
+    nextMinutes = 15 * 60 - Number(signal.leadMinutes || 10)
+  } else if (signal.timingHint === 'evening_action_window') {
+    nextMinutes = 20 * 60 + 30 - Number(signal.leadMinutes || 10)
+  } else if (signal.timingHint === 'earlier_than_previous_window') {
+    nextMinutes = previousMinutes - 20
+  } else if (signal.timingHint === 'closer_to_action_window') {
+    nextMinutes = previousMinutes + 15
+  } else {
+    nextMinutes = previousMinutes - Number(signal.leadMinutes || 10)
+  }
+
+  const newSchedule = formatClockMinutes(nextMinutes)
+  if (newSchedule === previousSchedule) return null
+  return {
+    previousSchedule,
+    newSchedule,
+    reminderType: rule.reminderType,
+    timingHint: signal.timingHint || 'before_action_window',
+    leadMinutes: Number(signal.leadMinutes || 10),
+    frequencyPolicy: 'do_not_increase',
+  }
+}
+
+export async function applyPromptReminderTimingAdjustment(tx, userId, action, diagnosis, now = new Date()) {
+  if (diagnosis?.category !== 'PROMPT' || diagnosis?.adjustmentType !== 'RESCHEDULE') return null
+  const signal = asObject(diagnosis.interventionSignal)
+  const reminderType = reminderTypeForPromptSignal(signal, now)
+  const rules = await tx.reminderRule.findMany({
+    where: {
+      userId,
+      channel: 'qq',
+      enabled: true,
+      reminderType,
+      OR: [{ goalId: action.goalId }, { goalId: null }],
+    },
+    orderBy: [{ goalId: 'desc' }, { createdAt: 'asc' }],
+  })
+  const rule = rules.find((candidate) => {
+    const metadata = asObject(candidate.metadata)
+    return metadata.activeContactConsent === true || asObject(metadata.contactConsent).granted === true
+  })
+  if (!rule) return null
+
+  const scheduleAdjustment = buildPromptReminderScheduleAdjustment(rule, signal, now)
+  if (!scheduleAdjustment) return null
+  const metadata = asObject(rule.metadata)
+  const adjustedAt = now.toISOString()
+  const updatedRule = await tx.reminderRule.update({
+    where: { id: rule.id },
+    data: {
+      schedule: scheduleAdjustment.newSchedule,
+      metadata: {
+        ...metadata,
+        previousSchedule: scheduleAdjustment.previousSchedule,
+        newSchedule: scheduleAdjustment.newSchedule,
+        sourceDiagnosis: diagnosis.id,
+        timingAdjustedAt: adjustedAt,
+        interventionSignal: {
+          strategy: 'advance_prompt',
+          timingHint: scheduleAdjustment.timingHint,
+          leadMinutes: scheduleAdjustment.leadMinutes,
+          frequencyPolicy: 'do_not_increase',
+        },
+      },
+    },
+  })
+
+  return {
+    applied: true,
+    ruleId: updatedRule.id,
+    reminderType: updatedRule.reminderType,
+    previousSchedule: scheduleAdjustment.previousSchedule,
+    newSchedule: scheduleAdjustment.newSchedule,
+    sourceDiagnosis: diagnosis.id,
+    maxPerDay: updatedRule.maxPerDay,
+  }
+}
+
 export async function submitControlLoopFeedback(prisma, userId, input = {}) {
-  const action = input.action || (input.actionId
-    ? await prisma.dailyAction.findFirst({ where: { id: input.actionId, userId }, include: { goal: true, condition: true } })
-    : await prisma.dailyAction.findFirst({ where: { userId }, orderBy: { actionDate: 'desc' }, include: { goal: true, condition: true } }))
+  const action = await resolveControlLoopFeedbackAction(prisma, userId, input)
   if (!action) throw new Error('没有找到可提交的今日行动。')
 
   const result = normalizeControlLoopCheckinResult(input.result)
@@ -332,7 +587,7 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
         consecutiveMissCount: recentMisses.length,
         estimatedMinutes: action.estimatedMinutes,
       })
-      diagnosis = await tx.diagnosis.create({
+      const persistedDiagnosis = await tx.diagnosis.create({
         data: {
           userId,
           goalId: action.goalId,
@@ -345,7 +600,29 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
           proposedNextAction: inferred.proposedNextAction,
         },
       })
+      diagnosis = {
+        ...persistedDiagnosis,
+        ...(inferred.interventionSignal ? { interventionSignal: inferred.interventionSignal } : {}),
+      }
     }
+
+    const nextCondition = pickFeedbackNextCondition(action, result, progressUpdate)
+    const nextCommitment = await persistFeedbackNextCommitment(tx, userId, {
+      action,
+      result,
+      diagnosis,
+      nextCondition,
+      now: input.now instanceof Date ? input.now : new Date(),
+    })
+    const reminderAdjustment = diagnosis
+      ? await applyPromptReminderTimingAdjustment(
+        tx,
+        userId,
+        action,
+        diagnosis,
+        input.now instanceof Date ? input.now : new Date(),
+      )
+      : null
 
     const controlLoopEpisode = {
       id: `cle-${Date.now()}`,
@@ -356,9 +633,20 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
       feedback: { result, userFeedback },
       checkin_id: checkin.id,
       diagnosis_id: diagnosis?.id || null,
+      next_commitment: {
+        id: nextCommitment.id,
+        title: nextCommitment.title,
+        action_date: nextCommitment.actionDate,
+        minimum_step: nextCommitment.minimumStep,
+        estimated_minutes: nextCommitment.estimatedMinutes,
+        persisted: true,
+      },
+      adjustment_signal: nextCommitment.adjustmentSignal || null,
+      reminder_adjustment: reminderAdjustment,
       previous_meta_cognition_used: activeMetaCognition.slice(0, 5).map((item) => item.id).filter(Boolean),
       state_transition: {
         action_status: updatedAction.status,
+        next_action_id: nextCommitment.id,
         condition_status: progressUpdate.condition?.status || null,
         key_result_updates: progressUpdate.keyResults.length,
         stage_plan_status: progressUpdate.stagePlan?.status || null,
@@ -408,6 +696,7 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
         userFeedback,
         diagnosisQuestion: diagnosis?.nextQuestion,
         proposedNextAction: diagnosis?.proposedNextAction,
+        nextCommitment,
         metaCognition,
         metaEvaluationSummary: summarizeMetaEvaluations(metaEvaluations),
         createdAt: new Date(),
@@ -420,7 +709,7 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
           title: logTitle,
           content: existingLog ? `${existingLog.content}\n\n${logBlock}` : logBlock,
           linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
+          linkedActionIds: [action.id, nextCommitment.id],
         },
         create: {
           userId,
@@ -429,7 +718,7 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
           path: logPath,
           content: logBlock,
           linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
+          linkedActionIds: [action.id, nextCommitment.id],
         },
       })
 
@@ -447,7 +736,7 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
           title: logTitle,
           content: logEntry.content,
           linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
+          linkedActionIds: [action.id, nextCommitment.id],
           source: 'AGENT',
           frontmatter,
         },
@@ -458,7 +747,7 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
           path: logPath,
           content: logEntry.content,
           linkedGoalIds: [action.goalId],
-          linkedActionIds: [action.id],
+          linkedActionIds: [action.id, nextCommitment.id],
           source: 'AGENT',
           frontmatter,
         },
@@ -490,6 +779,8 @@ export async function submitControlLoopFeedback(prisma, userId, input = {}) {
 
     return {
       action: updatedAction,
+      nextCommitment,
+      reminderAdjustment,
       checkin,
       diagnosis,
       metaCognition,

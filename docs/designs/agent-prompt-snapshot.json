@@ -1,7 +1,7 @@
 {
-  "version": "goal-mate-agent-system-v0.8.0",
+  "version": "goal-mate-agent-system-v0.9.1",
   "source": "src/lib/agent-prompts/index.ts",
-  "sourceHash": "29443238a306a3b27cc0b61b4cac61eb784265dca9ea86450e59ca8fcce04e69",
+  "sourceHash": "4986380659ed17ea1300532213e5950a4976a5d1de0bb94ea64fd1411d8b727c",
   "sectionIds": [
     "ANTI_AI_TONE_CHARTER",
     "ANTI_AI_AUDIT_PROTOCOL",
@@ -9,6 +9,7 @@
     "CONTROL_LOOP",
     "SECRETARY_DIALOGUE_POLICY",
     "INTERVENTION_POLICY",
+    "PROACTIVE_CONTACT_POLICY",
     "META_COGNITION_POLICY",
     "MEMORY_QUALITY_POLICY",
     "SYSTEM_FACT_USAGE",
@@ -38,6 +39,6 @@
     "充分、必要、因果明确、可验证",
     "可验证假设"
   ],
-  "generatedAt": "2026-07-05T12:03:32.281Z",
+  "generatedAt": "2026-07-24T01:58:10.416Z",
   "note": "Update this file intentionally when Agent system prompt rules change."
 }

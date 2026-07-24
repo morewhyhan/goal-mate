@@ -11,11 +11,11 @@ import { useAuthSession, useSignOut } from '@/hooks/use-auth'
 import { BrandLogo } from '@/components/brand-logo'
 
 const navItems = [
-  { href: '/dashboard/today', icon: CalendarCheck, label: 'Today', helper: '下一步行动' },
-  { href: '/dashboard/goals', icon: Goal, label: 'Goals', helper: '目标拆解' },
-  { href: '/dashboard/logs', icon: FileText, label: 'Logs', helper: '推进记录' },
-  { href: '/dashboard/agent', icon: Bot, label: 'Agent', helper: '对话控制' },
-  { href: '/dashboard/settings', icon: Settings, label: 'Settings', helper: '系统配置' },
+  { href: '/dashboard/agent', icon: Bot, label: '助手', helper: '唯一操作入口' },
+  { href: '/dashboard/today', icon: CalendarCheck, label: '当前任务', helper: '查看执行锚点' },
+  { href: '/dashboard/goals', icon: Goal, label: '目标状态', helper: '查看 AI 的理解' },
+  { href: '/dashboard/logs', icon: FileText, label: '推进记录', helper: '查看调整依据' },
+  { href: '/dashboard/settings', icon: Settings, label: '设置', helper: '权限与主动联系' },
 ]
 
 type DashboardUser = {
@@ -220,7 +220,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[#f4f1ea] text-stone-950">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-stone-200 bg-[#fbfaf7]/95 px-5 py-6 shadow-sm backdrop-blur xl:flex xl:flex-col">
         <div>
-          <Link href="/dashboard/today" className="flex items-center gap-3 rounded-[24px] border border-stone-200 bg-white p-4 text-stone-950 shadow-sm">
+          <Link href="/dashboard/agent" className="flex items-center gap-3 rounded-[24px] border border-stone-200 bg-white p-4 text-stone-950 shadow-sm">
             <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl border border-stone-200 bg-[#f4f1ea]">
               <BrandLogo className="h-full w-full" />
             </span>
@@ -282,7 +282,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       <header className="sticky top-0 z-30 border-b border-stone-200 bg-[#fbfaf7]/95 px-4 py-3 backdrop-blur xl:hidden">
         <div className="flex items-center justify-between">
-          <Link href="/dashboard/today" prefetch onMouseEnter={() => primeRoute('/dashboard/today')} onFocus={() => primeRoute('/dashboard/today')} onClick={() => markRoutePending('/dashboard/today')} className="flex items-center gap-2 font-semibold">
+          <Link href="/dashboard/agent" prefetch onMouseEnter={() => primeRoute('/dashboard/agent')} onFocus={() => primeRoute('/dashboard/agent')} onClick={() => markRoutePending('/dashboard/agent')} className="flex items-center gap-2 font-semibold">
             <BrandLogo className="h-7 w-7 rounded-lg border border-stone-200" />
             Goal Mate
           </Link>

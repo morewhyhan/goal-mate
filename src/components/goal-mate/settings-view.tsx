@@ -15,6 +15,8 @@ type ReminderDraft = {
   enabled: boolean
 }
 
+type ContactCadence = 'light' | 'balanced' | 'supportive'
+
 type QqBotDraft = {
   appId: string
   token: string
@@ -41,11 +43,17 @@ const reminderMeta = [
 ]
 
 const defaultReminderDrafts: ReminderDraft[] = [
-  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
-  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
-  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
-  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: true },
+  { reminderType: 'morning_planning', channel: 'qq', schedule: '08:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'midday_check', channel: 'qq', schedule: '12:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'evening_review', channel: 'qq', schedule: '21:30', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'weekly_review', channel: 'qq', schedule: 'SUN 21:00', timezone: 'Asia/Shanghai', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
 ]
+
+const cadenceRuleTypes: Record<ContactCadence, string[]> = {
+  light: ['morning_planning', 'weekly_review'],
+  balanced: ['morning_planning', 'evening_review', 'weekly_review'],
+  supportive: ['morning_planning', 'midday_check', 'evening_review', 'weekly_review'],
+}
 
 const defaultQqBotDraft: QqBotDraft = {
   appId: '',
@@ -103,6 +111,30 @@ function ruleLabel(type: string) {
   return reminderMeta.find((item) => item.type === type)?.label || type
 }
 
+function schedulerContactPolicy(payload: any): any {
+  if (!payload || typeof payload !== 'object') return null
+  if (payload.contact_policy) return payload.contact_policy
+  return schedulerContactPolicy(payload.previousPayload)
+}
+
+function schedulerReason(event: any) {
+  const policy = schedulerContactPolicy(event?.payload)
+  const labels: Record<string, string> = {
+    useful_intervention: '判断此刻值得联系',
+    missing_consent: '没有得到主动联系授权',
+    quiet_hours: '处于不打扰时段',
+    already_done: '今天已经完成',
+    awaiting_reply: '正在等你的回复',
+    daily_limit: '今天已经提醒够了',
+    no_response_pause: '连续没回复，已自动暂停',
+    user_opt_out: '你要求暂停',
+    platform_quota: 'QQ 当前不允许主动发送',
+    c2c_recall_expired: 'QQ 主动联系窗口已结束',
+    no_enabled_binding: '没有可用的 QQ 会话',
+  }
+  return labels[String(policy?.reasonCode || '')] || ''
+}
+
 function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <label className="flex items-start justify-between gap-3 rounded-2xl bg-stone-50 p-3">
@@ -157,6 +189,9 @@ export function SettingsView() {
   const [modelDraft, setModelDraft] = useState({ provider: 'B.AI', model: 'gpt-5-nano', reasoningModel: '', apiBase: 'https://api.b.ai', apiKey: '', temperature: '0.3' })
   const [qqBotDraft, setQqBotDraft] = useState<QqBotDraft>(defaultQqBotDraft)
   const [reminderDrafts, setReminderDrafts] = useState<ReminderDraft[]>(defaultReminderDrafts)
+  const [proactiveContactEnabled, setProactiveContactEnabled] = useState(false)
+  const [contactCadence, setContactCadence] = useState<ContactCadence>('balanced')
+  const [reminderQuietHours, setReminderQuietHours] = useState('23:00-07:30')
   const [behaviorDraft, setBehaviorDraft] = useState<BehaviorDraft>(defaultBehaviorDraft)
 
   useEffect(() => {
@@ -199,7 +234,12 @@ export function SettingsView() {
         enabled: typeof rule?.enabled === 'boolean' ? rule.enabled : fallback.enabled,
       }
     }))
-  }, [data?.reminderRules])
+    const notifications = data?.settings?.notifications || {}
+    setProactiveContactEnabled(notifications.proactive_contact_enabled === true)
+    const cadence = String(notifications.proactive_contact_cadence || rules.find((rule: any) => rule?.metadata?.cadence)?.metadata?.cadence || 'balanced')
+    setContactCadence(cadence === 'light' || cadence === 'supportive' ? cadence : 'balanced')
+    setReminderQuietHours(quietHoursText(rules[0]?.quietHours, notifications.quiet_hours || '23:00-07:30'))
+  }, [data?.reminderRules, data?.settings])
 
   useEffect(() => {
     const settings = data?.settings
@@ -234,7 +274,19 @@ export function SettingsView() {
   }
 
   function saveReminderRules() {
-    updateReminderRules.mutate({ rules: reminderDrafts.map((rule) => ({ id: rule.id, reminderType: rule.reminderType, channel: rule.channel, schedule: rule.schedule, timezone: rule.timezone, maxPerDay: Number(rule.maxPerDay) || 1, quietHours: rule.quietHours, enabled: rule.enabled })) })
+    const enabledTypes = new Set(cadenceRuleTypes[contactCadence])
+    const rules = reminderDrafts.map((rule) => ({
+      id: rule.id,
+      reminderType: rule.reminderType,
+      channel: rule.channel,
+      schedule: rule.schedule,
+      timezone: rule.timezone,
+      maxPerDay: 1,
+      quietHours: reminderQuietHours,
+      enabled: proactiveContactEnabled && enabledTypes.has(rule.reminderType),
+    }))
+    setReminderDrafts((drafts) => drafts.map((rule) => ({ ...rule, quietHours: reminderQuietHours, enabled: proactiveContactEnabled && enabledTypes.has(rule.reminderType) })))
+    updateReminderRules.mutate({ proactiveContactEnabled, cadence: contactCadence, rules })
   }
 
   function saveQqBot() {
@@ -280,24 +332,21 @@ export function SettingsView() {
     deleteWorkspaceData.mutate()
   }
 
-  function updateReminder(index: number, patch: Partial<ReminderDraft>) {
-    setReminderDrafts((drafts) => drafts.map((draft, currentIndex) => currentIndex === index ? { ...draft, ...patch } : draft))
-  }
-
   const modelOk = Boolean(model?.apiKeyConfigured)
   const qqOk = Boolean(qqBotConfig?.configured)
   const qqBound = qqBindings.some((binding: any) => binding.status === 'ENABLED')
+  const qqC2cBound = qqBindings.some((binding: any) => binding.status === 'ENABLED' && binding.contextType === 'c2c')
   const qqBinding = qqBotConfig?.binding || {}
   const qqConnectionStatus = qqOk ? '已配置' : '未配置'
   const qqBindingStatus = qqBound ? '已绑定' : '待绑定'
-  const activeReminderCount = reminderDrafts.filter((rule) => rule.enabled).length
-  const reminderDeliveryReady = activeReminderCount > 0 && qqOk && qqBound
-  const reminderStatus = activeReminderCount === 0
-    ? '未开启'
+  const activeReminderCount = proactiveContactEnabled ? cadenceRuleTypes[contactCadence].length : 0
+  const reminderDeliveryReady = proactiveContactEnabled && qqOk && qqC2cBound
+  const reminderStatus = !proactiveContactEnabled
+    ? '未授权'
     : !qqOk
       ? '待配置 QQ'
-      : !qqBound
-        ? '待绑定 QQ'
+      : !qqC2cBound
+        ? '待绑定 QQ 单聊'
         : `${activeReminderCount}/4 可发送`
   const systemReady = modelOk && !deploymentMissing.length
   const modelTestResult = testModel.data?.data
@@ -335,7 +384,7 @@ export function SettingsView() {
           {[
             { title: '1. 配置模型', state: modelOk ? '已完成' : '必须先做', body: modelOk ? `当前模型：${model?.model || 'B.AI'}` : '没有模型密钥时，Agent 不能拆目标、诊断原因或生成下一步。', href: '#settings-model', ok: modelOk },
             { title: '2. 说明目标', state: '去 Agent', body: '模型可用后，去 Agent 说清楚结果、截止时间和当前情况。', href: '/dashboard/agent', ok: true },
-            { title: '3. 接入主动提醒', state: qqOk && qqBound ? '已接入' : qqOk ? '待绑定' : '先配置', body: qqOk && qqBound ? 'QQ 可以用于早中晚追问和复盘。' : qqOk ? '生成绑定码，在 QQ 里发送后才能主动联系你。' : '先保存 App ID 和 Token；绑定状态会保持待绑定。', href: '#settings-qq', ok: qqOk && qqBound },
+            { title: '3. 接入主动助手', state: reminderDeliveryReady ? '已允许联系' : qqOk && qqBound ? '等待授权' : qqOk ? '待绑定' : '先配置', body: reminderDeliveryReady ? 'AI 会结合任务状态选择恰当时机联系你，而不是到点机械催促。' : qqOk && qqBound ? '绑定只建立对话入口；还需要你明确允许 AI 主动联系。' : qqOk ? '生成绑定码，在 QQ 里发送后建立同一个对话入口。' : '先保存 App ID 和 Token；绑定不会自动开启提醒。', href: '#settings-qq', ok: reminderDeliveryReady },
           ].map((item) => (
             <a key={item.title} href={item.href} className="rounded-[24px] border border-stone-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
@@ -390,7 +439,7 @@ export function SettingsView() {
         </div>
 
         <section id="settings-qq" className="scroll-mt-24 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Optional channel</p><h2 className="mt-2 text-2xl font-semibold">QQ 主动助手</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">影响能力：AI 能不能在早中晚主动联系你、追问进度、推动复盘。不配置 QQ 也可以使用 Web。</p></div><StatusPill ok={qqOk && qqBound}>{qqConnectionStatus} · {qqBindingStatus}</StatusPill></div>
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Optional channel</p><h2 className="mt-2 text-2xl font-semibold">QQ 对话入口</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">绑定后，你可以在 QQ 里自然对话和反馈任务。绑定只接通入口，不代表你同意 AI 主动发消息。</p></div><StatusPill ok={qqOk && qqBound}>{qqConnectionStatus} · {qqBindingStatus}</StatusPill></div>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <label className="rounded-[20px] bg-[#f7f4ec] p-4"><span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">App ID</span><input value={qqBotDraft.appId} onChange={(event) => setQqBotDraft((draft) => ({ ...draft, appId: event.target.value }))} placeholder="QQ 机器人 App ID" className="mt-2 w-full bg-transparent text-base font-semibold outline-none" /></label>
@@ -419,9 +468,38 @@ export function SettingsView() {
         </section>
 
         <section id="settings-reminders" className="scroll-mt-24 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Rhythm</p><h2 className="mt-2 text-2xl font-semibold">主动推进节奏</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">影响能力：AI 在什么时候问你问题。提醒规则只决定节奏；QQ 配置并绑定后，系统才真的能主动发给你。</p></div><div className="flex flex-wrap items-center gap-2"><StatusPill ok={reminderDeliveryReady}>{reminderStatus}</StatusPill><button disabled={updateReminderRules.isPending} onClick={saveReminderRules} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存提醒</button></div></div>
-          <div className="grid gap-3 lg:grid-cols-4">{reminderDrafts.map((rule, index) => { const meta = reminderMeta.find((item) => item.type === rule.reminderType); return <div key={rule.reminderType} className="rounded-[22px] bg-[#f7f4ec] p-4"><label className="flex items-start justify-between gap-3"><span><span className="block font-semibold">{meta?.label || rule.reminderType}</span><span className="mt-1 block text-xs leading-5 text-stone-500">{meta?.purpose}</span></span><input type="checkbox" checked={rule.enabled} onChange={(event) => updateReminder(index, { enabled: event.target.checked })} className="mt-1 h-5 w-5 accent-stone-950" /></label><div className="mt-4 grid gap-3"><label><span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Schedule</span><input value={rule.schedule} onChange={(event) => updateReminder(index, { schedule: event.target.value })} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" /></label><label><span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Max / Day</span><input type="number" min={1} max={8} value={rule.maxPerDay} onChange={(event) => updateReminder(index, { maxPerDay: Math.max(1, Number(event.target.value) || 1) })} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" /></label><label><span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Quiet Hours</span><input value={rule.quietHours} onChange={(event) => updateReminder(index, { quietHours: event.target.value })} className="mt-1 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-stone-900" /></label></div></div> })}</div>
-          <div className="mt-4 rounded-[22px] bg-stone-950 p-4 text-white"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">最近调度</p><div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-4">{schedulerEvents.length ? schedulerEvents.slice(0, 4).map((event: any) => <div key={event.id} className="rounded-2xl bg-white/10 p-3"><p className="text-sm font-semibold">{ruleLabel(event.eventType)}</p><p className="mt-1 text-xs text-stone-300">{event.status} · {formatDate(event.createdAt)}</p></div>) : <p className="text-sm text-stone-300">暂无调度记录。</p>}</div></div>
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">Proactive help</p><h2 className="mt-2 text-2xl font-semibold">允许 AI 主动联系</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">你只需要选择大致节奏。AI 会把时间当作候选窗口，再结合任务是否完成、你是否刚回复、最近有没有连续沉默来决定此刻要不要联系。</p></div><div className="flex flex-wrap items-center gap-2"><StatusPill ok={reminderDeliveryReady}>{reminderStatus}</StatusPill><button disabled={updateReminderRules.isPending} onClick={saveReminderRules} className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">保存主动联系设置</button></div></div>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <div className="space-y-3 rounded-[22px] bg-[#f7f4ec] p-4">
+              <ToggleRow label="允许 AI 在 QQ 主动联系我" description="默认关闭。开启后只会联系已绑定的 QQ 单聊；不会把私人目标提醒自动发到群里。" checked={proactiveContactEnabled} onChange={setProactiveContactEnabled} />
+              <label className="block rounded-2xl bg-white p-4">
+                <span className="block text-sm font-semibold text-stone-900">希望它多积极</span>
+                <span className="mt-1 block text-xs leading-5 text-stone-500">这是联系上限，不是每天固定发送次数。</span>
+                <select value={contactCadence} onChange={(event) => setContactCadence(event.target.value as ContactCadence)} disabled={!proactiveContactEnabled} className="mt-3 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none disabled:opacity-50">
+                  <option value="light">轻提醒：每天最多 1 次，周日优先复盘</option>
+                  <option value="balanced">平衡：每天最多 2 次，选择关键时段</option>
+                  <option value="supportive">积极陪跑：每天最多 3 次，仍会先判断是否有必要</option>
+                </select>
+              </label>
+              <label className="block rounded-2xl bg-white p-4">
+                <span className="block text-sm font-semibold text-stone-900">不打扰时段</span>
+                <span className="mt-1 block text-xs leading-5 text-stone-500">在这个时间段内，即使任务没有推进也保持安静。</span>
+                <input value={reminderQuietHours} onChange={(event) => setReminderQuietHours(event.target.value)} placeholder="23:00-07:30" className="mt-3 w-full rounded-2xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-stone-900" />
+              </label>
+            </div>
+            <div className="rounded-[22px] border border-stone-200 bg-white p-4">
+              <p className="text-sm font-semibold text-stone-950">AI 会自己克制</p>
+              <div className="mt-3 space-y-2 text-sm leading-6 text-stone-600">
+                <p>· 今天已经完成：不再催同一件事。</p>
+                <p>· 刚发过消息：先等你回复。</p>
+                <p>· 连续没有回复：自动暂停主动联系。</p>
+                <p>· 你说“暂停提醒”：立即停止，重新开启需要你的明确同意。</p>
+                <p>· QQ 暂时不允许主动发送：记录原因，不用旧消息冒充回复。</p>
+              </div>
+              <div className="mt-4 rounded-2xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">绑定 QQ 和允许主动联系是两件事。仅绑定不会自动打开任何提醒。</div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-[22px] bg-stone-950 p-4 text-white"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">最近联系判断</p><div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-4">{schedulerEvents.length ? schedulerEvents.slice(0, 4).map((event: any) => <div key={event.id} className="rounded-2xl bg-white/10 p-3"><p className="text-sm font-semibold">{ruleLabel(event.eventType)}</p><p className="mt-1 text-xs text-stone-300">{event.status} · {formatDate(event.createdAt)}</p>{schedulerReason(event) ? <p className="mt-2 text-xs leading-5 text-stone-200">{schedulerReason(event)}</p> : null}</div>) : <p className="text-sm text-stone-300">还没有主动联系判断。</p>}</div></div>
         </section>
 
         <section id="settings-behavior" className="scroll-mt-24 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">

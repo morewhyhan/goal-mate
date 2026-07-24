@@ -6,6 +6,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "node --test lib/*.test.mjs test/*.test.mjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name goal_mate_v01",
     "db:reset": "prisma migrate reset --force --skip-seed",

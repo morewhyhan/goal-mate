@@ -22,7 +22,7 @@ export function useSignIn() {
     onSuccess: () => {
       queryClient.clear()
       toast.success('登录成功')
-      router.push('/dashboard/today')
+      router.push('/dashboard/agent')
     },
     onError: (error: Error) => {
       toast.error(error.message || '登录失败，请检查邮箱和密码')
@@ -49,7 +49,7 @@ export function useSignUp() {
     onSuccess: () => {
       queryClient.clear()
       toast.success('注册成功')
-      router.push('/dashboard/today')
+      router.push('/dashboard/agent')
     },
     onError: (error: Error) => {
       toast.error(error.message || '注册失败，请稍后再试')

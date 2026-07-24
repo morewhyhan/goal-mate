@@ -532,7 +532,12 @@ const app = new Hono()
 
     const pendingAction = detectConfirmToolMessage(input.content)
       ? await prisma.agentToolAction.findFirst({
-          where: { userId, status: 'pending_confirmation' },
+          where: {
+            userId,
+            status: 'pending_confirmation',
+            source: 'web',
+            agentThreadId: thread.id,
+          },
           orderBy: { createdAt: 'desc' },
         })
       : null

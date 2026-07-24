@@ -2,6 +2,7 @@ import { client } from '@/lib/api-client'
 import { InferRequestType, InferResponseType } from 'hono/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { parseApiResponse } from '@/lib/api-response'
 
 const $get = client.api.goals.$get
 type GoalsResponse = any
@@ -19,7 +20,7 @@ type ConfirmReasoningCardResponse = any
 export function useGoals() {
   return useQuery<GoalsResponse, Error>({
     queryKey: ['goals'],
-    queryFn: async () => (await $get()).json(),
+    queryFn: async () => parseApiResponse(await $get()),
   })
 }
 
@@ -27,14 +28,14 @@ export function useGoal(id?: string) {
   return useQuery<GoalResponse, Error>({
     queryKey: ['goal', id],
     enabled: !!id,
-    queryFn: async () => (await $getOne({ param: { id: id! } })).json(),
+    queryFn: async () => parseApiResponse(await $getOne({ param: { id: id! } })),
   })
 }
 
 export function useCreateReasoningDraft() {
   const queryClient = useQueryClient()
   return useMutation<CreateReasoningDraftResponse, Error, CreateReasoningDraftRequest>({
-    mutationFn: async (json) => (await $draft({ json })).json(),
+    mutationFn: async (json) => parseApiResponse(await $draft({ json })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] })
       toast.success('目标推理卡草案已生成')
@@ -46,7 +47,7 @@ export function useCreateReasoningDraft() {
 export function useConfirmReasoningCard() {
   const queryClient = useQueryClient()
   return useMutation<ConfirmReasoningCardResponse, Error, string>({
-    mutationFn: async (id) => (await $confirm({ param: { id } })).json(),
+    mutationFn: async (id) => parseApiResponse(await $confirm({ param: { id } })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] })
       toast.success('目标推理卡已确认')

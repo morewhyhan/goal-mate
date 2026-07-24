@@ -18,7 +18,7 @@ Scheduler Worker
 | Worker | 启动命令 | 职责 |
 | --- | --- | --- |
 | QQ Worker | `pnpm worker:qq` | 连接 QQ Gateway，接收 QQ 消息，调用 Agent，发送 QQ 回复 |
-| Scheduler Worker | `pnpm worker:scheduler` | 根据提醒规则触发早中晚和周复盘提醒，通过 QQ 发送主动推进消息 |
+| Scheduler Worker | `pnpm worker:scheduler` | 在已授权的候选窗口执行 Contact Policy，并仅在本次干预有价值且 QQ 平台允许时发送主动消息 |
 
 ## 3. 服务器运行要求
 
@@ -59,7 +59,7 @@ SCHEDULER_EVENING_TIME=21:30
 SCHEDULER_WEEKLY_TIME=SUN 21:00
 ```
 
-这些默认值通常不需要用户改；QQ API Base、Gateway intents、模型名称、提醒时间、Agent 权限、日志写入和数据导出在 Settings 页面配置。
+这些时间只是系统建议的候选窗口，默认规则保持关闭。用户明确允许主动联系后，AI 才会在相应候选窗口结合目标和行动状态选择发送、跳过或延后；QQ API Base、Gateway intents、模型名称、联系节奏、Agent 权限、日志写入和数据导出在 Settings 页面配置。
 
 可选覆盖环境变量：
 

@@ -1,4 +1,8 @@
 import { formatAgentToolDatePath } from './agent-tool-shared.mjs'
+import {
+  isLikelyQqSchedulerFeedback,
+  renderQqSchedulerFeedback,
+} from './qq-message-renderer.mjs'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -14,52 +18,9 @@ function formatReminderType(type) {
   return type
 }
 
-function formatReasonCategory(category) {
-  if (category === 'MOTIVATION') return '目标真实性或动机'
-  if (category === 'ABILITY') return '行动难度或启动成本'
-  if (category === 'PROMPT') return '提醒时机或风险点提示'
-  if (category === 'PATH') return '路径或关键条件'
-  return '证据不足'
-}
-
-export function buildSecretarySchedulerReply(feedback) {
-  if (feedback.result === 'DONE') {
-    return '记下了。这一步已经发生，明天先别加码，先看它能不能稳定重复。'
-  }
-  if (feedback.result === 'NO_RESPONSE') {
-    return '先不追问了。今天只保留一个最小入口；晚上你只回“做了”或“没做”就行。'
-  }
-  if (feedback.result === 'NOT_DONE') {
-    if (feedback.reasonCategory === 'MOTIVATION') {
-      return '记下了，今天先不催执行。先确认一件事：这个目标还值得继续吗？'
-    }
-    if (feedback.reasonCategory === 'ABILITY') {
-      return '记下了。不是继续硬顶，先把动作切小；明天只做能启动的版本。'
-    }
-    if (feedback.reasonCategory === 'PROMPT') {
-      return '记下了。问题出在风险点前没接住；下一次把提示提前，不等失败后复盘。'
-    }
-    if (feedback.reasonCategory === 'PATH') {
-      return '记下了。先不催你做更多；下一次先确认这一步到底补哪个缺口。'
-    }
-    return '记下了。证据还不够，下一次只回一个词：方向、难度、提醒，还是路径？'
-  }
-  if (feedback.reasonCategory === 'PATH') {
-    return '记下了。先不催你做更多；下一次先确认这一步到底补哪个缺口。'
-  }
-  if (feedback.reasonCategory === 'ABILITY') {
-    return '记下了。先别加任务，把它留在能启动的版本。'
-  }
-  if (feedback.reasonCategory === 'PROMPT') {
-    return '记下了。下一次把提示放到风险点前，不等晚上才补救。'
-  }
-  if (feedback.reasonCategory === 'MOTIVATION') {
-    return '记下了。今天先不催执行，先看这个目标还值不值得继续。'
-  }
-  if (feedback.reasonCategory === 'UNKNOWN') {
-    return '记下了。现在不扩计划，先保留这一点进展，晚上再看它能不能接上。'
-  }
-  return `记下了。${feedback.adjustment}`
+export function buildSecretarySchedulerReply(feedback, options = {}) {
+  // User-facing renderer contract: 先不催执行；internal diagnosis labels stay in persistence only.
+  return renderQqSchedulerFeedback(feedback, options)
 }
 
 export function classifyQqSchedulerReply(text) {
@@ -132,14 +93,28 @@ export async function processQqSchedulerReply(prisma, options) {
   const { userId, thread, userMessage, context, executeAgentTool } = options
   const now = options.now || new Date()
   const logDate = options.logDate || now
-  const schedulerEvent = await findRecentQqSchedulerEvent(prisma, userId, now)
+  const schedulerEvent = options.schedulerEvent || await findRecentQqSchedulerEvent(prisma, userId, now)
   if (!schedulerEvent) return null
+  if (!isLikelyQqSchedulerFeedback(context.text, schedulerEvent, context)) return null
 
   const feedback = classifyQqSchedulerReply(context.text)
   const toolResults = []
+  let nextCommitment = null
+  let reminderAdjustment = null
   const schedulerPayload = asRecord(schedulerEvent.payload)
-  const targetActionId = schedulerPayload.actionId || schedulerPayload.dailyActionId || schedulerPayload.targetActionId || ''
-  const targetGoalId = schedulerPayload.goalId || schedulerPayload.targetGoalId || ''
+  const contactContext = asRecord(schedulerPayload.contact_context)
+  const interventionDecision = asRecord(schedulerPayload.intervention_decision)
+  const targetActionId = schedulerPayload.actionId
+    || schedulerPayload.dailyActionId
+    || schedulerPayload.targetActionId
+    || contactContext.currentActionId
+    || interventionDecision.target_action_id
+    || ''
+  const targetGoalId = schedulerPayload.goalId
+    || schedulerPayload.targetGoalId
+    || contactContext.goalId
+    || interventionDecision.target_goal_id
+    || ''
 
   if (schedulerEvent.eventType !== 'morning_planning' && schedulerEvent.eventType !== 'weekly_review') {
     const checkinExecution = await executeAgentTool(
@@ -153,6 +128,8 @@ export async function processQqSchedulerReply(prisma, options) {
         adjustment: feedback.adjustment,
       },
     )
+    nextCommitment = checkinExecution?.result?.nextCommitment || null
+    reminderAdjustment = checkinExecution?.result?.reminderAdjustment || null
     toolResults.push({ toolName: 'checkin.submit', execution: checkinExecution })
   }
 
@@ -203,7 +180,7 @@ export async function processQqSchedulerReply(prisma, options) {
     data: {
       status: 'responded',
       payload: {
-        previousPayload: schedulerEvent.payload || {},
+        ...schedulerPayload,
         reply: {
           contextType: context.contextType,
           contextId: context.contextId,
@@ -219,35 +196,15 @@ export async function processQqSchedulerReply(prisma, options) {
   const failed = toolResults.filter((item) => item.execution?.action?.status === 'failed')
   if (failed.length) {
     return {
-      reply: [
-        '我收到了这次反馈，但有一部分没有写入成功。',
-        ...failed.map((item) => `- ${item.toolName}：${item.execution.action.errorMessage || '未知错误'}`),
-        '已保留原始回复，后面可以继续补录。',
-      ].join('\n'),
+      reply: renderQqSchedulerFeedback(feedback, { writeFailed: true }),
       feedback,
       toolResults,
       schedulerEventId: schedulerEvent.id,
     }
   }
 
-  if (feedback.result === 'DONE') {
-    return {
-      reply: buildSecretarySchedulerReply(feedback),
-      feedback,
-      toolResults,
-      schedulerEventId: schedulerEvent.id,
-    }
-  }
-  if (feedback.result === 'NOT_DONE') {
-    return {
-      reply: buildSecretarySchedulerReply(feedback),
-      feedback,
-      toolResults,
-      schedulerEventId: schedulerEvent.id,
-    }
-  }
   return {
-    reply: buildSecretarySchedulerReply(feedback),
+    reply: renderQqSchedulerFeedback(feedback, { nextCommitment, reminderAdjustment }),
     feedback,
     toolResults,
     schedulerEventId: schedulerEvent.id,

@@ -1,5 +1,6 @@
 import { client } from '@/lib/api-client'
-import { InferRequestType, InferResponseType } from 'hono/client'
+import { parseApiResponse } from '@/lib/api-response'
+import { InferRequestType } from 'hono/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -41,14 +42,14 @@ type RejectToolActionResponse = any
 export function useAgentThreads() {
   return useQuery<ThreadsResponse, Error>({
     queryKey: ['agent', 'threads'],
-    queryFn: async () => (await $threads()).json(),
+    queryFn: async () => parseApiResponse(await $threads()),
   })
 }
 
 export function useCreateAgentThread() {
   const queryClient = useQueryClient()
   return useMutation<CreateThreadResponse, Error, CreateThreadRequest>({
-    mutationFn: async (json) => (await $createThread({ json })).json(),
+    mutationFn: async (json) => parseApiResponse(await $createThread({ json })),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] }),
     onError: (error) => toast.error(error.message || '创建对话失败'),
   })
@@ -57,7 +58,7 @@ export function useCreateAgentThread() {
 export function useUpdateAgentThread() {
   const queryClient = useQueryClient()
   return useMutation<UpdateThreadResponse, Error, UpdateThreadRequest>({
-    mutationFn: async ({ id, ...json }) => (await $updateThread({ param: { id }, json })).json(),
+    mutationFn: async ({ id, ...json }) => parseApiResponse(await $updateThread({ param: { id }, json })),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
       queryClient.invalidateQueries({ queryKey: ['agent', 'messages', variables.id] })
@@ -69,7 +70,7 @@ export function useUpdateAgentThread() {
 export function useDeleteAgentThread() {
   const queryClient = useQueryClient()
   return useMutation<DeleteThreadResponse, Error, string>({
-    mutationFn: async (id) => (await $deleteThread({ param: { id } })).json(),
+    mutationFn: async (id) => parseApiResponse(await $deleteThread({ param: { id } })),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
       queryClient.removeQueries({ queryKey: ['agent', 'messages', id] })
@@ -82,7 +83,7 @@ export function useDeleteAgentThread() {
 export function useClearAgentThreadMessages() {
   const queryClient = useQueryClient()
   return useMutation<ClearThreadMessagesResponse, Error, string>({
-    mutationFn: async (id) => (await $clearThreadMessages({ param: { id } })).json(),
+    mutationFn: async (id) => parseApiResponse(await $clearThreadMessages({ param: { id } })),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
       queryClient.invalidateQueries({ queryKey: ['agent', 'messages', id] })
@@ -96,14 +97,14 @@ export function useAgentMessages(threadId?: string) {
   return useQuery<MessagesResponse, Error>({
     queryKey: ['agent', 'messages', threadId],
     enabled: !!threadId,
-    queryFn: async () => (await $messages({ param: { id: threadId! } })).json(),
+    queryFn: async () => parseApiResponse(await $messages({ param: { id: threadId! } })),
   })
 }
 
 export function useSendAgentMessage() {
   const queryClient = useQueryClient()
   return useMutation<SendMessageResponse, Error, SendMessageRequest>({
-    mutationFn: async ({ threadId, ...json }) => (await $sendMessage({ param: { id: threadId }, json })).json(),
+    mutationFn: async ({ threadId, ...json }) => parseApiResponse(await $sendMessage({ param: { id: threadId }, json })),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
       queryClient.invalidateQueries({ queryKey: ['agent', 'messages', variables.threadId] })
@@ -116,14 +117,14 @@ export function useSendAgentMessage() {
 export function useAgentToolActions() {
   return useQuery<AgentToolActionsResponse, Error>({
     queryKey: ['agent', 'tool-actions'],
-    queryFn: async () => (await $toolActions()).json(),
+    queryFn: async () => parseApiResponse(await $toolActions()),
   })
 }
 
 export function useConfirmAgentToolAction(threadId?: string) {
   const queryClient = useQueryClient()
   return useMutation<ConfirmToolActionResponse, Error, ConfirmToolActionRequest>({
-    mutationFn: async ({ id }) => (await $confirmToolAction({ param: { id } })).json(),
+    mutationFn: async ({ id }) => parseApiResponse(await $confirmToolAction({ param: { id } })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'tool-actions'] })
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
@@ -137,7 +138,7 @@ export function useConfirmAgentToolAction(threadId?: string) {
 export function useRejectAgentToolAction(threadId?: string) {
   const queryClient = useQueryClient()
   return useMutation<RejectToolActionResponse, Error, RejectToolActionRequest>({
-    mutationFn: async ({ id, reason }) => (await $rejectToolAction({ param: { id }, json: { reason } })).json(),
+    mutationFn: async ({ id, reason }) => parseApiResponse(await $rejectToolAction({ param: { id }, json: { reason } })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'tool-actions'] })
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })

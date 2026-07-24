@@ -38,6 +38,9 @@ export const defaultUserSettings = {
     quiet_hours: '23:00-07:30',
     channel: 'web',
     max_daily_prompts: 2,
+    proactive_contact_enabled: false,
+    proactive_contact_cadence: 'balanced',
+    proactive_contact_pause_after: 3,
   },
   dataPrivacy: { redact_secrets: true, export_markdown: true, local_first_mode: false },
 }

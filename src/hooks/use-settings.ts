@@ -2,6 +2,7 @@ import { client } from '@/lib/api-client'
 import { InferRequestType, InferResponseType } from 'hono/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { parseApiResponse } from '@/lib/api-response'
 
 const $get = client.api.settings.$get
 type SettingsResponse = any
@@ -42,21 +43,21 @@ type DeleteWorkspaceDataResponse = any
 export function useSettings() {
   return useQuery<SettingsResponse, Error>({
     queryKey: ['settings'],
-    queryFn: async () => (await $get()).json(),
+    queryFn: async () => parseApiResponse(await $get()),
   })
 }
 
 export function useSettingsControlCenter() {
   return useQuery<SettingsControlCenterResponse, Error>({
     queryKey: ['settings-control-center'],
-    queryFn: async () => (await $controlCenter()).json(),
+    queryFn: async () => parseApiResponse(await $controlCenter()),
   })
 }
 
 export function useUpdateSettings() {
   const queryClient = useQueryClient()
   return useMutation<UpdateSettingsResponse, Error, UpdateSettingsRequest>({
-    mutationFn: async (json) => (await $put({ json })).json(),
+    mutationFn: async (json) => parseApiResponse(await $put({ json })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
       queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
@@ -69,7 +70,7 @@ export function useUpdateSettings() {
 export function useUpdateReminderRules() {
   const queryClient = useQueryClient()
   return useMutation<UpdateReminderRulesResponse, Error, UpdateReminderRulesRequest>({
-    mutationFn: async (json) => (await $reminders({ json })).json(),
+    mutationFn: async (json) => parseApiResponse(await $reminders({ json })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
       toast.success('提醒规则已保存')
@@ -81,7 +82,7 @@ export function useUpdateReminderRules() {
 export function useUpdateQqBotConfig() {
   const queryClient = useQueryClient()
   return useMutation<UpdateQqBotConfigResponse, Error, UpdateQqBotConfigRequest>({
-    mutationFn: async (json) => (await $qqBot({ json })).json(),
+    mutationFn: async (json) => parseApiResponse(await $qqBot({ json })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
       toast.success('QQ Bot 配置已保存')
@@ -93,7 +94,7 @@ export function useUpdateQqBotConfig() {
 export function useGenerateQqBindingCode() {
   const queryClient = useQueryClient()
   return useMutation<GenerateQqBindingCodeResponse, Error>({
-    mutationFn: async () => (await $qqBindingCode()).json(),
+    mutationFn: async () => parseApiResponse(await $qqBindingCode()),
     onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['settings-control-center'] })
       const command = response?.data?.command
@@ -105,7 +106,7 @@ export function useGenerateQqBindingCode() {
 
 export function useTestQqBotConnection() {
   return useMutation<TestQqBotResponse, Error>({
-    mutationFn: async () => (await $testQqBot()).json(),
+    mutationFn: async () => parseApiResponse(await $testQqBot()),
     onSuccess: (response: any) => {
       const ok = response?.data?.ok
       const message = response?.data?.message || 'QQ Bot 测试完成'
@@ -117,7 +118,7 @@ export function useTestQqBotConnection() {
 
 export function useTestModelConnection() {
   return useMutation<TestModelResponse, Error>({
-    mutationFn: async () => (await $test()).json(),
+    mutationFn: async () => parseApiResponse(await $test()),
     onSuccess: (response: any) => {
       const ok = response?.data?.ok
       const message = response?.data?.message || '模型连接测试完成'
@@ -129,7 +130,7 @@ export function useTestModelConnection() {
 
 export function useExportUserData() {
   return useMutation<ExportResponse, Error>({
-    mutationFn: async () => (await $export()).json(),
+    mutationFn: async () => parseApiResponse(await $export()),
     onSuccess: () => toast.success('导出数据已生成，密钥已脱敏'),
     onError: (error) => toast.error(error.message || '数据导出失败'),
   })
@@ -138,7 +139,7 @@ export function useExportUserData() {
 export function useDeleteAgentMemory() {
   const queryClient = useQueryClient()
   return useMutation<DeleteAgentMemoryResponse, Error>({
-    mutationFn: async () => (await $deleteAgentMemory()).json(),
+    mutationFn: async () => parseApiResponse(await $deleteAgentMemory()),
     onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'threads'] })
       queryClient.invalidateQueries({ queryKey: ['agent', 'messages'] })
@@ -151,7 +152,7 @@ export function useDeleteAgentMemory() {
 export function useDeleteWorkspaceData() {
   const queryClient = useQueryClient()
   return useMutation<DeleteWorkspaceDataResponse, Error>({
-    mutationFn: async () => (await $deleteWorkspaceData()).json(),
+    mutationFn: async () => parseApiResponse(await $deleteWorkspaceData()),
     onSuccess: () => {
       queryClient.invalidateQueries()
       toast.success('工作区数据已清除，登录账号已保留')

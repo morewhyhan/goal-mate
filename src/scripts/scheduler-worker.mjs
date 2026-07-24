@@ -10,6 +10,12 @@ import { chatCompletionsUrl } from '../lib/model-endpoint.mjs'
 import { fetchModelProvider } from '../lib/model-provider-http.mjs'
 import { resolveModelApiKey } from '../lib/model-secret.mjs'
 import { resolveQqBotConfig } from '../lib/qq-bot-config.mjs'
+import {
+  buildQqMessageBody,
+  evaluateQqContactPolicy,
+  pauseQqProactiveContact,
+  QQ_CONTACT_ACTION,
+} from '../lib/qq-contact-policy.mjs'
 import { touchRuntimeHeartbeat } from '../lib/runtime-heartbeat.mjs'
 import { ensureTodayAction } from '../lib/today-action-planner.mjs'
 
@@ -40,10 +46,10 @@ const runOnce = process.argv.includes('--once') || process.env.SCHEDULER_RUN_ONC
 const forceReminderArg = process.argv.find((arg) => arg.startsWith('--force-reminder='))
 const forcedReminderType = forceReminderArg?.split('=')[1] || process.env.SCHEDULER_FORCE_REMINDER || ''
 const defaultRules = [
-  { reminderType: 'morning_planning', schedule: process.env.SCHEDULER_MORNING_TIME || '08:30', maxPerDay: 1, quietHours: '23:00-07:30' },
-  { reminderType: 'midday_check', schedule: process.env.SCHEDULER_MIDDAY_TIME || '12:30', maxPerDay: 1, quietHours: '23:00-07:30' },
-  { reminderType: 'evening_review', schedule: process.env.SCHEDULER_EVENING_TIME || '21:30', maxPerDay: 1, quietHours: '23:00-07:30' },
-  { reminderType: 'weekly_review', schedule: process.env.SCHEDULER_WEEKLY_TIME || 'SUN 21:00', maxPerDay: 1, quietHours: '23:00-07:30' },
+  { reminderType: 'morning_planning', schedule: process.env.SCHEDULER_MORNING_TIME || '08:30', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'midday_check', schedule: process.env.SCHEDULER_MIDDAY_TIME || '12:30', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'evening_review', schedule: process.env.SCHEDULER_EVENING_TIME || '21:30', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
+  { reminderType: 'weekly_review', schedule: process.env.SCHEDULER_WEEKLY_TIME || 'SUN 21:00', maxPerDay: 1, quietHours: '23:00-07:30', enabled: false },
 ]
 
 let cachedAccessToken = ''
@@ -60,6 +66,16 @@ function sleep(ms) {
 
 function trimForPrompt(value, max = 900) {
   return value.length > max ? `${value.slice(0, max)}...` : value
+}
+
+function asRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function asDate(value) {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 function qqConfigSignature(config) {
@@ -172,32 +188,21 @@ async function qqRequest(method, path, body, userId = '') {
   return data
 }
 
-function messageBody(content, sourceMessageId) {
-  const body = {
-    msg_type: 0,
-    content,
-    msg_seq: Math.floor(Date.now() % 2_000_000_000),
-  }
-  if (sourceMessageId) body.msg_id = sourceMessageId
-  return body
-}
-
-async function sendQqMessage(binding, content) {
-  const latestEvent = await prisma.qqMessageEvent.findFirst({
-    where: { contextType: binding.contextType, contextId: binding.contextId },
-    orderBy: { createdAt: 'desc' },
-  })
-  const sourceMessageId = latestEvent?.payload?.id || latestEvent?.replyMessageId || undefined
-
+async function sendQqMessage(binding, content, contactPolicy) {
+  const sourceMessageId = contactPolicy?.sendOptions?.msgId || undefined
   if (binding.contextType === 'c2c') {
-    return qqRequest('POST', `/v2/users/${binding.contextId}/messages`, messageBody(content, sourceMessageId), binding.userId)
+    return qqRequest('POST', `/v2/users/${binding.contextId}/messages`, buildQqMessageBody(content, {
+      channelMode: contactPolicy?.channelMode,
+      sourceMessageId,
+    }), binding.userId)
   }
   if (binding.contextType === 'group') {
-    return qqRequest('POST', `/v2/groups/${binding.contextId}/messages`, messageBody(content, sourceMessageId), binding.userId)
+    return qqRequest('POST', `/v2/groups/${binding.contextId}/messages`, buildQqMessageBody(content, {
+      channelMode: contactPolicy?.channelMode,
+    }), binding.userId)
   }
   return qqRequest('POST', `/channels/${binding.contextId}/messages`, {
     content,
-    msg_id: sourceMessageId,
   }, binding.userId)
 }
 
@@ -230,6 +235,7 @@ function dueInfo(rule, now = new Date(), forceReminderType = '') {
     String(parts.minute).padStart(2, '0') === String(minute).padStart(2, '0')
   const dateKey = `${parts.year}-${parts.month}-${parts.day}`
   const quiet = isInQuietHours(rule.quietHours, parts)
+  const quietEndAt = quiet ? quietHoursEndAt(rule.quietHours, parts, now) : null
   if (forceReminderType && forceReminderType === rule.reminderType) {
     return {
       due: true,
@@ -238,6 +244,8 @@ function dueInfo(rule, now = new Date(), forceReminderType = '') {
       timezone,
       forced: true,
       quiet,
+      quietHoursEndAt: quietEndAt,
+      localWeekday: weekday,
     }
   }
   return {
@@ -246,6 +254,25 @@ function dueInfo(rule, now = new Date(), forceReminderType = '') {
     localDate: dateKey,
     timezone,
     quiet,
+    quietHoursEndAt: quietEndAt,
+    localWeekday: weekday,
+  }
+}
+
+function deferredDueInfo(rule, event, now = new Date()) {
+  const timezone = rule.timezone || defaultTimezone
+  const parts = localParts(now, timezone)
+  const weekday = String(parts.weekday || '').slice(0, 3).toUpperCase()
+  const quiet = isInQuietHours(rule.quietHours, parts)
+  return {
+    due: true,
+    dueKey: event.dueKey,
+    localDate: `${parts.year}-${parts.month}-${parts.day}`,
+    timezone,
+    quiet,
+    quietHoursEndAt: quiet ? quietHoursEndAt(rule.quietHours, parts, now) : null,
+    localWeekday: weekday,
+    retry: true,
   }
 }
 
@@ -272,6 +299,41 @@ function isInQuietHours(quietHours, parts) {
   return current >= start || current < end
 }
 
+function quietHoursEndAt(quietHours, parts, now) {
+  if (!isInQuietHours(quietHours, parts)) return null
+  const range = quietHoursRange(quietHours)
+  const [startRaw, endRaw] = range.split('-')
+  const start = minutesFromTime(startRaw)
+  const end = minutesFromTime(endRaw)
+  const current = minutesFromTime(`${parts.hour}:${parts.minute}`)
+  if (start === null || end === null || current === null || start === end) return null
+
+  let minutesUntilEnd = 0
+  if (start < end) {
+    minutesUntilEnd = end - current
+  } else if (current >= start) {
+    minutesUntilEnd = (1440 - current) + end
+  } else {
+    minutesUntilEnd = end - current
+  }
+  if (minutesUntilEnd <= 0) minutesUntilEnd += 1440
+  const partialMinuteMs = now.getSeconds() * 1000 + now.getMilliseconds()
+  return new Date(now.getTime() + minutesUntilEnd * 60 * 1000 - partialMinuteMs).toISOString()
+}
+
+function deferredRetryAt(contactPolicy, now = new Date()) {
+  const explicit = asDate(contactPolicy?.nextEligibleAt)
+  if (explicit && explicit.getTime() > now.getTime()) return explicit
+
+  const fallbackHours = contactPolicy?.reasonCode === 'platform_quota'
+    ? 6
+    : contactPolicy?.reasonCode === 'c2c_no_user_context'
+      || contactPolicy?.reasonCode === 'c2c_recall_expired'
+      ? 24
+      : 1
+  return new Date(now.getTime() + fallbackHours * 60 * 60 * 1000)
+}
+
 async function ensureDefaultRulesForBoundUsers() {
   const bindings = await prisma.qqChatBinding.findMany({
     where: { status: 'ENABLED' },
@@ -294,7 +356,14 @@ async function ensureDefaultRulesForBoundUsers() {
           timezone: defaultTimezone,
           maxPerDay: rule.maxPerDay,
           quietHours: { range: rule.quietHours },
-          metadata: { source: 'scheduler_default' },
+          enabled: false,
+          metadata: {
+            source: 'scheduler_recommended',
+            recommended: true,
+            scheduleMode: 'candidate_window',
+            candidateWindow: { reminderType: rule.reminderType, selectedBy: 'system_recommendation' },
+            activeContactConsent: false,
+          },
         },
       })
     }
@@ -328,19 +397,195 @@ function shouldEnsureTodayAction(reminderType) {
     || reminderType === 'evening_review'
 }
 
-async function loadTodayAction(userId) {
-  const dayStart = new Date()
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart)
-  dayEnd.setDate(dayEnd.getDate() + 1)
-  return prisma.dailyAction.findFirst({
-    where: {
-      userId,
-      actionDate: { gte: dayStart, lt: dayEnd },
+function localDateKey(date, timezone) {
+  const parts = localParts(date, timezone)
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+function contactCadenceLimit(value) {
+  if (value === 'light') return 1
+  if (value === 'supportive') return 3
+  return 2
+}
+
+function schedulerReplyFromPayload(payload) {
+  const record = asRecord(payload)
+  const reply = asRecord(record.reply)
+  if (Object.keys(reply).length) return reply
+  if (!record.previousPayload) return {}
+  return schedulerReplyFromPayload(record.previousPayload)
+}
+
+function schedulerContactPolicyFromPayload(payload) {
+  const record = asRecord(payload)
+  const contactPolicy = asRecord(record.contact_policy)
+  if (Object.keys(contactPolicy).length) return contactPolicy
+  if (!record.previousPayload) return {}
+  return schedulerContactPolicyFromPayload(record.previousPayload)
+}
+
+function isExplicitContactOptOut(reply, consentUpdatedAt) {
+  const feedback = asRecord(reply.feedback)
+  const text = String(reply.text || feedback.userFeedback || '')
+  if (!/(别提醒|不要提醒|停止提醒|暂停提醒|别催|不要催|别烦|关闭提醒)/i.test(text)) return false
+  const repliedAt = new Date(String(reply.processedAt || 0))
+  const consentAt = new Date(String(consentUpdatedAt || 0))
+  if (Number.isNaN(repliedAt.getTime()) || Number.isNaN(consentAt.getTime())) return true
+  return repliedAt.getTime() >= consentAt.getTime()
+}
+
+async function loadContactContext(rule, binding, info, now) {
+  const metadata = asRecord(rule.metadata)
+  const sentWindowStart = new Date(now.getTime() - 36 * 60 * 60 * 1000)
+  const historyWindowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const activityWindowStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const goal = await prisma.goal.findFirst({
+    where: rule.goalId
+      ? { id: rule.goalId, userId: rule.userId }
+      : { userId: rule.userId, isCurrentFocus: true },
+    include: {
+      conditions: true,
+      dailyActions: { orderBy: { actionDate: 'desc' }, take: 14 },
+      checkins: { orderBy: { createdAt: 'desc' }, take: 10 },
+      reviews: { orderBy: { createdAt: 'desc' }, take: 5 },
+      diagnoses: { orderBy: { createdAt: 'desc' }, take: 10 },
     },
-    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-    include: { goal: true, condition: true },
   })
+  const [settings, recentSchedulerEvents, sentWindowEvents, recentInbound] = await Promise.all([
+    prisma.userSetting.findUnique({ where: { userId: rule.userId } }),
+    prisma.schedulerEvent.findMany({
+      where: {
+        userId: rule.userId,
+        channel: rule.channel,
+        status: { in: ['sent', 'responded'] },
+        createdAt: { gte: historyWindowStart },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 24,
+    }),
+    prisma.schedulerEvent.findMany({
+      where: {
+        userId: rule.userId,
+        channel: rule.channel,
+        status: { in: ['sent', 'responded'] },
+        sentAt: { gte: sentWindowStart },
+      },
+      orderBy: { sentAt: 'desc' },
+    }),
+    binding ? prisma.qqMessageEvent.findFirst({
+      where: {
+        userId: rule.userId,
+        contextType: binding.contextType,
+        contextId: binding.contextId,
+      },
+      orderBy: { createdAt: 'desc' },
+    }) : Promise.resolve(null),
+  ])
+
+  const notifications = asRecord(settings?.notifications)
+  const cadence = String(notifications.proactive_contact_cadence || metadata.cadence || 'balanced')
+  const consentUpdatedAt = metadata.consentUpdatedAt || notifications.proactive_contact_consent_updated_at
+  let unansweredCount = 0
+  for (const schedulerEvent of recentSchedulerEvents) {
+    if (schedulerEvent.status === 'responded') break
+    if (schedulerEvent.status === 'sent') unansweredCount += 1
+  }
+
+  const latestSchedulerEvent = recentSchedulerEvents[0]
+  const responseWindowHours = Math.max(1, Number(process.env.QQ_SCHEDULER_REPLY_WINDOW_HOURS || '18'))
+  const awaitingReplyUntil = latestSchedulerEvent?.status === 'sent' && latestSchedulerEvent.sentAt
+    ? new Date(latestSchedulerEvent.sentAt.getTime() + responseWindowHours * 60 * 60 * 1000)
+    : null
+  const userOptedOut = recentSchedulerEvents.some((schedulerEvent) => (
+    schedulerEvent.status === 'responded'
+    && isExplicitContactOptOut(schedulerReplyFromPayload(schedulerEvent.payload), consentUpdatedAt)
+  ))
+  const sentTodayCount = sentWindowEvents.filter((schedulerEvent) => (
+    schedulerEvent.sentAt
+    && localDateKey(schedulerEvent.sentAt, info.timezone) === info.localDate
+  )).length
+  const sentForRuleTodayCount = sentWindowEvents.filter((schedulerEvent) => (
+    schedulerEvent.reminderRuleId === rule.id
+    && schedulerEvent.sentAt
+    && localDateKey(schedulerEvent.sentAt, info.timezone) === info.localDate
+  )).length
+  const wakeupCount = recentSchedulerEvents.filter((schedulerEvent) => {
+    return schedulerContactPolicyFromPayload(schedulerEvent.payload).channelMode === 'c2c_wakeup'
+  }).length
+  const latestInboundPayload = asRecord(recentInbound?.payload)
+  const todayActions = (goal?.dailyActions || []).filter((action) => (
+    localDateKey(action.actionDate, info.timezone) === info.localDate
+  ))
+  const completedAction = todayActions.find((action) => action.status === 'DONE') || null
+  const futureAction = (goal?.dailyActions || [])
+    .filter((action) => localDateKey(action.actionDate, info.timezone) > info.localDate)
+    .sort((left, right) => left.actionDate.getTime() - right.actionDate.getTime())[0] || null
+  const currentAction = completedAction
+    || todayActions.find((action) => !['SKIPPED', 'REPLACED'].includes(action.status))
+    || futureAction
+    || null
+  const actionDateKey = currentAction ? localDateKey(currentAction.actionDate, info.timezone) : ''
+  const actionWindowState = !currentAction
+    ? 'missing'
+    : actionDateKey === info.localDate
+      ? 'today'
+      : actionDateKey > info.localDate
+        ? 'future'
+        : 'outside'
+  const latestRespondedEvent = recentSchedulerEvents.find((schedulerEvent) => schedulerEvent.status === 'responded')
+  const latestReply = latestRespondedEvent ? schedulerReplyFromPayload(latestRespondedEvent.payload) : {}
+  const recentFeedbackAt = latestReply.processedAt || latestRespondedEvent?.updatedAt || null
+  const recentFeedback = asRecord(latestReply.feedback)
+  const recentActivityCount = [
+    ...(goal?.checkins || []).filter((checkin) => checkin.createdAt >= activityWindowStart),
+    ...(goal?.reviews || []).filter((review) => review.createdAt >= activityWindowStart),
+  ].length
+  const openGapCount = (goal?.conditions || []).filter((condition) => (
+    condition.status === 'MISSING' || condition.status === 'PARTIAL'
+  )).length
+  const latestCheckinAt = goal?.checkins?.[0]?.createdAt || null
+  const latestPromptDiagnosis = (goal?.diagnoses || []).find((diagnosis) => (
+    String(diagnosis.category || '').toUpperCase() === 'PROMPT'
+    && String(diagnosis.adjustmentType || '').toUpperCase() === 'RESCHEDULE'
+  )) || null
+  const promptSignalActive = Boolean(
+    latestPromptDiagnosis
+    && (
+      !latestCheckinAt
+      || latestPromptDiagnosis.createdAt.getTime() >= latestCheckinAt.getTime()
+    )
+  )
+
+  return {
+    activeContactConsent: notifications.proactive_contact_enabled === true,
+    maxDailyContacts: contactCadenceLimit(cadence),
+    noResponsePauseAfter: Math.max(1, Number(notifications.proactive_contact_pause_after || 3)),
+    unansweredCount,
+    awaitingReplyUntil,
+    sentTodayCount,
+    sentForRuleTodayCount,
+    goal,
+    currentAction,
+    actionWindowState,
+    todayActionCompleted: Boolean(completedAction),
+    completedActionGoalId: completedAction?.goalId || '',
+    openGapCount,
+    recentActivityCount,
+    recentFeedbackAt,
+    recentFeedbackResult: recentFeedback.result || '',
+    recentFeedbackCooldownMinutes: Math.max(0, Number(notifications.proactive_contact_feedback_cooldown_minutes || 180)),
+    promptSignalActive,
+    promptSignalCategory: latestPromptDiagnosis?.category || '',
+    promptSignalAdjustmentType: latestPromptDiagnosis?.adjustmentType || '',
+    promptSignalCreatedAt: latestPromptDiagnosis?.createdAt || null,
+    promptSignalEvidence: latestPromptDiagnosis?.evidence || '',
+    promptSignalProposedNextAction: latestPromptDiagnosis?.proposedNextAction || '',
+    latestInboundAt: recentInbound?.createdAt || null,
+    sourceMessageId: latestInboundPayload.id || recentInbound?.replyMessageId || '',
+    c2cWakeupEligible: wakeupCount < 4,
+    userOptedOut,
+    cadence,
+  }
 }
 
 function formatScheduledMessage(reminderType, rawMessage, action) {
@@ -479,47 +724,219 @@ async function createPendingEvent(rule, info, now = new Date()) {
   }
 }
 
+function evaluateRuleContactPolicy({
+  rule,
+  binding,
+  info,
+  now,
+  contactContext,
+  authorizedContextId,
+  authorizedContextType,
+  contextAuthorizationAmbiguous,
+}) {
+  return evaluateQqContactPolicy({
+    now,
+    rule,
+    binding,
+    authorizedContextId,
+    authorizedContextType,
+    contextAuthorizationAmbiguous,
+    activeContactConsent: contactContext.activeContactConsent,
+    inQuietHours: info.quiet,
+    quietHoursEndAt: info.quietHoursEndAt,
+    localWeekday: info.localWeekday,
+    cadence: contactContext.cadence,
+    goal: contactContext.goal,
+    currentAction: contactContext.currentAction,
+    actionWindowState: contactContext.actionWindowState,
+    todayActionCompleted: contactContext.todayActionCompleted,
+    completedActionGoalId: contactContext.completedActionGoalId,
+    openGapCount: contactContext.openGapCount,
+    recentActivityCount: contactContext.recentActivityCount,
+    recentFeedbackAt: contactContext.recentFeedbackAt,
+    recentFeedbackResult: contactContext.recentFeedbackResult,
+    recentFeedbackCooldownMinutes: contactContext.recentFeedbackCooldownMinutes,
+    promptSignalActive: contactContext.promptSignalActive,
+    promptSignalCategory: contactContext.promptSignalCategory,
+    promptSignalAdjustmentType: contactContext.promptSignalAdjustmentType,
+    promptSignalCreatedAt: contactContext.promptSignalCreatedAt,
+    promptSignalEvidence: contactContext.promptSignalEvidence,
+    promptSignalProposedNextAction: contactContext.promptSignalProposedNextAction,
+    sentTodayCount: contactContext.sentTodayCount,
+    sentForRuleTodayCount: contactContext.sentForRuleTodayCount,
+    maxDailyContacts: contactContext.maxDailyContacts,
+    unansweredCount: contactContext.unansweredCount,
+    noResponsePauseAfter: contactContext.noResponsePauseAfter,
+    awaitingReplyUntil: contactContext.awaitingReplyUntil,
+    latestInboundAt: contactContext.latestInboundAt,
+    sourceMessageId: contactContext.sourceMessageId,
+    c2cWakeupEligible: contactContext.c2cWakeupEligible,
+    userOptedOut: contactContext.userOptedOut,
+  })
+}
+
 async function processRule(rule, options = {}) {
   const now = options.now || new Date()
-  const info = dueInfo(rule, now, options.forceReminderType || '')
-  if (!info.due) return
-  if (info.quiet && !info.forced) {
-    console.log(`[scheduler] skipped ${rule.reminderType}; quietHours=${quietHoursRange(rule.quietHours)}`)
-    return
-  }
+  const retryEvent = options.retryEvent || null
+  const info = retryEvent
+    ? deferredDueInfo(rule, retryEvent, now)
+    : dueInfo(rule, now, options.forceReminderType || '')
+  if (!info.due) return null
 
-  const sentSince = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-  const sentCount = await prisma.schedulerEvent.count({
-    where: {
-      userId: rule.userId,
-      reminderRuleId: rule.id,
-      channel: rule.channel,
-      status: 'sent',
-      sentAt: { gte: sentSince },
-    },
+  const event = retryEvent || await createPendingEvent(rule, info, now)
+  if (!event) return null
+
+  const ruleMetadata = asRecord(rule.metadata)
+  const authorizedContextId = String(
+    ruleMetadata.qqContextId
+      || asRecord(ruleMetadata.contactConsent).qqContextId
+      || asRecord(ruleMetadata.contactConsent).contextId
+      || '',
+  )
+  const authorizedContextType = String(
+    ruleMetadata.qqContextType
+      || asRecord(ruleMetadata.contactConsent).qqContextType
+      || asRecord(ruleMetadata.contactConsent).contextType
+      || '',
+  ).toLowerCase()
+  const candidateBindings = authorizedContextId
+    ? await prisma.qqChatBinding.findMany({
+        where: {
+          userId: rule.userId,
+          status: 'ENABLED',
+          contextId: authorizedContextId,
+          ...(authorizedContextType ? { contextType: authorizedContextType } : {}),
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 2,
+      })
+    : []
+  const contextAuthorizationAmbiguous = !authorizedContextType && candidateBindings.length > 1
+  const binding = contextAuthorizationAmbiguous ? null : candidateBindings[0] || null
+  let contactContext = await loadContactContext(rule, binding, info, now)
+  let contactPolicy = evaluateRuleContactPolicy({
+    rule,
+    binding,
+    info,
+    now,
+    contactContext,
+    authorizedContextId,
+    authorizedContextType,
+    contextAuthorizationAmbiguous,
   })
-  if (sentCount >= Math.max(1, rule.maxPerDay || 1) && !info.forced) {
-    console.log(`[scheduler] skipped ${rule.reminderType}; maxPerDay=${rule.maxPerDay}`)
-    return
-  }
 
-  const event = await createPendingEvent(rule, info, now)
-  if (!event) return
-
-  if (shouldEnsureTodayAction(rule.reminderType)) {
+  if (
+    shouldEnsureTodayAction(rule.reminderType)
+    && contactPolicy.action === QQ_CONTACT_ACTION.SKIP
+    && contactPolicy.reasonCode === 'no_current_action'
+  ) {
     await ensureTodayAction(prisma, rule.userId)
+    contactContext = await loadContactContext(rule, binding, info, now)
+    contactPolicy = evaluateRuleContactPolicy({
+      rule,
+      binding,
+      info,
+      now,
+      contactContext,
+      authorizedContextId,
+      authorizedContextType,
+      contextAuthorizationAmbiguous,
+    })
   }
 
-  const binding = await prisma.qqChatBinding.findFirst({
-    where: { userId: rule.userId, status: 'ENABLED' },
-    orderBy: { updatedAt: 'desc' },
+  const previousEventPayload = asRecord(event.payload)
+  const eventPayloadWithoutRetry = { ...previousEventPayload }
+  delete eventPayloadWithoutRetry.retry
+  const previousContactPolicy = asRecord(previousEventPayload.contact_policy)
+  const existingDeferHistory = Array.isArray(previousEventPayload.defer_history)
+    ? previousEventPayload.defer_history
+    : []
+  const deferHistory = Object.keys(previousContactPolicy).length
+    ? [
+        ...existingDeferHistory,
+        {
+          evaluatedAt: asDate(event.updatedAt || event.createdAt || now)?.toISOString() || now.toISOString(),
+          scheduledFor: asDate(event.scheduledFor)?.toISOString() || null,
+          contactPolicy: previousContactPolicy,
+        },
+      ]
+    : existingDeferHistory
+  const schedulerPayload = {
+    ...eventPayloadWithoutRetry,
+    contact_policy: contactPolicy,
+    ...(deferHistory.length ? { defer_history: deferHistory } : {}),
+    contact_context: {
+      cadence: contactContext.cadence,
+      sentTodayCount: contactContext.sentTodayCount,
+      sentForRuleTodayCount: contactContext.sentForRuleTodayCount,
+      unansweredCount: contactContext.unansweredCount,
+      todayActionCompleted: contactContext.todayActionCompleted,
+      completedActionGoalId: contactContext.completedActionGoalId,
+      goalId: contactContext.goal?.id || null,
+      goalStatus: contactContext.goal?.status || null,
+      currentActionId: contactContext.currentAction?.id || null,
+      currentActionStatus: contactContext.currentAction?.status || null,
+      actionWindowState: contactContext.actionWindowState,
+      openGapCount: contactContext.openGapCount,
+      recentActivityCount: contactContext.recentActivityCount,
+      recentFeedbackAt: contactContext.recentFeedbackAt,
+      promptSignalActive: contactContext.promptSignalActive,
+      promptSignalCategory: contactContext.promptSignalCategory || null,
+      promptSignalAdjustmentType: contactContext.promptSignalAdjustmentType || null,
+      promptSignalCreatedAt: contactContext.promptSignalCreatedAt || null,
+      promptSignalProposedNextAction: contactContext.promptSignalProposedNextAction || null,
+      authorizedContextId: authorizedContextId || null,
+      authorizedContextType: authorizedContextType || null,
+      contextAuthorizationAmbiguous,
+      hasRecentInbound: Boolean(contactContext.latestInboundAt),
+    },
+  }
+
+  await recordAgentToolActionWithPrisma(prisma, {
+    context: { userId: rule.userId, source: 'scheduler' },
+    toolName: 'reminder.evaluate',
+    permission: 'execute',
+    inputSummary: `${rule.reminderType} -> ${contactPolicy.action}:${contactPolicy.reasonCode}`,
+    input: { reminderRuleId: rule.id, schedulerEventId: event.id },
+    result: { contact_policy: contactPolicy },
+    targetType: 'reminder',
+    targetId: rule.id,
+    riskLevel: 'low',
+    requiresConfirmation: false,
+    status: 'executed',
   })
-  if (!binding) {
+
+  if (contactPolicy.action !== QQ_CONTACT_ACTION.SEND) {
+    const retryAt = contactPolicy.action === QQ_CONTACT_ACTION.DEFER
+      ? deferredRetryAt(contactPolicy, now)
+      : null
+    const finalPayload = retryAt
+      ? {
+          ...schedulerPayload,
+          retry: {
+            scheduledFor: retryAt.toISOString(),
+            reasonCode: contactPolicy.reasonCode,
+            recheckFullContactPolicy: true,
+          },
+        }
+      : schedulerPayload
     await prisma.schedulerEvent.update({
       where: { id: event.id },
-      data: { status: 'failed', errorMessage: 'No enabled QQ binding.' },
+      data: {
+        status: contactPolicy.action === QQ_CONTACT_ACTION.DEFER ? 'deferred' : 'skipped',
+        ...(retryAt ? { scheduledFor: retryAt } : {}),
+        payload: finalPayload,
+        errorMessage: null,
+      },
     })
-    return
+    if (contactPolicy.shouldPauseAll) {
+      await pauseQqProactiveContact(prisma, rule.userId, {
+        reasonCode: contactPolicy.reasonCode,
+        now,
+      })
+    }
+    console.log(`[scheduler] ${contactPolicy.action} ${rule.reminderType}; reason=${contactPolicy.reasonCode}`)
+    return { eventId: event.id, contactPolicy }
   }
 
   const thread = await findOrCreateSchedulerThread(rule.userId, binding)
@@ -527,12 +944,16 @@ async function processRule(rule, options = {}) {
     reminderType: rule.reminderType,
     reminderRule: rule,
     now,
+    contactPolicy,
+    contactContext,
   })
-  const todayAction = await loadTodayAction(rule.userId)
+  const todayAction = contactContext.actionWindowState === 'today'
+    ? contactContext.currentAction
+    : null
   const rawMessageText = interventionDecision.question_or_message || await generateReminderText(rule.userId, rule.reminderType)
   const messageText = formatScheduledMessage(rule.reminderType, rawMessageText, todayAction)
-  const schedulerPayload = {
-    ...(event.payload || {}),
+  const sentSchedulerPayload = {
+    ...schedulerPayload,
     intervention_decision: interventionDecision,
   }
   const assistantMessage = await prisma.agentMessage.create({
@@ -547,7 +968,9 @@ async function processRule(rule, options = {}) {
         reminderRuleId: rule.id,
         schedulerEventId: event.id,
         channel: rule.channel,
+        channel_mode: contactPolicy.channelMode,
         planner_source: interventionDecision.planner_source,
+        contact_policy: contactPolicy,
         intervention_decision: interventionDecision,
       },
     },
@@ -555,7 +978,7 @@ async function processRule(rule, options = {}) {
   await prisma.agentThread.update({ where: { id: thread.id }, data: { updatedAt: new Date() } })
 
   try {
-    const sent = await sendQqMessage(binding, messageText)
+    const sent = await sendQqMessage(binding, messageText, contactPolicy)
     await prisma.schedulerEvent.update({
       where: { id: event.id },
       data: {
@@ -565,16 +988,17 @@ async function processRule(rule, options = {}) {
         agentThreadId: thread.id,
         agentMessageId: assistantMessage.id,
         externalMessageId: String(sent?.id || sent?.message_id || sent?.data?.id || ''),
-        payload: schedulerPayload,
+        payload: sentSchedulerPayload,
+        errorMessage: null,
       },
     })
     await recordAgentToolActionWithPrisma(prisma, {
       context: { userId: rule.userId, source: 'scheduler', agentThreadId: thread.id, agentMessageId: assistantMessage.id },
       toolName: 'reminder.send',
       permission: 'execute',
-      inputSummary: `${rule.reminderType} -> qq`,
-      input: { reminderRuleId: rule.id, schedulerEventId: event.id, intervention_decision: interventionDecision },
-      result: { qq: sent || {}, intervention_decision: interventionDecision },
+      inputSummary: `${rule.reminderType} -> qq:${contactPolicy.channelMode}`,
+      input: { reminderRuleId: rule.id, schedulerEventId: event.id, contact_policy: contactPolicy, intervention_decision: interventionDecision },
+      result: { qq: sent || {}, contact_policy: contactPolicy, intervention_decision: interventionDecision },
       targetType: 'reminder',
       targetId: rule.id,
       riskLevel: 'low',
@@ -582,6 +1006,7 @@ async function processRule(rule, options = {}) {
       status: 'executed',
     })
     console.log(`[scheduler] sent ${rule.reminderType} to qq:${binding.contextType}:${binding.contextId}`)
+    return { eventId: event.id, contactPolicy, sent }
   } catch (error) {
     await prisma.schedulerEvent.update({
       where: { id: event.id },
@@ -590,7 +1015,7 @@ async function processRule(rule, options = {}) {
         messageText,
         agentThreadId: thread.id,
         agentMessageId: assistantMessage.id,
-        payload: schedulerPayload,
+        payload: sentSchedulerPayload,
         errorMessage: error instanceof Error ? error.message : String(error),
       },
     })
@@ -598,8 +1023,8 @@ async function processRule(rule, options = {}) {
       context: { userId: rule.userId, source: 'scheduler', agentThreadId: thread.id, agentMessageId: assistantMessage.id },
       toolName: 'reminder.send',
       permission: 'execute',
-      inputSummary: `${rule.reminderType} -> qq`,
-      input: { reminderRuleId: rule.id, schedulerEventId: event.id, intervention_decision: interventionDecision },
+      inputSummary: `${rule.reminderType} -> qq:${contactPolicy.channelMode}`,
+      input: { reminderRuleId: rule.id, schedulerEventId: event.id, contact_policy: contactPolicy, intervention_decision: interventionDecision },
       targetType: 'reminder',
       targetId: rule.id,
       riskLevel: 'low',
@@ -608,6 +1033,86 @@ async function processRule(rule, options = {}) {
       errorMessage: error instanceof Error ? error.message : String(error),
     })
     console.error(`[scheduler] failed ${rule.reminderType}`, error)
+    return { eventId: event.id, contactPolicy, error }
+  }
+}
+
+async function processDueDeferredEvents(options = {}) {
+  const now = options.now || new Date()
+  const deferredEvents = await prisma.schedulerEvent.findMany({
+    where: {
+      channel: 'qq',
+      status: 'deferred',
+      scheduledFor: { lte: now },
+      ...(options.userId ? { userId: options.userId } : {}),
+    },
+    orderBy: { scheduledFor: 'asc' },
+    take: 100,
+  })
+
+  for (const event of deferredEvents) {
+    const claim = await prisma.schedulerEvent.updateMany({
+      where: {
+        id: event.id,
+        status: 'deferred',
+        scheduledFor: { lte: now },
+      },
+      data: { status: 'pending' },
+    })
+    if (claim.count !== 1) continue
+
+    const rule = event.reminderRuleId
+      ? await prisma.reminderRule.findFirst({
+          where: { id: event.reminderRuleId, userId: event.userId },
+        })
+      : null
+    if (!rule) {
+      await prisma.schedulerEvent.update({
+        where: { id: event.id },
+        data: {
+          status: 'skipped',
+          payload: {
+            ...asRecord(event.payload),
+            contact_policy: {
+              action: 'skip',
+              reasonCode: 'rule_missing',
+              channelMode: null,
+              nextEligibleAt: null,
+              shouldPauseAll: false,
+              sendOptions: null,
+              evidence: {},
+            },
+          },
+        },
+      })
+      continue
+    }
+
+    try {
+      await processRule(rule, {
+        ...options,
+        retryEvent: { ...event, status: 'pending' },
+      })
+    } catch (error) {
+      const retryAt = new Date(now.getTime() + 60 * 60 * 1000)
+      await prisma.schedulerEvent.update({
+        where: { id: event.id },
+        data: {
+          status: 'deferred',
+          scheduledFor: retryAt,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          payload: {
+            ...asRecord(event.payload),
+            retry: {
+              scheduledFor: retryAt.toISOString(),
+              reasonCode: 'retry_processing_failed',
+              recheckFullContactPolicy: true,
+            },
+          },
+        },
+      })
+      console.error(`[scheduler] deferred retry failed for ${event.id}`, error)
+    }
   }
 }
 
@@ -619,8 +1124,13 @@ async function tick(options = {}) {
     payload: { tickSeconds, timezone: defaultTimezone, forceReminderType: options.forceReminderType || '' },
   })
   await ensureDefaultRulesForBoundUsers()
+  await processDueDeferredEvents(options)
   const rules = await prisma.reminderRule.findMany({
-    where: { enabled: true, channel: 'qq' },
+    where: {
+      enabled: true,
+      channel: 'qq',
+      ...(options.userId ? { userId: options.userId } : {}),
+    },
     orderBy: { createdAt: 'asc' },
   })
   for (const rule of rules) {

@@ -232,17 +232,54 @@ for (const scenario of dialogueScenarios) {
 }
 
 const qqCases = [
-  { text: '不想做，感觉没意义。', expect: [/先不催执行|值得继续/u] },
-  { text: '太难了，时间不够。', expect: [/硬顶|切小|能启动/u] },
-  { text: '忘了，提醒太晚。', expect: [/风险点前|提示提前/u] },
-  { text: '路径不对，不知道从哪里改。', expect: [/补哪个缺口|不催/u] },
-  { text: '做完了。', expect: [/不加码|稳定重复/u] },
-  { text: '嗯', expect: [/不扩计划|保留/u] },
+  {
+    text: '不想做，感觉没意义。',
+    expect: [/先不催执行|值得继续/u],
+    persisted: { title: '先不催执行，确认这个目标是否值得继续' },
+  },
+  {
+    text: '太难了，时间不够。',
+    expect: [/硬顶|切小|能启动/u],
+    persisted: { title: '把动作切小到两分钟，先做到能启动' },
+  },
+  {
+    text: '忘了，提醒太晚。',
+    expect: [/风险点前|提示提前/u],
+    persisted: {
+      title: '把提示提前到风险点前',
+      reminderAdjustment: {
+        applied: true,
+        previousSchedule: '0 21 * * *',
+        newSchedule: '0 20 * * *',
+      },
+    },
+  },
+  {
+    text: '路径不对，不知道从哪里改。',
+    expect: [/补哪个缺口|不催/u],
+    persisted: { title: '先确认要补哪个缺口，不催着继续执行' },
+  },
+  {
+    text: '做完了。',
+    expect: [/不加码|稳定重复/u],
+    persisted: { title: '下一次不加码，先稳定重复这个最小动作' },
+  },
+  {
+    text: '嗯',
+    expect: [/不扩计划|保留/u],
+    persisted: { title: '不扩计划，只保留当前最小动作' },
+  },
 ]
 
 const qqAudits = qqCases.map((item) => {
   const feedback = classifyQqSchedulerReply(item.text)
-  const reply = buildSecretarySchedulerReply(feedback)
+  const reply = buildSecretarySchedulerReply(feedback, {
+    nextCommitment: {
+      persisted: true,
+      title: item.persisted.title,
+    },
+    reminderAdjustment: item.persisted.reminderAdjustment,
+  })
   const audit = auditSecretaryReply(reply, { mustBeActionable: true, mustMentionAny: item.expect })
   return { text: item.text, feedback, reply, audit }
 })

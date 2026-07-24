@@ -16,6 +16,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(scriptDir, '..', '..')
 const timezone = 'Asia/Shanghai'
 const now = new Date()
+const verifiedContextId = `fake-c2c-${runId}`
 const results = []
 let fakeQq = null
 
@@ -123,7 +124,19 @@ async function createRule(userId, input) {
       maxPerDay: input.maxPerDay ?? 1,
       quietHours: { range: input.quietHours || '23:00-07:30' },
       enabled: input.enabled ?? true,
-      metadata: { source: 'verify_scheduler_rules' },
+      metadata: {
+        source: 'verify_scheduler_rules',
+        cadence: input.cadence || 'balanced',
+        qqContextId: input.qqContextId || verifiedContextId,
+        qqContextType: input.qqContextType || 'c2c',
+        activeContactConsent: true,
+        contactConsent: {
+          granted: true,
+          source: 'verification',
+          qqContextId: input.qqContextId || verifiedContextId,
+          qqContextType: input.qqContextType || 'c2c',
+        },
+      },
     },
   })
 }
@@ -134,6 +147,22 @@ async function seedUser() {
       email,
       name: 'Scheduler Rules User',
       emailVerified: true,
+    },
+  })
+  await prisma.userSetting.create({
+    data: {
+      userId: user.id,
+      general: {},
+      goals: {},
+      logs: {},
+      today: {},
+      agent: {},
+      notifications: {
+        proactive_contact_enabled: true,
+        proactive_contact_cadence: 'balanced',
+        proactive_contact_consent_updated_at: now.toISOString(),
+      },
+      dataPrivacy: {},
     },
   })
   await saveQqBotConfig(prisma, user.id, {
@@ -203,7 +232,7 @@ async function seedGoalActionAndBinding(user) {
     data: {
       userId: user.id,
       contextType: 'c2c',
-      contextId: `fake-c2c-${runId}`,
+      contextId: verifiedContextId,
       username: `fake-user-${runId}`,
       nickname: 'Fake QQ User',
       status: 'ENABLED',
@@ -296,18 +325,18 @@ async function run() {
     `own=${ownQqConfig.source}/${ownQqConfig.appId}; disabledConfigured=${disabledQqConfig.configured}; globalUser=${globalQqConfig.userId === user.id ? 'enabled-user' : 'other'}`,
   )
 
-  await tick({ forceReminderType: 'morning_planning', now })
+  await tick({ userId: user.id, forceReminderType: 'morning_planning', now })
   const morningEvent = await latestEvent(user.id, 'morning_planning')
   record(
     'SRR-ENABLED-FORCED-DUE',
-    'enabled user reminder rule is consumed by Scheduler even when another user has a newer disabled QQ config',
+    'enabled user reminder rule is evaluated without treating missing QQ binding as a delivery failure',
     Boolean(
-      morningEvent?.status === 'failed'
+      morningEvent?.status === 'skipped'
         && morningEvent?.reminderRuleId === morningRule.id
         && morningEvent?.payload?.schedule === '08:30'
-        && morningEvent?.errorMessage === 'No enabled QQ binding.',
+        && morningEvent?.payload?.contact_policy?.reasonCode === 'no_enabled_binding',
     ),
-    `status=${morningEvent?.status}; rule=${morningEvent?.reminderRuleId}; schedule=${morningEvent?.payload?.schedule}; error=${morningEvent?.errorMessage}`,
+    `status=${morningEvent?.status}; rule=${morningEvent?.reminderRuleId}; schedule=${morningEvent?.payload?.schedule}; reason=${morningEvent?.payload?.contact_policy?.reasonCode}`,
   )
 
   record(
@@ -337,13 +366,22 @@ async function run() {
       payload: { verification: true },
     },
   })
-  await tick({ now })
+  await tick({ userId: user.id, now })
+  const maxEvent = await latestEvent(user.id, 'evening_review')
   record(
     'SRR-MAX-PER-DAY',
-    'Scheduler respects maxPerDay and does not create another event after today already has a sent event',
-    await countEvents(user.id, 'evening_review') === 1,
-    `eveningEvents=${await countEvents(user.id, 'evening_review')}; maxPerDay=${maxRule.maxPerDay}`,
+    'Scheduler records why it suppresses another same-day contact after the cadence limit is reached',
+    Boolean(
+      await countEvents(user.id, 'evening_review') === 2
+      && maxEvent?.status === 'skipped'
+      && maxEvent?.payload?.contact_policy?.reasonCode === 'daily_limit'
+    ),
+    `eveningEvents=${await countEvents(user.id, 'evening_review')}; status=${maxEvent?.status}; reason=${maxEvent?.payload?.contact_policy?.reasonCode}`,
   )
+  await prisma.schedulerEvent.update({
+    where: { id: maxRule.id === maxEvent?.reminderRuleId ? maxEvent.id : (await prisma.schedulerEvent.findFirstOrThrow({ where: { reminderRuleId: maxRule.id, status: 'sent' } })).id },
+    data: { status: 'responded', payload: { previousPayload: maxEvent?.payload || {}, verification: true } },
+  })
 
   const quietRule = await createRule(user.id, {
     reminderType: 'weekly_review',
@@ -351,22 +389,65 @@ async function run() {
     enabled: true,
     quietHours: quietRangeAround(parts),
   })
-  await tick({ now })
+  await tick({ userId: user.id, now })
+  const quietEvent = await latestEvent(user.id, 'weekly_review')
   record(
     'SRR-QUIET-HOURS',
-    'Scheduler respects quietHours and skips a due rule inside the quiet window',
-    await countEvents(user.id, 'weekly_review') === 0,
-    `weeklyEvents=${await countEvents(user.id, 'weekly_review')}; schedule=${quietRule.schedule}; quiet=${quietRule.quietHours?.range}`,
+    'Scheduler defers a due rule to the actual quiet-hours end and records the reason',
+    Boolean(
+      await countEvents(user.id, 'weekly_review') === 1
+      && quietEvent?.status === 'deferred'
+      && quietEvent?.payload?.contact_policy?.reasonCode === 'quiet_hours'
+      && new Date(String(quietEvent?.payload?.contact_policy?.nextEligibleAt || 0)).getTime() > now.getTime()
+    ),
+    `weeklyEvents=${await countEvents(user.id, 'weekly_review')}; status=${quietEvent?.status}; reason=${quietEvent?.payload?.contact_policy?.reasonCode}; next=${quietEvent?.payload?.contact_policy?.nextEligibleAt || 'missing'}`,
   )
 
+  const quietRetryAt = new Date(String(quietEvent?.payload?.contact_policy?.nextEligibleAt || 0))
+  if (!Number.isNaN(quietRetryAt.getTime())) {
+    await tick({ userId: user.id, now: new Date(quietRetryAt.getTime() + 1000) })
+  }
+  const retriedQuietEvent = quietEvent
+    ? await prisma.schedulerEvent.findUnique({ where: { id: quietEvent.id } })
+    : null
+  record(
+    'SRR-DEFER-RETRY',
+    'a quiet-hours candidate is not consumed; at quiet-hours end the same event reruns the full contact policy',
+    Boolean(
+      retriedQuietEvent?.id === quietEvent?.id
+      && await countEvents(user.id, 'weekly_review') === 1
+      && retriedQuietEvent?.status === 'skipped'
+      && retriedQuietEvent?.payload?.contact_policy?.reasonCode === 'no_enabled_binding'
+      && retriedQuietEvent?.payload?.defer_history?.[0]?.contactPolicy?.reasonCode === 'quiet_hours'
+    ),
+    `sameEvent=${retriedQuietEvent?.id === quietEvent?.id}; count=${await countEvents(user.id, 'weekly_review')}; status=${retriedQuietEvent?.status}; reason=${retriedQuietEvent?.payload?.contact_policy?.reasonCode}; previous=${retriedQuietEvent?.payload?.defer_history?.[0]?.contactPolicy?.reasonCode || 'missing'}`,
+  )
+
+  await prisma.reminderRule.updateMany({
+    where: { userId: user.id },
+    data: { enabled: false },
+  })
+  await prisma.schedulerEvent.deleteMany({ where: { userId: user.id } })
+  await prisma.userSetting.update({
+    where: { userId: user.id },
+    data: {
+      notifications: {
+        proactive_contact_enabled: true,
+        proactive_contact_cadence: 'supportive',
+        proactive_contact_consent_updated_at: now.toISOString(),
+      },
+    },
+  })
   const seeded = await seedGoalActionAndBinding(user)
   const contentRule = await createRule(user.id, {
     reminderType: 'midday_check',
     schedule: '12:30',
     enabled: true,
     maxPerDay: 1,
+    cadence: 'supportive',
   })
-  await tick({ forceReminderType: 'midday_check', now: new Date(now.getTime() + 3000) })
+  const contentNow = new Date()
+  await tick({ userId: user.id, forceReminderType: 'midday_check', now: new Date(contentNow.getTime() + 3000) })
   const sentEvent = await latestEvent(user.id, 'midday_check')
   const assistantMessage = sentEvent?.agentMessageId
     ? await prisma.agentMessage.findUnique({ where: { id: sentEvent.agentMessageId } })
@@ -390,7 +471,7 @@ async function run() {
         && captured?.body?.content === sentEvent.messageText
         && captured?.body?.msg_id === `fake-source-message-${runId}`,
     ),
-    `status=${sentEvent?.status}; tokenCalls=${fakeQq.tokenRequests.length}; sends=${fakeQq.messages.length}; url=${captured?.url || 'missing'}`,
+    `status=${sentEvent?.status}; tokenCalls=${fakeQq.tokenRequests.length}; sends=${fakeQq.messages.length}; url=${captured?.url || 'missing'}; body=${JSON.stringify(captured?.body || {})}`,
   )
 
   record(
@@ -406,6 +487,18 @@ async function run() {
         && decision.verification_signal,
     ),
     `planner=${decision.planner_source}; type=${decision.intervention_type}; message=${sentContent.replace(/\s+/g, ' ').slice(0, 180)}`,
+  )
+
+  record(
+    'SRR-VALUE-GATE-BEFORE-PLANNER',
+    'Scheduler sends only after an explicit intervention-value decision with a reason and evidence',
+    Boolean(
+      sentEvent?.payload?.contact_policy?.evidence?.valueGate?.action === 'send'
+      && sentEvent?.payload?.contact_policy?.evidence?.valueGate?.reasonCode === 'action_start_risk'
+      && sentEvent?.payload?.contact_policy?.evidence?.valueGate?.evidence?.goalId === seeded.goal.id
+      && sentEvent?.payload?.contact_context?.authorizedContextId === seeded.binding.contextId
+    ),
+    `action=${sentEvent?.payload?.contact_policy?.evidence?.valueGate?.action || 'missing'}; reason=${sentEvent?.payload?.contact_policy?.evidence?.valueGate?.reasonCode || 'missing'}; context=${sentEvent?.payload?.contact_context?.authorizedContextId || 'missing'}`,
   )
 
   record(

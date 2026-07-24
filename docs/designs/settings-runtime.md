@@ -82,12 +82,38 @@ Settings 中的通知字段不能形成第二套不会被 Scheduler 执行的假
 Settings 也不能把“提醒规则已开启”误展示成“主动提醒已可送达”。主动提醒可送达至少需要：
 
 ```text
-ReminderRule enabled
+UserSetting.notifications.proactive_contact_enabled = true
+  + ReminderRule enabled
+  + ReminderRule metadata has confirmed contact consent
+  + consent metadata has an authorized QQ context
   + QQ Bot 已配置
   + 当前账号已有 enabled QqChatBinding
+  + Contact Policy 当前决定 send
 ```
 
-因此干净用户即使默认有早中晚规则，也必须看到 `待配置 QQ` 或 `待绑定 QQ`，直到 QQ 参数和绑定都完成后，才能显示为可发送状态。
+干净用户会建立早晨规划、中午检查、晚上复盘和周复盘四个推荐候选窗口，但规则全部默认关闭。绑定 QQ 后也保持关闭，直到用户在 Settings 明确开启或在 Web / QQ 对话中确认启用。
+
+当前 Notifications 关键字段：
+
+| 字段 | 影响 |
+| --- | --- |
+| `proactive_contact_enabled` | 主动联系全局 consent；默认 `false` |
+| `proactive_contact_cadence` | `light` / `balanced` / `supportive`，决定全局每日联系上限和启用哪些候选窗口 |
+| `proactive_contact_pause_after` | 连续未回复达到该阈值后自动暂停；默认 `3` |
+| `proactive_contact_consent_updated_at` | 区分当前授权与更早的拒绝 / 回复证据 |
+| `proactive_contact_paused_reason` / `proactive_contact_paused_at` | 解释当前为何暂停 |
+
+暂停或撤销会立即把全局 consent 设为 false，并关闭所有 QQ `ReminderRule`。普通聊天和重新绑定不能恢复；重新启用或恢复必须再次确认。
+
+节奏对应的候选窗口是：
+
+| 节奏 | 候选窗口 |
+| --- | --- |
+| `light` | 早晨规划、周复盘 |
+| `balanced` | 早晨规划、晚上复盘、周复盘 |
+| `supportive` | 早晨规划、中午检查、晚上复盘、周复盘 |
+
+候选窗口数量不等于实际发送次数；Contact Policy 仍会逐次判断价值和限流。
 
 ### Integrations / QQ
 
@@ -99,6 +125,8 @@ ReminderRule enabled
 | `binding_code` | 用户在 QQ 中发送“绑定 GM-XXXXXX”后，Worker 才写入 `QqChatBinding` |
 
 QQ 用户归属不能靠默认邮箱、第一用户或任意首次消息判断。未绑定 QQ 会话只能收到绑定引导，不能读取任何目标、日志、模型或 Agent 记忆。
+
+QQ 绑定只接通对话入口，不是主动联系授权。Settings 必须把“QQ 已绑定”和“允许 AI 主动联系我”展示为两个独立状态。
 
 ## 5. Settings Control Center
 
@@ -122,6 +150,8 @@ v0.1 不允许出现这些假设置：
 - 可编辑但不会影响日志路径的自定义路径字段。
 - 可编辑但没有实现的本地优先模式。
 - 可编辑但不会真正切换模型的模型选项。
+- 把 QQ 绑定开关复用为主动联系 consent。
+- 默认启用早中晚提醒，或在用户普通聊天后自动恢复已暂停提醒。
 
 未实现能力只能作为说明或 future boundary，不能伪装成可用控件。
 

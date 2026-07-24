@@ -82,9 +82,11 @@ function verifySharedRuntimeContracts() {
   const writeHandlers = readProjectFile('src/lib/agent-tool-write-handlers.mjs')
   const executor = readProjectFile('src/lib/agent-tool-executor.mjs')
   const agentRuntime = readProjectFile('src/lib/agent-runtime.ts')
+  const sharedAgentRuntime = readProjectFile('src/lib/agent-runtime-shared.mjs')
   const webRuntime = readProjectFile('src/lib/agent-tools.ts')
   const qqWorker = readProjectFile('src/scripts/qq-bot-worker.mjs')
   const schedulerWorker = readProjectFile('src/scripts/scheduler-worker.mjs')
+  const qqContactPolicy = readProjectFile('src/lib/qq-contact-policy.mjs')
   const settingsRoute = readProjectFile('src/server/api/routes/settings/index.ts')
   const todayRoute = readProjectFile('src/server/api/routes/today/index.ts')
   const todayPlanner = readProjectFile('src/lib/today-action-planner.mjs')
@@ -103,6 +105,7 @@ function verifySharedRuntimeContracts() {
   const todayView = readProjectFile('src/components/goal-mate/today-view.tsx')
   const logsView = readProjectFile('src/components/goal-mate/logs-view.tsx')
   const goalsView = readProjectFile('src/components/goal-mate/goals-view.tsx')
+  const agentView = readProjectFile('src/components/goal-mate/agent-view.tsx')
   const settingsView = readProjectFile('src/components/goal-mate/settings-view.tsx')
   const reviewRoute = readProjectFile('src/server/api/routes/reviews/index.ts')
   const agentPromptSystem = readProjectFile('src/lib/agent-prompts/index.ts')
@@ -188,6 +191,23 @@ function verifySharedRuntimeContracts() {
       && executor.includes("definition.name === 'settings.model.update'")
       && executor.includes("definition.name === 'reminder.schedule'"),
     'confirmation policy is read from UserSetting.agent',
+  )
+  record(
+    'AAL-CHECKIN-NO-SECOND-CONFIRMATION',
+    'explicit completion feedback is an observed fact and is recorded without asking the user to confirm it again',
+    executor.includes("if (definition.name === 'checkin.submit')")
+      && executor.includes('return false')
+      && agentPromptSystem.includes('应立即记录为 Check-in，不要求用户再确认一次'),
+    'shared executor and Agent permission prompt scanned',
+  )
+  record(
+    'AAL-SAFETY-CONTROLS-WITHOUT-MODEL',
+    'the single Web entry still accepts deterministic feedback and pause controls when no model key is configured',
+    !agentView.includes('if (!modelConfigured)')
+      && sharedAgentRuntime.includes('if (!apiKey) return allowedFallbackIntent')
+      && sharedAgentRuntime.includes('inferProactiveContactToolIntent')
+      && sharedAgentRuntime.includes('inferCheckinFeedbackIntent'),
+    'Agent view and deterministic shared router scanned',
   )
   record(
     'AAL-GOAL-UPDATE-PATH-CONTRACT',
@@ -410,13 +430,15 @@ function verifySharedRuntimeContracts() {
   )
   record(
     'AAL-REMINDER-QUIET-HOURS-RATE-LIMIT',
-    'Reminder settings expose quietHours and scheduler enforces quiet hours plus maxPerDay before sending',
+    'Reminder settings expose quietHours and Contact Policy enforces quiet hours plus per-rule and global rate limits before sending',
     settingsRoute.includes('quietHours')
       && schedulerWorker.includes('isInQuietHours')
       && schedulerWorker.includes('quietHoursRange')
-      && schedulerWorker.includes('maxPerDay')
-      && schedulerWorker.includes('schedulerEvent.count'),
-    'Settings reminder rules and scheduler worker scanned',
+      && schedulerWorker.includes('evaluateQqContactPolicy')
+      && qqContactPolicy.includes('sentForRuleTodayCount')
+      && qqContactPolicy.includes('maxRuleContacts')
+      && qqContactPolicy.includes("'daily_limit'"),
+    'Settings reminder rules, scheduler worker and Contact Policy scanned',
   )
   record(
     'AAL-QQ-SHARED-RUNTIME',
@@ -654,13 +676,13 @@ function verifySharedRuntimeContracts() {
   )
   record(
     'AAL-CONTROL-LOOP-GOALS-STATE-MAP',
-    'Goals page presents a read-only system state chain from goal to KR, condition, stage and today action',
-    goalsView.includes('Objective')
-      && goalsView.includes('KR')
-      && goalsView.includes('Conditions')
-      && goalsView.includes('Gantt')
-      && goalsView.includes('今日行动')
-      && goalsView.includes('只读'),
+    'Goals page presents a read-only human-facing system state chain from desired result to evidence, conditions, timeline and current action',
+    goalsView.includes('想达到的结果')
+      && goalsView.includes('完成证据')
+      && goalsView.includes('必要条件')
+      && goalsView.includes('推进时间线')
+      && goalsView.includes('当前行动')
+      && goalsView.includes('调整请直接告诉 Agent'),
     'Goals view scanned for system-state chain cues',
   )
   record(
@@ -669,8 +691,9 @@ function verifySharedRuntimeContracts() {
     settingsView.includes('系统控制台')
       && settingsView.includes('每一项配置都对应一项能力')
       && settingsView.includes('模型配置')
-      && settingsView.includes('QQ 主动助手')
-      && settingsView.includes('主动推进节奏')
+      && settingsView.includes('QQ 对话入口')
+      && settingsView.includes('绑定只接通入口，不代表你同意 AI 主动发消息')
+      && settingsView.includes('允许 AI 主动联系')
       && settingsView.includes('Agent 权限')
       && settingsView.includes('自动写入 Check-in')
       && settingsView.includes('账号与数据'),
